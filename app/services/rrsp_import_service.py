@@ -200,7 +200,7 @@ def import_rrsp_transactions_rows(db, user_id, parsed_rows):
             return account_map[normalized]
 
         cursor = db.execute(
-            "INSERT INTO rrsp_accounts (user_id, account_name, opening_balance) VALUES (?, ?, 0)",
+            "INSERT INTO rrsp_accounts (user_id, account_name, opening_balance, created_at) VALUES (?, ?, 0, CURRENT_TIMESTAMP)",
             (user_id, normalized),
         )
         account_id = int(cursor.lastrowid)
@@ -322,8 +322,8 @@ def import_rrsp_transactions_rows(db, user_id, parsed_rows):
         db.execute(
             """
             INSERT INTO rrsp_contributions
-            (user_id, rrsp_account_id, contribution_date, amount, contribution_type, is_unused, deducted_tax_year, memo)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (user_id, rrsp_account_id, contribution_date, amount, contribution_type, is_unused, deducted_tax_year, memo, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
             (
                 user_id,

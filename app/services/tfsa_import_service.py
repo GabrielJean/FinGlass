@@ -161,7 +161,7 @@ def import_tfsa_transactions_rows(db, user_id, parsed_rows):
             return account_map[normalized]
 
         cursor = db.execute(
-            "INSERT INTO tfsa_accounts (user_id, account_name, opening_balance) VALUES (?, ?, 0)",
+            "INSERT INTO tfsa_accounts (user_id, account_name, opening_balance, created_at) VALUES (?, ?, 0, CURRENT_TIMESTAMP)",
             (user_id, normalized),
         )
         account_id = int(cursor.lastrowid)
@@ -279,8 +279,8 @@ def import_tfsa_transactions_rows(db, user_id, parsed_rows):
         db.execute(
             """
             INSERT INTO tfsa_contributions
-            (user_id, tfsa_account_id, contribution_date, amount, contribution_type, memo)
-            VALUES (?, ?, ?, ?, ?, ?)
+            (user_id, tfsa_account_id, contribution_date, amount, contribution_type, memo, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
             (
                 user_id,

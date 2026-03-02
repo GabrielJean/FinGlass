@@ -226,7 +226,7 @@ def import_fhsa_transactions_rows(db, user_id, parsed_rows):
             return account_map[normalized]
 
         cursor = db.execute(
-            "INSERT INTO fhsa_accounts (user_id, account_name, opening_balance) VALUES (?, ?, 0)",
+            "INSERT INTO fhsa_accounts (user_id, account_name, opening_balance, created_at) VALUES (?, ?, 0, CURRENT_TIMESTAMP)",
             (user_id, normalized),
         )
         account_id = int(cursor.lastrowid)
@@ -346,8 +346,8 @@ def import_fhsa_transactions_rows(db, user_id, parsed_rows):
         db.execute(
             """
             INSERT INTO fhsa_contributions
-            (user_id, fhsa_account_id, contribution_date, amount, contribution_type, is_qualifying_withdrawal, memo)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (user_id, fhsa_account_id, contribution_date, amount, contribution_type, is_qualifying_withdrawal, memo, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """,
             (
                 user_id,

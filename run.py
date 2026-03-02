@@ -1,4 +1,14 @@
-from app.main import app
+#!/usr/bin/env python
+import os
+import sys
+
+
+def main():
+    os.environ.setdefault("DJANGO_SETTINGS_MODULE", "finglass_project.settings")
+    from django.core.management import execute_from_command_line
+
+    execute_from_command_line(sys.argv)
+
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    main()
