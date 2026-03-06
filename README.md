@@ -14,6 +14,11 @@ Simple web app to track securities transactions over time, with Adjusted Cost Ba
 - Data/persistence: Django ORM models + versioned migrations in `accounts/migrations` and `core/migrations`.
 - Frontend: templates in `templates/`, static assets (CSS/JS) in `static/`, with shared helpers in `static/common.js`.
 
+
+
+
+
+
 ## Features
 - Portfolio overview dashboard with charts and summaries
 - Per-security detail/edit page with full transaction history
@@ -86,7 +91,7 @@ Required columns: `transaction_date`, `symbol`, `activity_type`, `activity_sub_t
 Required columns: `Symbol`, `Account Number`, `Account Name`, `Account Type`, `Quantity`, `Market Price`, `Market Value`, `Book Value (CAD)`
 
 **Credit Card CSV:**
-Download from Rogers Bank online banking. Should include: Transaction Date, Posted Date, Description, Amount, Category
+Download from Rogers Bank or Scotiabank online banking. Should include: Transaction Date, Posted Date, Description, Amount, Category
 
 **Tax PDFs:**
 T3/T5 slips with Return of Capital or reinvested capital gains. Include security symbol in filename (e.g., `VDY-T3-2024.pdf`)
