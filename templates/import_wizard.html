@@ -327,6 +327,17 @@
         margin-bottom: 1rem;
       }
 
+      .wizard-provider-group {
+        margin: 1rem 0;
+      }
+
+      .wizard-provider-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-size: 0.875rem;
+        color: #cbd5e1;
+      }
+
       .wizard-preview-stats {
         margin: 1rem 0;
       }
@@ -450,6 +461,15 @@
 
           <div id="templateDownload" class="wizard-template-download">
             <!-- Template download links will be inserted here -->
+          </div>
+
+          <div id="creditCardProviderGroup" class="wizard-provider-group" style="display: none;">
+            <label for="creditCardProvider">Credit Card Provider</label>
+            <select id="creditCardProvider" class="input">
+              <option value="">Select provider</option>
+              <option value="rogers">Rogers Bank</option>
+              <option value="scotiabank">Scotiabank</option>
+            </select>
           </div>
 
           <input type="file" id="fileInput" style="display: none;" />

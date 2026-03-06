@@ -71,7 +71,7 @@ This guide explains how to import your financial data into FinGlass using the ne
 
 **Also supported:**
 - Scotiabank credit card CSV exports (account activity/statement download)
-- FinGlass auto-detects Rogers vs Scotiabank format during import
+- Select Rogers Bank or Scotiabank in the Import Wizard before uploading
 
 **What happens:**
 - Transactions import directly (no review step)
