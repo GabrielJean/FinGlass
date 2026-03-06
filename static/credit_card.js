@@ -33,6 +33,7 @@ const common = window.FinGlassCommon || {};
 const markTableBodyRefreshed = common.markTableBodyRefreshed;
 const animateNumber = common.animateNumber;
 const applyPageEnterMotion = common.applyPageEnterMotion;
+const ensureOverlayElementsAtBody = common.ensureOverlayElementsAtBody;
 
 const ccMonthlyCtx = document.getElementById("ccMonthlyChart");
 const ccCategoryCtx = document.getElementById("ccCategoryChart");
@@ -1334,6 +1335,7 @@ function openCreditCardSettingsMenu() {
   if (!creditCardSettingsSectionEl || !creditCardSettingsToggleBtnEl) {
     return;
   }
+  ensureOverlayElementsAtBody?.(creditCardSettingsBackdropEl, creditCardSettingsSectionEl);
   creditCardSettingsSectionEl.classList.remove("hidden");
   creditCardSettingsSectionEl.setAttribute("aria-hidden", "false");
   creditCardSettingsToggleBtnEl.setAttribute("aria-expanded", "true");

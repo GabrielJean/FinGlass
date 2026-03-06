@@ -127,6 +127,7 @@ const setLoadingState = common.setLoadingState;
 const markTableBodyRefreshed = common.markTableBodyRefreshed;
 const animateNumber = common.animateNumber;
 const applyPageEnterMotion = common.applyPageEnterMotion;
+const ensureOverlayElementsAtBody = common.ensureOverlayElementsAtBody;
 
 const fmt = common.fmt;
 const fmtShares = common.fmtShares;
@@ -297,6 +298,7 @@ function openSettingsMenu() {
   if (!settingsSection || !settingsToggleBtn) {
     return;
   }
+  ensureOverlayElementsAtBody?.(settingsBackdropEl, settingsSection);
   settingsSection.classList.remove("hidden");
   settingsSection.setAttribute("aria-hidden", "false");
   settingsToggleBtn.setAttribute("aria-expanded", "true");
