@@ -75,14 +75,14 @@
   max-height: calc(100vh - 2rem);
   overflow: auto;
   margin: 0;
-  z-index: 30;
+  z-index: 2210;
 }
 
 .settings-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(2, 6, 23, 0.55);
-  z-index: 25;
+  z-index: 2200;
 }
 
 .settings-backdrop:not(.hidden) {
@@ -147,7 +147,7 @@
   max-height: calc(100vh - 2rem);
   overflow: auto;
   margin: 0;
-  z-index: 35;
+  z-index: 2220;
 }
 
 .tfsa-reset-confirm-modal {
@@ -159,11 +159,11 @@
   max-height: calc(100vh - 2rem);
   overflow: auto;
   margin: 0;
-  z-index: 45;
+  z-index: 2230;
 }
 
 #tfsaResetConfirmBackdrop {
-  z-index: 40;
+  z-index: 2225;
 }
 
 .credit-card-reset-confirm-modal,
@@ -177,11 +177,11 @@
   max-height: calc(100vh - 2rem);
   overflow: auto;
   margin: 0;
-  z-index: 45;
+  z-index: 2230;
 }
 
 #creditCardResetConfirmBackdrop {
-  z-index: 40;
+  z-index: 2225;
 }
 
 .tfsa-reset-confirm-actions {
@@ -198,11 +198,11 @@
   max-height: calc(100vh - 2rem);
   overflow: auto;
   margin: 0;
-  z-index: 95;
+  z-index: 2240;
 }
 
 #finglassDialogBackdrop {
-  z-index: 90;
+  z-index: 2235;
 }
 
 .finglass-dialog-actions {
@@ -841,6 +841,25 @@ body.is-loading::before {
 .fg-page-enter-item.fg-page-enter-show {
   animation: fg-page-enter-reveal 300ms cubic-bezier(0.22, 1, 0.36, 1) both;
   animation-delay: var(--fg-enter-delay, 0ms);
+}
+
+.settings-menu.fg-page-enter-item,
+.settings-menu.fg-page-enter-item.fg-page-enter-show,
+.tfsa-opening-wizard-modal.fg-page-enter-item,
+.tfsa-opening-wizard-modal.fg-page-enter-item.fg-page-enter-show,
+.tfsa-reset-confirm-modal.fg-page-enter-item,
+.tfsa-reset-confirm-modal.fg-page-enter-item.fg-page-enter-show,
+.credit-card-reset-confirm-modal.fg-page-enter-item,
+.credit-card-reset-confirm-modal.fg-page-enter-item.fg-page-enter-show,
+.credit-card-rename-modal.fg-page-enter-item,
+.credit-card-rename-modal.fg-page-enter-item.fg-page-enter-show,
+.credit-card-delete-confirm-modal.fg-page-enter-item,
+.credit-card-delete-confirm-modal.fg-page-enter-item.fg-page-enter-show,
+.finglass-dialog-modal.fg-page-enter-item,
+.finglass-dialog-modal.fg-page-enter-item.fg-page-enter-show,
+.card[role="dialog"].fg-page-enter-item,
+.card[role="dialog"].fg-page-enter-item.fg-page-enter-show {
+  animation: none !important;
 }
 
 .fg-success-pulse {

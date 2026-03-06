@@ -5,6 +5,7 @@ const fmtMoney = common.fmtMoney;
 const showConfirmDialog = common.showConfirmDialog;
 const showAlertDialog = common.showAlertDialog;
 const applyPageEnterMotion = common.applyPageEnterMotion;
+const ensureOverlayElementsAtBody = common.ensureOverlayElementsAtBody;
 const confirmDialog = (message, options = {}) => {
     if (typeof showConfirmDialog === 'function') {
         return showConfirmDialog(message, options);
@@ -197,6 +198,7 @@ function openTfsaSettingsMenu() {
     if (!tfsaSettingsSectionEl || !tfsaSettingsToggleBtnEl) {
         return;
     }
+    ensureOverlayElementsAtBody?.(tfsaSettingsBackdropEl, tfsaSettingsSectionEl);
     tfsaSettingsSectionEl.classList.remove('hidden');
     tfsaSettingsSectionEl.setAttribute('aria-hidden', 'false');
     tfsaSettingsToggleBtnEl.setAttribute('aria-expanded', 'true');

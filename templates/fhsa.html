@@ -22,7 +22,8 @@
           <p class="muted">Track FHSA contribution room and qualifying withdrawals across accounts.</p>
         </div>
         <div class="header-actions">
-          <div class="user-profile-wrap">
+          <div class="header-controls-bar">
+            <div class="user-profile-wrap">
             <span
               id="userProfileAdminBadge"
               class="user-admin-badge"
@@ -38,8 +39,8 @@
               {% if request.user.is_superuser %}<button id="adminDashboardBtn" type="button" class="menu-item"><span class="menu-icon">⚙</span><span class="menu-label">Admin Panel</span></button>{% endif %}
               <button id="logoutMenuBtn" type="button" class="menu-item"><span class="menu-icon">🚪</span><span class="menu-label">Logout</span></button>
             </div>
-          </div>
-          <div class="settings-menu-wrap">
+            </div>
+            <div class="settings-menu-wrap">
             <button
               id="fhsaSettingsToggleBtn"
               class="settings-gear-btn"
@@ -103,6 +104,7 @@
                 <button id="fhsa-reset-data-btn" type="button" class="btn-danger">Reset All FHSA Data</button>
               </div>
             </section>
+            </div>
           </div>
           <a class="btn-link btn-secondary" href="/">← Back to Overview</a>
         </div>
