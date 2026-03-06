@@ -18,6 +18,10 @@ SUPPORTED_IMPORT_TYPES = {"activities_csv", "tax_pdf"}
 EPSILON = Decimal("0.000001")
 
 
+def _is_truthy(value):
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _parse_number(value, default=0.0):
     if value is None:
         return default
@@ -534,47 +538,15 @@ def parse_scotiabank_credit_csv_text(csv_text, card_label=None):
     return rows
 
 
-def _detect_credit_csv_provider(csv_text):
-    reader = csv.DictReader(StringIO(csv_text))
-    headers = [_normalize_csv_header(field) for field in (reader.fieldnames or []) if field is not None]
-    header_set = set(headers)
-
-    # Scotia exports typically include these headers.
-    if "typeoftransaction" in header_set or "subdescription" in header_set:
-        return "scotiabank"
-
-    # Rogers exports usually include merchant/reference/card-specific fields.
-    if any(
-        h in header_set
-        for h in (
-            "transactioncardnumber",
-            "merchantcategory",
-            "merchantcategorydescription",
-            "referencenumber",
-            "nameoncard",
-        )
-    ):
-        return "rogers"
-
-    return "auto"
-
-
-def parse_credit_csv_text(csv_text, provider="auto", card_label=None):
-    provider_value = str(provider or "auto").strip().lower()
-
-    if provider_value == "auto":
-        provider_value = _detect_credit_csv_provider(csv_text)
+def parse_credit_csv_text(csv_text, provider, card_label=None):
+    provider_value = str(provider or "").strip().lower()
 
     if provider_value == "rogers":
         return parse_rogers_credit_csv_text(csv_text, card_label=card_label)
     if provider_value in {"scotia", "scotiabank"}:
         return parse_scotiabank_credit_csv_text(csv_text, card_label=card_label)
 
-    # Auto-detect by preferring whichever parser extracts rows.
-    rogers_rows = parse_rogers_credit_csv_text(csv_text, card_label=card_label)
-    if rogers_rows:
-        return rogers_rows
-    return parse_scotiabank_credit_csv_text(csv_text, card_label=card_label)
+    raise ValueError("Unsupported credit card provider. Use 'rogers' or 'scotiabank'.")
 
 
 def parse_upload(import_type, filename, file_bytes):
@@ -836,6 +808,9 @@ def import_holdings_csv(request):
     if not parsed_rows:
         return JsonResponse({"error": "No holdings rows found in uploaded CSV"}, status=400)
 
+    if _is_truthy(request.POST.get("preview_only")):
+        return JsonResponse({"parsed": len(parsed_rows), "rows": parsed_rows, "imported": 0})
+
     summary = _import_holdings_rows(parsed_rows, uploaded_file.name, user_id)
     summary["imported"] = summary.get("inserted", 0) + summary.get("updated", 0)
     return JsonResponse(summary)
@@ -852,16 +827,29 @@ def import_rogers_credit_csv(request):
         return JsonResponse({"error": "No selected file"}, status=400)
 
     card_label = str(request.POST.get("card_label") or "").strip() or None
-    provider = str(request.POST.get("provider") or "auto").strip().lower()
+    provider = str(request.POST.get("provider") or "").strip().lower()
+    if provider not in {"rogers", "scotiabank", "scotia"}:
+        return JsonResponse({"error": "Missing or invalid provider. Choose 'rogers' or 'scotiabank' in the import wizard."}, status=400)
 
     total_parsed = 0
     total_inserted = 0
     files_processed = 0
+    preview_rows = []
+    preview_only = _is_truthy(request.POST.get("preview_only"))
 
     for uploaded_file in uploaded_files:
         file_text = uploaded_file.read().decode("utf-8-sig")
-        parsed_rows = parse_credit_csv_text(file_text, provider=provider, card_label=card_label)
+        try:
+            parsed_rows = parse_credit_csv_text(file_text, provider=provider, card_label=card_label)
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
         if not parsed_rows:
+            continue
+
+        if preview_only:
+            total_parsed += len(parsed_rows)
+            files_processed += 1
+            preview_rows.extend(parsed_rows)
             continue
 
         summary = _import_rogers_credit_rows(parsed_rows, uploaded_file.name, user_id)
@@ -871,6 +859,9 @@ def import_rogers_credit_csv(request):
 
     if total_parsed == 0:
         return JsonResponse({"error": "No credit card rows found in uploaded CSV file(s)"}, status=400)
+
+    if preview_only:
+        return JsonResponse({"parsed": total_parsed, "rows": preview_rows, "files": files_processed, "imported": 0})
 
     return JsonResponse({"parsed": total_parsed, "inserted": total_inserted, "files": files_processed, "imported": total_inserted})
 
@@ -897,6 +888,9 @@ def create_import_review(request):
 
     if not rows:
         return JsonResponse({"error": "No importable transactions found in file"}, status=400)
+
+    if _is_truthy(request.POST.get("preview_only")):
+        return JsonResponse({"rows": rows, "parsed": len(rows)})
 
     batch_id = _create_import_batch(import_type, uploaded_file.name, rows, user_id)
     batch_data = _get_batch(batch_id, user_id)

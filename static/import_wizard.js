@@ -10,6 +10,7 @@ let selectedImportType = null;
 let uploadedFile = null;
 let parsedData = null;
 let batchId = null;
+let selectedCreditCardProvider = '';
 
 // DOM Elements
 const wizardSteps = document.querySelectorAll('.wizard-step');
@@ -24,6 +25,8 @@ const fileInfo = document.getElementById('fileInfo');
 const uploadError = document.getElementById('uploadError');
 const formatRequirements = document.getElementById('formatRequirements');
 const templateDownload = document.getElementById('templateDownload');
+const creditCardProviderGroup = document.getElementById('creditCardProviderGroup');
+const creditCardProviderSelect = document.getElementById('creditCardProvider');
 const previewTableHead = document.getElementById('previewTableHead');
 const previewTableBody = document.getElementById('previewTableBody');
 const previewStats = document.getElementById('previewStats');
@@ -87,7 +90,7 @@ const importTypeConfig = {
         <li><strong>Rogers Bank Mastercard:</strong> Download transaction history from online banking</li>
         <li><strong>Scotiabank Credit Card:</strong> Download account activity/statement CSV export</li>
         <li>File should include: Transaction Date, Posted Date, Description, Amount, Category</li>
-        <li>Parser auto-detects Rogers vs Scotiabank format</li>
+        <li>Select the provider before uploading so the correct parser is used</li>
         <li>Categories are automatically normalized for tracking</li>
       </ul>
     `,
@@ -142,6 +145,16 @@ function setupEventListeners() {
   dropzone.addEventListener('dragleave', handleDragLeave);
   dropzone.addEventListener('drop', handleDrop);
   fileInput.addEventListener('change', handleFileSelect);
+
+  if (creditCardProviderSelect) {
+    creditCardProviderSelect.addEventListener('change', () => {
+      selectedCreditCardProvider = creditCardProviderSelect.value;
+      // Provider affects parsing rules; force re-upload when it changes.
+      if (uploadedFile) {
+        clearFile();
+      }
+    });
+  }
 }
 
 function setAnimatedVisibility(element, visible, displayValue = 'block') {
@@ -246,6 +259,13 @@ function setupStep2() {
 
   formatRequirements.innerHTML = config.requirements;
 
+  const isCreditCardImport = selectedImportType === 'credit-card';
+  setAnimatedVisibility(creditCardProviderGroup, isCreditCardImport, 'block');
+  if (!isCreditCardImport && creditCardProviderSelect) {
+    selectedCreditCardProvider = '';
+    creditCardProviderSelect.value = '';
+  }
+
   // Set file input accept attribute
   fileInput.setAttribute('accept', config.accept);
 
@@ -296,6 +316,11 @@ function handleFileSelect(e) {
 }
 
 async function processFile(file) {
+  if (selectedImportType === 'credit-card' && !selectedCreditCardProvider) {
+    showError('Please select a credit card provider before uploading your file');
+    return;
+  }
+
   uploadedFile = file;
   setAnimatedVisibility(uploadError, false, 'block');
 
@@ -360,12 +385,7 @@ async function processFile(file) {
 
 async function parseFile(file) {
   const config = importTypeConfig[selectedImportType];
-  const formData = new FormData();
-  formData.append('file', file);
-
-  if (config.subtype) {
-    formData.append('import_type', config.subtype);
-  }
+  const formData = buildImportFormData(file, { previewOnly: true });
 
   const result = await fetchJson(config.endpoint, {
     method: 'POST',
@@ -373,19 +393,13 @@ async function parseFile(file) {
     credentials: 'include'
   });
 
-  // Handle different response formats
-  if (config.direct) {
-    // Direct import (holdings, credit card)
-    parsedData = result;
-    if (result.rows) {
-      parsedData = { rows: result.rows, imported: result.imported || 0 };
-    }
-  } else {
-    // Staged import (transactions, tax PDF)
-    // Response format: { batch: {...}, rows: [...] }
-    batchId = result.batch?.id || result.batch_id;
-    parsedData = { rows: result.rows || [], batch: result.batch };
-  }
+  // Preview-only pass for all imports.
+  batchId = null;
+  parsedData = {
+    rows: result.rows || [],
+    parsed: result.parsed || (result.rows ? result.rows.length : 0),
+    imported: 0,
+  };
 }
 
 function renderPreview() {
@@ -395,10 +409,10 @@ function renderPreview() {
 
   // For direct imports, show summary
   if (config.direct) {
-    const rowCount = parsedData.rows?.length || parsedData.imported || 0;
+    const rowCount = parsedData.rows?.length || parsedData.parsed || 0;
     previewStats.innerHTML = `
       <div class="warning-message">
-        <strong>Ready to import:</strong> ${rowCount} record(s) will be added to your database.
+        <strong>Found ${rowCount} record(s)</strong> • Review before importing
       </div>
     `;
 
@@ -411,14 +425,14 @@ function renderPreview() {
       previewTableBody.innerHTML = `
         <tr>
           <td colspan="10" style="text-align: center; padding: 2rem; color: #64748b;">
-            File processed successfully. ${parsedData.imported || 0} record(s) ready to import.
+            File processed successfully. ${rowCount} record(s) found.
           </td>
         </tr>
       `;
       markTableBodyRefreshed?.(previewTableBody);
     }
   } else {
-    // Staged import preview
+    // Transactions/Tax preview
     const rows = parsedData.rows || [];
 
     previewStats.innerHTML = `
@@ -505,12 +519,35 @@ async function submitImport() {
     const config = importTypeConfig[selectedImportType];
 
     if (config.direct) {
-      // Direct import - data already imported during upload
-      showCompletion(`Successfully imported ${parsedData.imported || parsedData.rows?.length || 0} record(s)`);
+      if (!uploadedFile) {
+        throw new Error('Please upload a file before importing');
+      }
+
+      const importResult = await fetchJson(config.endpoint, {
+        method: 'POST',
+        body: buildImportFormData(uploadedFile, { previewOnly: false }),
+        credentials: 'include'
+      });
+
+      showCompletion(`Successfully imported ${importResult.imported || importResult.inserted || 0} record(s)`);
       goToStep(4);
     } else {
-      // Staged import - commit the batch
-      const result = await fetchJson(`/api/import/commit/${batchId}`, {
+      if (!uploadedFile) {
+        throw new Error('Please upload a file before importing');
+      }
+
+      const createResult = await fetchJson(config.endpoint, {
+        method: 'POST',
+        body: buildImportFormData(uploadedFile, { previewOnly: false }),
+        credentials: 'include'
+      });
+
+      const commitBatchId = createResult.batch?.id || createResult.batch_id;
+      if (!commitBatchId) {
+        throw new Error('Failed to create import batch');
+      }
+
+      const result = await fetchJson(`/api/import/commit/${commitBatchId}`, {
         method: 'POST'
       });
 
@@ -523,6 +560,27 @@ async function submitImport() {
     submitBtn.disabled = false;
     submitBtn.textContent = 'Import Data';
   }
+}
+
+function buildImportFormData(file, options = {}) {
+  const { previewOnly = false } = options;
+  const config = importTypeConfig[selectedImportType];
+  const formData = new FormData();
+  formData.append('file', file);
+
+  if (config?.subtype) {
+    formData.append('import_type', config.subtype);
+  }
+
+  if (selectedImportType === 'credit-card') {
+    formData.append('provider', selectedCreditCardProvider);
+  }
+
+  if (previewOnly) {
+    formData.append('preview_only', '1');
+  }
+
+  return formData;
 }
 
 function showCompletion(message) {
@@ -552,7 +610,11 @@ function resetWizard() {
   uploadedFile = null;
   parsedData = null;
   batchId = null;
+  selectedCreditCardProvider = '';
   fileInput.value = '';
+  if (creditCardProviderSelect) {
+    creditCardProviderSelect.value = '';
+  }
 
   importTypeCards.forEach(card => card.classList.remove('selected'));
   setAnimatedVisibility(dropzone, true, 'block');
