@@ -5,6 +5,7 @@ const fmtMoney = common.fmtMoney;
 const showConfirmDialog = common.showConfirmDialog;
 const showAlertDialog = common.showAlertDialog;
 const applyPageEnterMotion = common.applyPageEnterMotion;
+const ensureOverlayElementsAtBody = common.ensureOverlayElementsAtBody;
 
 const confirmDialog = (message, options = {}) => {
     if (typeof showConfirmDialog === 'function') {
@@ -251,6 +252,7 @@ function openFhsaSettingsMenu() {
     if (!fhsaSettingsSectionEl || !fhsaSettingsToggleBtnEl) {
         return;
     }
+    ensureOverlayElementsAtBody?.(fhsaSettingsBackdropEl, fhsaSettingsSectionEl);
     fhsaSettingsSectionEl.classList.remove('hidden');
     fhsaSettingsSectionEl.setAttribute('aria-hidden', 'false');
     fhsaSettingsToggleBtnEl.setAttribute('aria-expanded', 'true');

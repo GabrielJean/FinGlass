@@ -355,7 +355,10 @@
       return;
     }
 
-    const selector = String(options.selector || ".page-header, .card");
+    const selector = String(
+      options.selector ||
+        ".page-header, .card:not(.settings-menu):not(.tfsa-opening-wizard-modal):not(.tfsa-reset-confirm-modal):not(.credit-card-reset-confirm-modal):not(.credit-card-rename-modal):not(.credit-card-delete-confirm-modal):not(.finglass-dialog-modal):not([role='dialog'])"
+    );
     const maxItems = Math.max(1, Number(options.maxItems || 10));
     const staggerMs = Math.max(8, Number(options.staggerMs || 28));
     const elements = Array.from(root.querySelectorAll(selector)).slice(0, maxItems);
@@ -382,7 +385,12 @@
 
   function initGlobalPageEnterMotion() {
     const run = () => {
-      applyPageEnterMotion({ selector: ".page-header, .card", maxItems: 12, staggerMs: 22 });
+      applyPageEnterMotion({
+        selector:
+          ".page-header, .card:not(.settings-menu):not(.tfsa-opening-wizard-modal):not(.tfsa-reset-confirm-modal):not(.credit-card-reset-confirm-modal):not(.credit-card-rename-modal):not(.credit-card-delete-confirm-modal):not(.finglass-dialog-modal):not([role='dialog'])",
+        maxItems: 12,
+        staggerMs: 22,
+      });
     };
 
     if (globalScope.document?.readyState === "loading") {
@@ -391,6 +399,22 @@
     }
 
     globalScope.setTimeout(run, 0);
+  }
+
+  function ensureOverlayElementsAtBody(...elements) {
+    const body = globalScope.document?.body;
+    if (!body) {
+      return;
+    }
+
+    elements.forEach((element) => {
+      if (!element || !(element instanceof globalScope.HTMLElement)) {
+        return;
+      }
+      if (element.parentElement !== body) {
+        body.appendChild(element);
+      }
+    });
   }
 
   let dialogElements;
@@ -606,6 +630,7 @@
     pulseElement,
     animateNumber,
     applyPageEnterMotion,
+    ensureOverlayElementsAtBody,
     showConfirmDialog,
     showAlertDialog,
   };
