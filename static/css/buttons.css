@@ -178,6 +178,10 @@ button[data-action="delete"]:focus-visible,
   box-shadow: none;
 }
 
+.settings-gear-btn:not(#themeToggleBtn) {
+  font-size: 1.57rem;
+}
+
 .settings-gear-btn:hover {
   box-shadow: none;
 }
