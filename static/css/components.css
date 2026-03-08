@@ -543,17 +543,17 @@ body.is-loading::before {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem;
+  font-size: 0.82rem;
   line-height: 1;
   position: absolute;
-  left: -0.7rem;
+  left: -0.58rem;
   top: 50%;
   transform: translateY(-50%);
   background: linear-gradient(135deg, var(--bg-secondary, #0f172a) 0%, rgba(15, 23, 42, 0.95) 100%);
   border: 1.5px solid var(--border-color, #475569);
   border-radius: 50%;
-  width: 1.4rem;
-  height: 1.4rem;
+  width: 1.18rem;
+  height: 1.18rem;
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
 }
 
@@ -606,6 +606,7 @@ body.is-loading::before {
   background: none;
   border: none;
   border-bottom: 1px solid var(--border-color, #334155);
+  border-radius: 0;
   color: var(--text-primary, #e2e8f0);
   text-align: left;
   cursor: pointer;
@@ -618,6 +619,10 @@ body.is-loading::before {
   width: 1.25rem;
   text-align: center;
   flex-shrink: 0;
+}
+
+.user-profile-menu #adminDashboardBtn .menu-icon {
+  font-size: 1.2rem;
 }
 
 .user-profile-menu .menu-item .menu-label {
