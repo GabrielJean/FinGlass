@@ -59,6 +59,8 @@ const addAccountFormEl = document.getElementById('add-account-form');
 const addContributionFormEl = document.getElementById('add-contribution-form');
 const tfsaImportFormEl = document.getElementById('tfsa-import-form');
 const tfsaImportFileEl = document.getElementById('tfsa-import-file');
+const tfsaImportOverwriteConfirmEl = document.getElementById('tfsa-import-overwrite-confirm');
+const tfsaImportOverwriteTextEl = document.getElementById('tfsa-import-overwrite-text');
 const contributionTypeEl = document.getElementById('contribution-type');
 const transferDestinationFieldEl = document.getElementById('transfer-destination-field');
 const transferDestinationAccountEl = document.getElementById('transfer-destination-account');
@@ -80,11 +82,11 @@ function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining)
     const used = Number(roomUsed || 0);
     const remaining = Number(totalRemaining || 0);
 
-    if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
-        return 'full';
-    }
     if (available > ROOM_EPSILON && used > available + ROOM_EPSILON) {
         return 'over-limit';
+    }
+    if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
+        return 'full';
     }
 
     const usedRatio = available > ROOM_EPSILON ? (used / available) : 0;
@@ -139,8 +141,16 @@ async function validateDepositContributionRoom(amount) {
     const used = Number(roomUsedState || 0);
 
     if (remaining <= ROOM_EPSILON || normalizedAmount > remaining + ROOM_EPSILON) {
-        showError(`This deposit would exceed your contribution room. Remaining room: ${formatMoney(remaining)}.`);
-        return false;
+        const projectedExcess = Math.max(0, normalizedAmount - Math.max(0, remaining));
+        const proceed = await confirmDialog(
+            `This deposit exceeds remaining contribution room (${formatMoney(remaining)}). Estimated taxable excess after this transaction: ${formatMoney(projectedExcess)}. You can add a Withdrawal transaction later to correct it. Continue?`,
+            {
+                title: 'Over contribution room',
+                confirmText: 'Continue',
+                cancelText: 'Cancel'
+            }
+        );
+        return Boolean(proceed);
     }
 
     const projectedUsed = used + normalizedAmount;
@@ -544,6 +554,7 @@ async function loadTfsaSummary() {
         const totalAvailableRoom = Number(data.total_available_room || 0);
         const roomWithdrawalsPending = Number(data.room_withdrawals_pending || 0);
         const roomUsed = Number(data.room_used || 0);
+        const taxableExcessAmount = Number(data.taxable_excess_amount || 0);
         const minAnnualYear = Number(data.minimum_annual_year || 0);
         const openingBalanceConfigured = Boolean(data.opening_balance_configured);
         const totalRemaining = Number(data.total_remaining || 0);
@@ -581,6 +592,7 @@ async function loadTfsaSummary() {
                     <div class="bar" style="width: ${gaugeWidth}%; background: ${roomBarColor};"></div>
                 </div>
                 <p class="remaining highlight">Room Remaining: <strong>${formatMoney(totalRemaining)}</strong> ${roomStatusLabelHtml}</p>
+                ${taxableExcessAmount > 0 ? `<p class="muted">You currently exceed TFSA contribution room by <strong>${formatMoney(taxableExcessAmount)}</strong>.</p>` : ''}
                 ${roomWithdrawalsPending > 0 ? `<p class="muted">${formatMoney(roomWithdrawalsPending)} of withdrawals will be added back next year.</p>` : ''}
             </div>
         `;
@@ -651,11 +663,22 @@ function showError(msg) {
     });
 }
 
+async function showWarning(message) {
+    const text = String(message || '').trim();
+    if (!text) {
+        return;
+    }
+    await alertDialog(text, {
+        title: 'Warning',
+        confirmText: 'OK'
+    });
+}
+
 addAccountFormEl?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     if (!openingBalanceConfiguredState) {
-        showError('Set lifetime TFSA room first');
+        showError('Set TFSA available contribution room first');
         return;
     }
 
@@ -682,7 +705,7 @@ addContributionFormEl?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     if (!openingBalanceConfiguredState) {
-        showError('Set lifetime TFSA room first');
+        showError('Set TFSA available contribution room first');
         return;
     }
 
@@ -732,13 +755,14 @@ addContributionFormEl?.addEventListener('submit', async (e) => {
                 })
             });
         } else {
-            await fetchJson('/api/tfsa/contributions', {
+            const result = await fetchJson('/api/tfsa/contributions', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(payload)
             });
+            await showWarning(result?.warning);
         }
 
         addContributionFormEl.reset();
@@ -776,7 +800,7 @@ tfsaAnnualLimitFormEl?.addEventListener('submit', async (e) => {
     e.preventDefault();
 
     if (!openingBalanceConfiguredState) {
-        showError('Set lifetime TFSA room first');
+        showError('Set TFSA available contribution room first');
         return;
     }
 
@@ -825,8 +849,17 @@ tfsaImportFormEl?.addEventListener('submit', async (e) => {
         return;
     }
 
+    const overwriteConfirmed = Boolean(tfsaImportOverwriteConfirmEl?.checked);
+    const overwriteText = String(tfsaImportOverwriteTextEl?.value || '').trim().toUpperCase();
+    if (!overwriteConfirmed || overwriteText !== 'REPLACE') {
+        showError('Please confirm overwrite by checking the box and typing REPLACE.');
+        return;
+    }
+
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('overwrite_mode', 'replace_all');
+    formData.append('overwrite_confirm', 'REPLACE');
 
     try {
         const result = await fetchJson('/api/tfsa/import-csv', {
@@ -845,10 +878,16 @@ tfsaImportFormEl?.addEventListener('submit', async (e) => {
         const setupAnnualLimitsApplied = Number(result.setup_annual_limits_applied || 0);
         const setupOpeningBalanceApplied = Boolean(result.setup_opening_balance_applied);
         const setupBaseYearApplied = Boolean(result.setup_base_year_applied);
+        const summary = await fetchJson('/api/tfsa/summary');
+        const taxableExcessAmount = Number(summary.taxable_excess_amount || 0);
+        const correctionHint = taxableExcessAmount > 0
+            ? ` Warning: estimated taxable TFSA excess amount is ${formatMoney(taxableExcessAmount)}. Add a Withdrawal transaction to reduce the excess.`
+            : '';
+
         alertDialog(
             `TFSA import complete. Parsed: ${parsed}, inserted: ${inserted}, transfers: ${transfers}, skipped: ${skipped}. `
             + `Setup rows: ${setupRowsParsed}, opening balance updated: ${setupOpeningBalanceApplied ? 'yes' : 'no'}, `
-            + `base year updated: ${setupBaseYearApplied ? 'yes' : 'no'}, annual limits applied: ${setupAnnualLimitsApplied}`,
+            + `base year updated: ${setupBaseYearApplied ? 'yes' : 'no'}, annual limits applied: ${setupAnnualLimitsApplied}.${correctionHint}`,
             {
                 title: 'TFSA Import Complete',
                 confirmText: 'OK'
@@ -942,7 +981,7 @@ tfsaTransactionsBodyEl?.addEventListener('click', async (event) => {
         };
 
         try {
-            await fetchJson(`/api/tfsa/transactions/${transactionId}`, {
+            const result = await fetchJson(`/api/tfsa/transactions/${transactionId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -951,6 +990,7 @@ tfsaTransactionsBodyEl?.addEventListener('click', async (event) => {
             });
             editingTfsaTransactionId = null;
             await loadTfsaSummary();
+            await showWarning(result?.warning);
         } catch (error) {
             showError(error.message || 'Failed to save TFSA transaction');
         }

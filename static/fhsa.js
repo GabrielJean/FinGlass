@@ -82,11 +82,11 @@ function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining)
     const used = Number(roomUsed || 0);
     const remaining = Number(totalRemaining || 0);
 
-    if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
-        return 'full';
-    }
     if (available > ROOM_EPSILON && used > available + ROOM_EPSILON) {
         return 'over-limit';
+    }
+    if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
+        return 'full';
     }
 
     const usedRatio = available > ROOM_EPSILON ? (used / available) : 0;
@@ -141,8 +141,16 @@ async function validateDepositContributionRoom(amount) {
     const used = Number(roomUsedState || 0);
 
     if (remaining <= ROOM_EPSILON || normalizedAmount > remaining + ROOM_EPSILON) {
-        showError(`This deposit would exceed your contribution room. Remaining room: ${formatMoney(remaining)}.`);
-        return false;
+        const projectedExcess = Math.max(0, normalizedAmount - Math.max(0, remaining));
+        const proceed = await confirmDialog(
+            `This deposit exceeds remaining contribution room (${formatMoney(remaining)}). Estimated excess after this transaction: ${formatMoney(projectedExcess)}. You can add a non-qualifying withdrawal later to correct it. Continue?`,
+            {
+                title: 'Over contribution room',
+                confirmText: 'Continue',
+                cancelText: 'Cancel'
+            }
+        );
+        return Boolean(proceed);
     }
 
     const projectedUsed = used + normalizedAmount;
@@ -195,6 +203,17 @@ function maybeShowFhsaCloseReminder(data) {
 function showError(msg) {
     alertDialog(`Error: ${msg}`, {
         title: 'Error',
+        confirmText: 'OK'
+    });
+}
+
+async function showWarning(message) {
+    const text = String(message || '').trim();
+    if (!text) {
+        return;
+    }
+    await alertDialog(text, {
+        title: 'Warning',
         confirmText: 'OK'
     });
 }
@@ -530,6 +549,7 @@ async function loadFhsaSummary() {
         const totalAvailableRoom = Number(data.total_available_room || 0);
         const totalRemaining = Number(data.total_remaining || 0);
         const roomUsed = Number(data.room_used || 0);
+        const taxableExcessAmount = Number(data.taxable_excess_amount || 0);
         const roomStatus = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining);
         const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining);
         const roomBarColor = getContributionRoomBarColor(roomStatus);
@@ -546,6 +566,7 @@ async function loadFhsaSummary() {
         maybeShowFhsaCloseReminder(data);
         const hasQualifyingWithdrawal = Boolean(data.has_qualifying_withdrawal);
         const contributionsLocked = Boolean(data.contributions_locked);
+        const contributionsLockedReason = String(data.contributions_locked_reason || '');
         const firstQualifyingDate = String(data.first_qualifying_withdrawal_date || '');
         const closureDeadlineDate = String(data.closure_deadline_date || '');
         const closureDeadlineYearEnd = String(data.closure_deadline_year_end || '');
@@ -564,6 +585,7 @@ async function loadFhsaSummary() {
             <div class="card tfsa-user-total">
                 <h3>FHSA Contribution Room Summary</h3>
                 <p>Tracked Opening Room: <strong>${formatMoney(openingBalance)}</strong></p>
+                <p>CRA Annual Limit: <strong>${formatMoney(annualLimit)}</strong> · Lifetime Limit: <strong>${formatMoney(lifetimeLimit)}</strong> · Carryforward Cap: <strong>${formatMoney(carryForwardCap)}</strong></p>
                 <p>First FHSA Opened Year: <strong>${openYear}</strong> · Last Contribution Year (15-year max): <strong>${lastActiveYear}</strong></p>
                 <p>Account Age: <strong>${accountAgeYears}</strong> year(s) · Remaining active year(s): <strong>${accountYearsRemaining}</strong>${isAgeExpired ? ' (expired)' : ''}</p>
                 <p>Room Used (Deposits): <strong>${formatMoney(roomUsed)}</strong></p>
@@ -571,6 +593,7 @@ async function loadFhsaSummary() {
                     <div class="bar" style="width: ${totalAvailableRoom > 0 ? Math.max(0, Math.min(100, (roomUsed / totalAvailableRoom) * 100)) : 0}%; background: ${roomBarColor};"></div>
                 </div>
                 <p class="remaining highlight">Room Remaining: <strong>${formatMoney(totalRemaining)}</strong> ${roomStatusLabelHtml}</p>
+                ${taxableExcessAmount > 0 ? `<p class="muted">You currently exceed FHSA contribution room by <strong>${formatMoney(taxableExcessAmount)}</strong>.</p>` : ''}
                 <p class="muted">Qualifying withdrawals: ${formatMoney(qualifyingWithdrawals)} · Non-qualifying withdrawals: ${formatMoney(nonQualifyingWithdrawals)}</p>
                 ${hasQualifyingWithdrawal ? `<p class="muted">First qualifying withdrawal: ${escapeHtml(firstQualifyingDate)} · Close by: ${escapeHtml(closureDeadlineYearEnd)}</p>` : ''}
             </div>
@@ -623,7 +646,11 @@ async function loadFhsaSummary() {
         if (contributionsLocked) {
             const lockedNotice = document.createElement('p');
             lockedNotice.className = 'muted';
-            lockedNotice.textContent = 'New FHSA contributions are locked because a qualifying withdrawal has been recorded.';
+            if (contributionsLockedReason === 'age_limit_reached') {
+                lockedNotice.textContent = 'New FHSA contributions are locked because the 15-year participation window has ended.';
+            } else {
+                lockedNotice.textContent = 'New FHSA contributions are locked because a qualifying withdrawal has been recorded.';
+            }
             fhsaSummaryEl.prepend(lockedNotice);
         }
 
@@ -718,11 +745,12 @@ addContributionFormEl?.addEventListener('submit', async (event) => {
                 })
             });
         } else {
-            await fetchJson('/api/fhsa/contributions', {
+            const result = await fetchJson('/api/fhsa/contributions', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
+            await showWarning(result?.warning);
         }
 
         addContributionFormEl.reset();
@@ -770,8 +798,8 @@ fhsaSettingsFormEl?.addEventListener('submit', async (event) => {
     const baseYear = Number.parseInt(String(fhsaSettingsBaseYearInputEl?.value || '').trim(), 10);
     const currentYear = new Date().getFullYear();
 
-    if (!Number.isFinite(openingBalance) || openingBalance < 0 || openingBalance > 16000) {
-        showError('Opening balance must be between 0 and 16,000');
+    if (!Number.isFinite(openingBalance) || openingBalance < 0 || openingBalance > 40000) {
+        showError('Opening balance must be between 0 and 40,000');
         return;
     }
 
@@ -830,8 +858,14 @@ fhsaImportFormEl?.addEventListener('submit', async (event) => {
         fhsaImportFormEl.reset();
         await loadFhsaSummary();
 
+        const summary = await fetchJson('/api/fhsa/summary');
+        const taxableExcessAmount = Number(summary.taxable_excess_amount || 0);
+        const correctionHint = taxableExcessAmount > 0
+            ? ` Warning: estimated FHSA excess amount is ${formatMoney(taxableExcessAmount)}. Add a non-qualifying Withdrawal transaction to reduce the excess.`
+            : '';
+
         alertDialog(
-            `FHSA import complete. Parsed: ${Number(result.parsed || 0)}, inserted: ${Number(result.inserted || 0)}, transfers: ${Number(result.transfers || 0)}, skipped: ${Number(result.skipped || 0)}.`,
+            `FHSA import complete. Parsed: ${Number(result.parsed || 0)}, inserted: ${Number(result.inserted || 0)}, transfers: ${Number(result.transfers || 0)}, skipped: ${Number(result.skipped || 0)}.${correctionHint}`,
             {
                 title: 'FHSA Import Complete',
                 confirmText: 'OK'
@@ -906,13 +940,14 @@ fhsaTransactionsBodyEl?.addEventListener('click', async (event) => {
         };
 
         try {
-            await fetchJson(`/api/fhsa/transactions/${transactionId}`, {
+            const result = await fetchJson(`/api/fhsa/transactions/${transactionId}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
             editingFhsaTransactionId = null;
             await loadFhsaSummary();
+            await showWarning(result?.warning);
         } catch (error) {
             showError(error.message || 'Failed to save FHSA transaction');
         }

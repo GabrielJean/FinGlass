@@ -204,7 +204,7 @@ def validate_fhsa_import_rows(parsed_rows, *, opening_base_year=None):
         last_active_year = normalized_open_year + FHSA_MAX_OPEN_YEARS - 1
         for row in parsed_rows:
             row_type = str(row.get("contribution_type") or "")
-            if row_type not in {"Deposit", "Transfer"}:
+            if row_type != "Deposit":
                 continue
             try:
                 row_year = _parse_year(row.get("contribution_date"))
@@ -235,7 +235,7 @@ def validate_fhsa_import_rows(parsed_rows, *, opening_base_year=None):
         if not isinstance(row_date, date):
             continue
         row_type = str(row.get("contribution_type") or "")
-        if row_date > first_qualifying_date and row_type in {"Deposit", "Transfer"}:
+        if row_date > first_qualifying_date and row_type == "Deposit":
             raise ValueError(
                 "FHSA import contains contribution activity after a qualifying withdrawal date. "
                 f"First qualifying withdrawal: {first_qualifying_date}; invalid row date: {row_date}; "
@@ -268,7 +268,16 @@ def import_fhsa_transactions_rows(user_id, parsed_rows):
     tolerance = Decimal("0.000001")
 
     with transaction.atomic():
-        for row in parsed_rows:
+        sorted_rows = sorted(
+            parsed_rows,
+            key=lambda row: (
+                str(row.get("contribution_date") or ""),
+                str(row.get("contribution_type") or ""),
+                str(row.get("account_name") or ""),
+            ),
+        )
+
+        for row in sorted_rows:
             try:
                 row_year = int(str(row["contribution_date"])[:4])
                 if 2023 <= row_year <= 2100:

@@ -157,15 +157,15 @@ function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining)
   const used = Number(roomUsed || 0);
   const remaining = Number(totalRemaining || 0);
 
+  if (available > ROOM_EPSILON && used > available + ROOM_EPSILON) {
+    return "over-limit";
+  }
   if (
     available <= ROOM_EPSILON
     || remaining <= ROOM_EPSILON
     || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)
   ) {
     return "full";
-  }
-  if (available > ROOM_EPSILON && used > available + ROOM_EPSILON) {
-    return "over-limit";
   }
 
   const usedRatio = available > ROOM_EPSILON ? (used / available) : 0;

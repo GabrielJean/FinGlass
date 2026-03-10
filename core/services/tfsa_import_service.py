@@ -193,7 +193,16 @@ def import_tfsa_transactions_rows(user_id, parsed_rows):
     tolerance = Decimal("0.000001")
 
     with transaction.atomic():
-        for row in parsed_rows:
+        sorted_rows = sorted(
+            parsed_rows,
+            key=lambda row: (
+                str(row.get("contribution_date") or ""),
+                str(row.get("contribution_type") or ""),
+                str(row.get("account_name") or ""),
+            ),
+        )
+
+        for row in sorted_rows:
             try:
                 row_year = int(str(row["contribution_date"])[:4])
                 if 2009 <= row_year <= 2100:

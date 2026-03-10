@@ -20,6 +20,7 @@ from core.services.tfsa_service import (
     set_user_tfsa_opening_balance,
     set_user_tfsa_opening_balance_base_year,
     upsert_user_tfsa_annual_limit,
+    validate_tfsa_deposit_room_for_date,
 )
 
 
@@ -34,7 +35,7 @@ def _read_json(request):
 
 def _require_opening_balance_configured(user_id):
     if not is_user_tfsa_opening_balance_configured(user_id):
-        return JsonResponse({"error": "Set lifetime TFSA room first"}, status=400)
+        return JsonResponse({"error": "Set TFSA available contribution room first"}, status=400)
     return None
 
 
@@ -197,6 +198,22 @@ def tfsa_transaction_item(request, transaction_id):
     if not account:
         return JsonResponse({"error": "Account not found"}, status=404)
 
+    if contribution_type == "Deposit":
+        room_check = validate_tfsa_deposit_room_for_date(
+            user_id,
+            amount,
+            contribution_date,
+            exclude_transaction_id=transaction_id,
+        )
+        room_warning = None
+        if not bool(room_check.get("valid")):
+            projected_excess = float(room_check.get("projected_taxable_excess_amount") or 0)
+            room_warning = (
+                "This change creates or increases a TFSA excess amount. "
+                f"Estimated excess: ${projected_excess:,.2f}. "
+                "Add a Withdrawal transaction to remove the excess and stop monthly tax accrual."
+            )
+
     transaction_row.tfsa_account_id = normalized_account_id
     transaction_row.contribution_date = contribution_date
     transaction_row.amount = amount
@@ -204,7 +221,10 @@ def tfsa_transaction_item(request, transaction_id):
     transaction_row.memo = memo
     transaction_row.save(update_fields=["tfsa_account", "contribution_date", "amount", "contribution_type", "memo"])
 
-    return JsonResponse({"updated": 1})
+    response_payload = {"updated": 1}
+    if contribution_type == "Deposit" and room_warning:
+        response_payload["warning"] = room_warning
+    return JsonResponse(response_payload)
 
 
 @require_http_methods(["POST"])
@@ -236,6 +256,17 @@ def tfsa_contributions(request):
     if not acc:
         return JsonResponse({"error": "Account not found"}, status=404)
 
+    if contribution_type == "Deposit":
+        room_check = validate_tfsa_deposit_room_for_date(user_id, amount, contribution_date)
+        room_warning = None
+        if not bool(room_check.get("valid")):
+            projected_excess = float(room_check.get("projected_taxable_excess_amount") or 0)
+            room_warning = (
+                "This transaction creates or increases a TFSA excess amount. "
+                f"Estimated excess: ${projected_excess:,.2f}. "
+                "Add a Withdrawal transaction to remove the excess and stop monthly tax accrual."
+            )
+
     try:
         TfsaContribution.objects.create(
             user_id=user_id,
@@ -245,7 +276,10 @@ def tfsa_contributions(request):
             contribution_type=contribution_type,
             memo=memo,
         )
-        return JsonResponse({"success": True}, status=201)
+        response_payload = {"success": True}
+        if contribution_type == "Deposit" and room_warning:
+            response_payload["warning"] = room_warning
+        return JsonResponse(response_payload, status=201)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 

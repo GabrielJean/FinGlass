@@ -58,10 +58,10 @@
                 <div class="settings-menu-col">
                   <div class="settings-menu-section">
                     <h3>Opening Balance</h3>
-                    <p class="muted">Update your lifetime TFSA contribution room (use your CRA current available room). The year when this was first set becomes your base year.</p>
+                    <p class="muted">Update your TFSA available contribution room (use your CRA current available room). The year when this was first set becomes your base year.</p>
                     <form id="tfsa-settings-form" class="form-grid">
                       <label class="span-2">
-                        Lifetime TFSA Room (CRA current room) ($)
+                        TFSA Available Contribution Room (CRA current room) ($)
                         <input type="number" id="tfsa-settings-opening-balance" step="0.01" min="0" placeholder="0.00" required />
                       </label>
                       <button type="submit">Save</button>
@@ -153,11 +153,11 @@
       </section>
 
       <section class="card tfsa-opening-wizard-modal hidden" id="tfsa-opening-wizard-section" aria-hidden="true">
-        <h2>Set Your Lifetime TFSA Room</h2>
+        <h2>Set Your TFSA Available Contribution Room</h2>
         <p class="muted">Do this once using your CRA current available room. The current year is saved as your base year, and annual room can only be added for later years.</p>
         <form id="tfsa-opening-wizard-form" class="form-grid">
           <label>
-            Lifetime TFSA Room (CRA current room) ($)
+            TFSA Available Contribution Room (CRA current room) ($)
             <input type="number" id="tfsa-opening-balance" step="0.01" min="0" placeholder="0.00" required />
           </label>
           <button type="submit">Save & Start Tracking</button>

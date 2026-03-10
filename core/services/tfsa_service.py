@@ -5,6 +5,25 @@ from django.db import transaction
 from core.models import AppSetting, TfsaAccount, TfsaAnnualLimit, TfsaContribution
 
 
+def _coerce_year(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return int(text[:4])
+    except (TypeError, ValueError):
+        return None
+
+
+def _is_transfer_memo(memo):
+    normalized = str(memo or "")
+    return (
+        normalized.startswith("[Transfer ")
+        or normalized.startswith("[Transfer to ")
+        or normalized.startswith("[Transfer from ")
+    )
+
+
 def is_user_tfsa_opening_balance_configured(user_id):
     return AppSetting.objects.filter(user_id=user_id, key="tfsa_opening_balance").exists()
 
@@ -217,7 +236,7 @@ def get_tfsa_summary(user_id):
 
     for row in room_rows:
         memo = str(row["memo"] or "")
-        if memo.startswith("[Transfer ") or memo.startswith("[Transfer to ") or memo.startswith("[Transfer from "):
+        if _is_transfer_memo(memo):
             continue
 
         contribution_type = str(row["contribution_type"] or "")
@@ -238,6 +257,7 @@ def get_tfsa_summary(user_id):
     total_used = total_deposits - total_withdrawals
     room_used = room_deposits - room_withdrawals_eligible
     total_remaining = total_available_room - room_used
+    taxable_excess_amount = max(0.0, -total_remaining)
 
     return {
         "accounts": summary,
@@ -260,4 +280,66 @@ def get_tfsa_summary(user_id):
         "room_withdrawals_pending": room_withdrawals_pending,
         "room_used": room_used,
         "total_remaining": max(0, total_remaining),
+        "taxable_excess_amount": taxable_excess_amount,
+    }
+
+
+def validate_tfsa_deposit_room_for_date(user_id, amount, contribution_date, *, exclude_transaction_id=None):
+    normalized_amount = float(amount or 0)
+    if normalized_amount <= 0:
+        raise ValueError("amount must be > 0")
+
+    target_year = _coerce_year(contribution_date)
+    if target_year is None:
+        raise ValueError("contribution_date must be in YYYY-MM-DD format")
+
+    opening_balance = get_user_tfsa_opening_balance(user_id)
+    opening_balance_base_year = get_user_tfsa_opening_balance_base_year(user_id)
+    annual_limits = list_user_tfsa_annual_limits(user_id)
+
+    minimum_annual_year = int(opening_balance_base_year) + 1 if opening_balance_base_year is not None else None
+    candidate_annual_limits = annual_limits
+    if minimum_annual_year is not None:
+        candidate_annual_limits = [limit for limit in annual_limits if int(limit["year"]) >= minimum_annual_year]
+
+    available_annual_limits = [limit for limit in candidate_annual_limits if int(limit["year"]) <= target_year]
+    total_annual_room = sum(limit["annual_limit"] for limit in available_annual_limits)
+
+    room_rows = TfsaContribution.objects.filter(user_id=user_id)
+    if exclude_transaction_id is not None:
+        room_rows = room_rows.exclude(id=exclude_transaction_id)
+
+    room_rows = room_rows.order_by("contribution_date", "id").values(
+        "contribution_date", "contribution_type", "amount", "memo"
+    )
+
+    room_deposits_to_year = 0.0
+    room_withdrawals_eligible_to_year = 0.0
+    for row in room_rows:
+        if _is_transfer_memo(row.get("memo")):
+            continue
+
+        contribution_year = _coerce_year(row.get("contribution_date"))
+        if contribution_year is None:
+            continue
+
+        contribution_type = str(row.get("contribution_type") or "")
+        value = float(row.get("amount") or 0)
+
+        if contribution_type == "Deposit" and contribution_year <= target_year:
+            room_deposits_to_year += value
+        elif contribution_type == "Withdrawal" and contribution_year < target_year:
+            room_withdrawals_eligible_to_year += value
+
+    total_available_room_at_target_year = opening_balance + total_annual_room
+    room_used_before = room_deposits_to_year - room_withdrawals_eligible_to_year
+    remaining_before = total_available_room_at_target_year - room_used_before
+    projected_remaining = remaining_before - normalized_amount
+
+    return {
+        "valid": projected_remaining >= 0,
+        "remaining_before": max(0.0, remaining_before),
+        "projected_remaining": max(0.0, projected_remaining),
+        "projected_taxable_excess_amount": max(0.0, -projected_remaining),
+        "effective_year": target_year,
     }
