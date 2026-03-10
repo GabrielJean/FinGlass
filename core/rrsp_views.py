@@ -20,6 +20,7 @@ from core.services.rrsp_service import (
     set_user_rrsp_opening_balance,
     set_user_rrsp_opening_balance_base_year,
     upsert_user_rrsp_annual_limit,
+    validate_rrsp_deposit_room,
 )
 
 
@@ -224,6 +225,17 @@ def rrsp_transaction_item(request, transaction_id):
     if not account:
         return JsonResponse({"error": "Account not found"}, status=404)
 
+    if contribution_type == "Deposit":
+        room_check = validate_rrsp_deposit_room(user_id, amount, exclude_transaction_id=transaction_id)
+        room_warning = None
+        if not bool(room_check.get("valid")):
+            projected_excess = float(room_check.get("projected_taxable_excess_amount") or 0)
+            room_warning = (
+                "This change creates taxable RRSP excess contributions above the $2,000 cushion. "
+                f"Estimated excess: ${projected_excess:,.2f}. "
+                "Add a Withdrawal transaction to reduce the excess amount."
+            )
+
     existing.rrsp_account_id = normalized_account_id
     existing.contribution_date = contribution_date
     existing.amount = amount
@@ -243,7 +255,10 @@ def rrsp_transaction_item(request, transaction_id):
         ]
     )
 
-    return JsonResponse({"updated": 1})
+    response_payload = {"updated": 1}
+    if contribution_type == "Deposit" and room_warning:
+        response_payload["warning"] = room_warning
+    return JsonResponse(response_payload)
 
 
 @require_http_methods(["POST"])
@@ -283,6 +298,17 @@ def rrsp_contributions(request):
     if is_unused and deducted_tax_year is not None:
         return JsonResponse({"error": "deducted_tax_year cannot be set while contribution is marked unused"}, status=400)
 
+    if contribution_type == "Deposit":
+        room_check = validate_rrsp_deposit_room(user_id, amount)
+        room_warning = None
+        if not bool(room_check.get("valid")):
+            projected_excess = float(room_check.get("projected_taxable_excess_amount") or 0)
+            room_warning = (
+                "This transaction creates taxable RRSP excess contributions above the $2,000 cushion. "
+                f"Estimated excess: ${projected_excess:,.2f}. "
+                "Add a Withdrawal transaction to reduce the excess amount."
+            )
+
     acc = RrspAccount.objects.filter(id=rrsp_account_id, user_id=user_id).first()
     if not acc:
         return JsonResponse({"error": "Account not found"}, status=404)
@@ -298,7 +324,10 @@ def rrsp_contributions(request):
             deducted_tax_year=deducted_tax_year,
             memo=memo,
         )
-        return JsonResponse({"success": True}, status=201)
+        response_payload = {"success": True}
+        if contribution_type == "Deposit" and room_warning:
+            response_payload["warning"] = room_warning
+        return JsonResponse(response_payload, status=201)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 

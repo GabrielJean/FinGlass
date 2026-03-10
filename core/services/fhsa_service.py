@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 
 from django.db import transaction
 
@@ -9,7 +9,7 @@ FHSA_LIFETIME_LIMIT = 40000.0
 FHSA_CARRY_FORWARD_CAP = 8000.0
 FHSA_MAX_YEARLY_ROOM = FHSA_ANNUAL_LIMIT + FHSA_CARRY_FORWARD_CAP
 FHSA_FIRST_YEAR = 2023
-FHSA_TRACKED_OPENING_ROOM_CAP = 16000.0
+FHSA_TRACKED_OPENING_ROOM_CAP = FHSA_LIFETIME_LIMIT
 FHSA_MAX_OPEN_YEARS = 15
 
 
@@ -150,6 +150,7 @@ def _is_transfer_memo(memo):
 
 def _build_deposit_totals_by_year(rows):
     deposits_by_year = {}
+    non_qualifying_withdrawals_by_year = {}
     deposits_total = 0.0
     qualifying_withdrawals = 0.0
     non_qualifying_withdrawals = 0.0
@@ -177,12 +178,56 @@ def _build_deposit_totals_by_year(rows):
                 qualifying_withdrawals += amount
             else:
                 non_qualifying_withdrawals += amount
+                non_qualifying_withdrawals_by_year[contribution_year] = (
+                    non_qualifying_withdrawals_by_year.get(contribution_year, 0.0) + amount
+                )
 
-    return deposits_by_year, deposits_total, qualifying_withdrawals, non_qualifying_withdrawals
+    return (
+        deposits_by_year,
+        non_qualifying_withdrawals_by_year,
+        deposits_total,
+        qualifying_withdrawals,
+        non_qualifying_withdrawals,
+    )
 
 
-def _simulate_fhsa_room(opening_balance, base_year, current_year, deposits_by_year):
-    room = max(0.0, min(FHSA_LIFETIME_LIMIT, float(opening_balance or 0)))
+def _parse_year(value):
+    if isinstance(value, datetime):
+        return int(value.year)
+    if isinstance(value, date):
+        return int(value.year)
+
+    text = str(value or "").strip()
+    if not text:
+        return datetime.now().year
+
+    try:
+        return int(text[:4])
+    except (TypeError, ValueError):
+        return datetime.now().year
+
+
+def _coerce_date(value):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError("contribution_date required")
+
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError("contribution_date must be in YYYY-MM-DD format") from exc
+
+
+def _simulate_fhsa_room(opening_balance, base_year, current_year, deposits_by_year, non_qualifying_withdrawals_by_year):
+    initial_room = max(0.0, min(FHSA_LIFETIME_LIMIT, float(opening_balance or 0)))
+    carryforward = max(0.0, min(FHSA_CARRY_FORWARD_CAP, initial_room - FHSA_ANNUAL_LIMIT))
+    annual_room_component = min(initial_room, FHSA_ANNUAL_LIMIT + carryforward)
+    re_participation_room_component = max(0.0, initial_room - annual_room_component)
     annual_room_added = 0.0
 
     normalized_base_year = max(FHSA_FIRST_YEAR, min(2100, int(base_year)))
@@ -190,6 +235,7 @@ def _simulate_fhsa_room(opening_balance, base_year, current_year, deposits_by_ye
     effective_year = min(current_year, last_active_year)
 
     if normalized_base_year > effective_year:
+        room = annual_room_component + re_participation_room_component
         return {
             "room_before_current_year_deposits": room,
             "room_after_current_year_deposits": room,
@@ -202,15 +248,30 @@ def _simulate_fhsa_room(opening_balance, base_year, current_year, deposits_by_ye
 
     for year in range(normalized_base_year, effective_year):
         year_deposits = max(0.0, float(deposits_by_year.get(year, 0.0)))
-        room = max(0.0, room - year_deposits)
+        annual_consumed = min(annual_room_component, year_deposits)
+        remaining_deposits = max(0.0, year_deposits - annual_consumed)
 
-        room_after_annual_addition = min(FHSA_MAX_YEARLY_ROOM, room + FHSA_ANNUAL_LIMIT)
-        annual_room_added += max(0.0, room_after_annual_addition - room)
-        room = room_after_annual_addition
+        re_participation_consumed = min(re_participation_room_component, remaining_deposits)
+        remaining_deposits = max(0.0, remaining_deposits - re_participation_consumed)
+        excess_amount_end_of_year = remaining_deposits
 
-    room_before_current_year_deposits = room
+        annual_room_remaining = max(0.0, annual_room_component - annual_consumed)
+        re_participation_room_remaining = max(0.0, re_participation_room_component - re_participation_consumed)
+
+        taxable_withdrawals_for_year = max(0.0, float(non_qualifying_withdrawals_by_year.get(year, 0.0)))
+
+        next_carryforward = min(FHSA_CARRY_FORWARD_CAP, annual_room_remaining)
+        next_annual_room_component = max(0.0, FHSA_ANNUAL_LIMIT + next_carryforward - excess_amount_end_of_year)
+        annual_room_added += max(0.0, next_annual_room_component - annual_room_remaining)
+
+        annual_room_component = next_annual_room_component
+        re_participation_room_component = re_participation_room_remaining + taxable_withdrawals_for_year
+
+    room_before_current_year_deposits = annual_room_component + re_participation_room_component
     current_year_deposits = max(0.0, float(deposits_by_year.get(effective_year, 0.0)))
-    room_after_current_year_deposits = max(0.0, room_before_current_year_deposits - current_year_deposits)
+    room_after_current_year_deposits_raw = room_before_current_year_deposits - current_year_deposits
+    room_after_current_year_deposits = max(0.0, room_after_current_year_deposits_raw)
+    excess_current_year = max(0.0, -room_after_current_year_deposits_raw)
 
     return {
         "room_before_current_year_deposits": room_before_current_year_deposits,
@@ -220,6 +281,7 @@ def _simulate_fhsa_room(opening_balance, base_year, current_year, deposits_by_ye
         "last_active_year": last_active_year,
         "effective_year": effective_year,
         "is_age_expired": current_year > last_active_year,
+        "excess_current_year": excess_current_year,
     }
 
 
@@ -265,8 +327,9 @@ def get_first_qualifying_withdrawal_info(user_id):
     }
 
 
-def can_accept_new_fhsa_contributions(user_id):
-    current_year = datetime.now().year
+def can_accept_new_fhsa_contributions(user_id, as_of_date=None):
+    effective_date = _coerce_date(as_of_date) if as_of_date is not None else datetime.now().date()
+    current_year = int(effective_date.year)
     opening_year = get_user_fhsa_opening_balance_base_year(user_id)
     if opening_year is None:
         return False, {
@@ -289,7 +352,22 @@ def can_accept_new_fhsa_contributions(user_id):
         }
 
     info = get_first_qualifying_withdrawal_info(user_id)
-    if bool(info["contributions_locked"]):
+    first_qualifying_date = None
+    if info["first_qualifying_withdrawal_date"]:
+        try:
+            first_qualifying_date = datetime.strptime(
+                str(info["first_qualifying_withdrawal_date"]), "%Y-%m-%d"
+            ).date()
+        except ValueError:
+            first_qualifying_date = None
+
+    qualifying_lock_applies = (
+        bool(info["contributions_locked"])
+        and first_qualifying_date is not None
+        and effective_date >= first_qualifying_date
+    )
+
+    if qualifying_lock_applies:
         return False, {
             **info,
             "reason": "qualifying_withdrawal",
@@ -308,6 +386,45 @@ def can_accept_new_fhsa_contributions(user_id):
         "contributions_locked": False,
         "open_year": int(opening_year),
         "last_active_year": int(last_active_year),
+    }
+
+
+def validate_fhsa_deposit_room_for_date(user_id, amount, contribution_date, *, exclude_transaction_id=None):
+    normalized_amount = float(amount or 0)
+    if normalized_amount <= 0:
+        raise ValueError("amount must be > 0")
+
+    effective_date = _coerce_date(contribution_date)
+    opening_balance = get_user_fhsa_opening_balance(user_id)
+    opening_base_year = get_user_fhsa_opening_balance_base_year(user_id)
+    if opening_base_year is None:
+        raise ValueError("Set first FHSA opened year first.")
+
+    room_contributions = FhsaContribution.objects.filter(user_id=user_id)
+    if exclude_transaction_id is not None:
+        room_contributions = room_contributions.exclude(id=exclude_transaction_id)
+
+    room_contributions = room_contributions.order_by("contribution_date", "id").values(
+        "contribution_date", "contribution_type", "amount", "is_qualifying_withdrawal", "memo"
+    )
+    deposits_by_year, non_qualifying_withdrawals_by_year, _, _, _ = _build_deposit_totals_by_year(room_contributions)
+
+    target_year = _parse_year(effective_date)
+    simulation = _simulate_fhsa_room(
+        opening_balance=opening_balance,
+        base_year=opening_base_year,
+        current_year=target_year,
+        deposits_by_year=deposits_by_year,
+        non_qualifying_withdrawals_by_year=non_qualifying_withdrawals_by_year,
+    )
+
+    projected_remaining = float(simulation["room_after_current_year_deposits"] or 0) - normalized_amount
+    return {
+        "valid": projected_remaining >= 0,
+        "remaining_before": float(simulation["room_after_current_year_deposits"] or 0),
+        "projected_remaining": max(0.0, projected_remaining),
+        "projected_excess_amount": max(0.0, -projected_remaining),
+        "effective_year": target_year,
     }
 
 
@@ -331,7 +448,13 @@ def get_fhsa_summary(user_id):
         "contribution_date", "contribution_type", "amount", "is_qualifying_withdrawal", "memo"
     )
 
-    deposits_by_year, room_deposits, qualifying_withdrawals, non_qualifying_withdrawals = _build_deposit_totals_by_year(room_contributions)
+    (
+        deposits_by_year,
+        non_qualifying_withdrawals_by_year,
+        room_deposits,
+        qualifying_withdrawals,
+        non_qualifying_withdrawals,
+    ) = _build_deposit_totals_by_year(room_contributions)
 
     contrib_map = {}
     total_deposits = 0.0
@@ -363,9 +486,16 @@ def get_fhsa_summary(user_id):
         )
 
     base_year = opening_balance_base_year if opening_balance_base_year is not None else current_year
-    simulation = _simulate_fhsa_room(opening_balance, base_year, current_year, deposits_by_year)
+    simulation = _simulate_fhsa_room(
+        opening_balance,
+        base_year,
+        current_year,
+        deposits_by_year,
+        non_qualifying_withdrawals_by_year,
+    )
 
     total_remaining = simulation["room_after_current_year_deposits"]
+    taxable_excess_amount = max(0.0, float(simulation.get("excess_current_year") or 0.0))
     total_available_room = simulation["room_before_current_year_deposits"]
     lifetime_contribution_remaining = max(0.0, FHSA_LIFETIME_LIMIT - room_deposits)
     qualifying_info = get_first_qualifying_withdrawal_info(user_id)
@@ -425,6 +555,7 @@ def get_fhsa_summary(user_id):
         "lifetime_contribution_remaining": lifetime_contribution_remaining,
         "room_used": room_deposits,
         "total_remaining": total_remaining,
+        "taxable_excess_amount": taxable_excess_amount,
         "has_qualifying_withdrawal": qualifying_info["has_qualifying_withdrawal"],
         "first_qualifying_withdrawal_date": qualifying_info["first_qualifying_withdrawal_date"],
         "first_qualifying_withdrawal_year": qualifying_info["first_qualifying_withdrawal_year"],

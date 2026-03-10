@@ -5,6 +5,9 @@ from django.db import transaction
 from core.models import AppSetting, RrspAccount, RrspAnnualLimit, RrspContribution
 
 
+RRSP_OVERCONTRIBUTION_CUSHION = 2000.0
+
+
 def is_user_rrsp_opening_balance_configured(user_id):
     return AppSetting.objects.filter(user_id=user_id, key="rrsp_opening_balance").exists()
 
@@ -228,7 +231,10 @@ def get_rrsp_summary(user_id):
 
     total_used = total_deposits - total_withdrawals
     room_used = room_deposits
-    total_remaining = total_available_room - room_used
+    deduction_limit_remaining = total_available_room - room_used
+    total_remaining = max(0.0, deduction_limit_remaining)
+    cushion_remaining = (total_available_room + RRSP_OVERCONTRIBUTION_CUSHION) - room_used
+    taxable_excess_amount = max(0.0, -cushion_remaining)
 
     return {
         "accounts": summary,
@@ -250,7 +256,56 @@ def get_rrsp_summary(user_id):
         "room_withdrawals_eligible": 0,
         "room_withdrawals_pending": total_withdrawals,
         "room_used": room_used,
-        "total_remaining": max(0, total_remaining),
+        "total_remaining": total_remaining,
+        "deduction_limit_remaining": deduction_limit_remaining,
+        "overcontribution_cushion": RRSP_OVERCONTRIBUTION_CUSHION,
+        "cushion_remaining": max(0.0, cushion_remaining),
+        "taxable_excess_amount": taxable_excess_amount,
         "total_unused_contributions": total_unused_contributions,
         "total_used_carry_forward_contributions": total_used_carry_forward_contributions,
+    }
+
+
+def validate_rrsp_deposit_room(user_id, amount, *, exclude_transaction_id=None):
+    normalized_amount = float(amount or 0)
+    if normalized_amount <= 0:
+        raise ValueError("amount must be > 0")
+
+    opening_balance = get_user_rrsp_opening_balance(user_id)
+    opening_balance_base_year = get_user_rrsp_opening_balance_base_year(user_id)
+    annual_limits = list_user_rrsp_annual_limits(user_id)
+    current_year = datetime.now().year
+
+    minimum_annual_year = int(opening_balance_base_year) + 1 if opening_balance_base_year is not None else None
+    candidate_annual_limits = annual_limits
+    if minimum_annual_year is not None:
+        candidate_annual_limits = [limit for limit in annual_limits if int(limit["year"]) >= minimum_annual_year]
+
+    available_annual_limits = [limit for limit in candidate_annual_limits if int(limit["year"]) <= current_year]
+    total_annual_room = sum(limit["annual_limit"] for limit in available_annual_limits)
+    total_available_room = opening_balance + total_annual_room
+
+    room_rows = RrspContribution.objects.filter(user_id=user_id)
+    if exclude_transaction_id is not None:
+        room_rows = room_rows.exclude(id=exclude_transaction_id)
+
+    room_rows = room_rows.order_by("contribution_date", "id").values("contribution_type", "amount", "memo")
+    room_deposits = 0.0
+    for row in room_rows:
+        memo = str(row["memo"] or "")
+        if memo.startswith("[Transfer ") or memo.startswith("[Transfer to ") or memo.startswith("[Transfer from "):
+            continue
+
+        if str(row["contribution_type"] or "") == "Deposit":
+            room_deposits += float(row["amount"] or 0)
+
+    projected_room_used = room_deposits + normalized_amount
+    projected_cushion_remaining = (total_available_room + RRSP_OVERCONTRIBUTION_CUSHION) - projected_room_used
+
+    return {
+        "valid": projected_cushion_remaining >= 0,
+        "deduction_limit_remaining_before": total_available_room - room_deposits,
+        "cushion_remaining_before": max(0.0, (total_available_room + RRSP_OVERCONTRIBUTION_CUSHION) - room_deposits),
+        "projected_taxable_excess_amount": max(0.0, -projected_cushion_remaining),
+        "overcontribution_cushion": RRSP_OVERCONTRIBUTION_CUSHION,
     }
