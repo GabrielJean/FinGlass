@@ -25,6 +25,7 @@ from core.services.fhsa_service import (
     reset_user_fhsa_data,
     set_user_fhsa_opening_balance,
     set_user_fhsa_opening_balance_base_year,
+    validate_fhsa_deposit_room_for_date,
 )
 
 
@@ -41,6 +42,16 @@ def _parse_bool(value):
     if isinstance(value, bool):
         return value
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _parse_iso_date(value, *, field_name):
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(f"{field_name} required")
+    try:
+        return datetime.strptime(text, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError(f"{field_name} must be in YYYY-MM-DD format") from exc
 
 
 def _require_opening_balance_configured(user_id):
@@ -177,6 +188,11 @@ def fhsa_transaction_item(request, transaction_id):
     if amount <= 0:
         return JsonResponse({"error": "amount must be > 0"}, status=400)
 
+    try:
+        normalized_contribution_date = _parse_iso_date(contribution_date, field_name="contribution_date")
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
     tx_row = FhsaContribution.objects.filter(id=transaction_id, user_id=user_id).first()
     if not tx_row:
         return JsonResponse({"error": "Transaction not found"}, status=404)
@@ -184,6 +200,26 @@ def fhsa_transaction_item(request, transaction_id):
     account = FhsaAccount.objects.filter(id=normalized_account_id, user_id=user_id).first()
     if not account:
         return JsonResponse({"error": "Account not found"}, status=404)
+
+    if contribution_type == "Deposit":
+        can_contribute, lock_info = can_accept_new_fhsa_contributions(user_id, as_of_date=normalized_contribution_date)
+        if not can_contribute:
+            return JsonResponse({"error": str(lock_info.get("message") or "FHSA contributions are currently locked")}, status=400)
+
+        room_check = validate_fhsa_deposit_room_for_date(
+            user_id,
+            amount,
+            normalized_contribution_date,
+            exclude_transaction_id=transaction_id,
+        )
+        room_warning = None
+        if not bool(room_check.get("valid")):
+            projected_excess = float(room_check.get("projected_excess_amount") or 0)
+            room_warning = (
+                "This change creates or increases an FHSA excess amount. "
+                f"Estimated excess: ${projected_excess:,.2f}. "
+                "To reduce it, add a non-qualifying Withdrawal transaction (or designated correction) dated in the same period."
+            )
 
     tx_row.fhsa_account_id = normalized_account_id
     tx_row.contribution_date = contribution_date
@@ -202,7 +238,10 @@ def fhsa_transaction_item(request, transaction_id):
         ]
     )
 
-    return JsonResponse({"updated": 1})
+    response_payload = {"updated": 1}
+    if contribution_type == "Deposit" and room_warning:
+        response_payload["warning"] = room_warning
+    return JsonResponse(response_payload)
 
 
 @require_http_methods(["POST"])
@@ -233,7 +272,12 @@ def fhsa_contributions(request):
         return JsonResponse({"error": "is_qualifying_withdrawal can only be true for Withdrawal"}, status=400)
 
     if contribution_type == "Deposit":
-        can_contribute, lock_info = can_accept_new_fhsa_contributions(user_id)
+        try:
+            normalized_contribution_date = _parse_iso_date(contribution_date, field_name="contribution_date")
+        except ValueError as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+
+        can_contribute, lock_info = can_accept_new_fhsa_contributions(user_id, as_of_date=normalized_contribution_date)
         if not can_contribute:
             return JsonResponse({"error": str(lock_info.get("message") or "FHSA contributions are currently locked")}, status=400)
 
@@ -242,9 +286,15 @@ def fhsa_contributions(request):
         return JsonResponse({"error": "Account not found"}, status=404)
 
     if contribution_type == "Deposit":
-        summary = get_fhsa_summary(user_id)
-        if amount > float(summary.get("total_remaining") or 0):
-            return JsonResponse({"error": "Contribution exceeds tracked FHSA contribution room"}, status=400)
+        room_check = validate_fhsa_deposit_room_for_date(user_id, amount, normalized_contribution_date)
+        room_warning = None
+        if not bool(room_check.get("valid")):
+            projected_excess = float(room_check.get("projected_excess_amount") or 0)
+            room_warning = (
+                "This transaction creates or increases an FHSA excess amount. "
+                f"Estimated excess: ${projected_excess:,.2f}. "
+                "Add a non-qualifying Withdrawal transaction to reduce the excess."
+            )
 
     try:
         FhsaContribution.objects.create(
@@ -256,7 +306,10 @@ def fhsa_contributions(request):
             is_qualifying_withdrawal=(contribution_type == "Withdrawal" and bool(is_qualifying_withdrawal)),
             memo=memo,
         )
-        return JsonResponse({"success": True}, status=201)
+        response_payload = {"success": True}
+        if contribution_type == "Deposit" and room_warning:
+            response_payload["warning"] = room_warning
+        return JsonResponse(response_payload, status=201)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
@@ -269,10 +322,6 @@ def fhsa_transfers(request):
     setup_error = _require_opening_balance_configured(user_id)
     if setup_error is not None:
         return setup_error
-
-    can_contribute, lock_info = can_accept_new_fhsa_contributions(user_id)
-    if not can_contribute:
-        return JsonResponse({"error": str(lock_info.get("message") or "FHSA contributions are currently locked")}, status=400)
 
     try:
         amount = float(data.get("amount") or 0)

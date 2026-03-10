@@ -76,6 +76,9 @@ let editingTfsaTransactionId = null;
 let tfsaAccounts = [];
 let totalAvailableRoomState = 0;
 let totalRemainingRoomState = 0;
+let deductionLimitRemainingState = 0;
+let cushionRemainingState = 0;
+let overcontributionCushionState = 2000;
 let roomUsedState = 0;
 let currentSort = { key: "contribution_date", direction: "desc" };
 const ROOM_EPSILON = 0.005;
@@ -85,11 +88,11 @@ function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining)
     const used = Number(roomUsed || 0);
     const remaining = Number(totalRemaining || 0);
 
-    if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
-        return 'full';
-    }
     if (available > ROOM_EPSILON && used > available + ROOM_EPSILON) {
         return 'over-limit';
+    }
+    if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
+        return 'full';
     }
 
     const usedRatio = available > ROOM_EPSILON ? (used / available) : 0;
@@ -141,11 +144,35 @@ async function validateDepositContributionRoom(amount) {
 
     const available = Number(totalAvailableRoomState || 0);
     const remaining = Number(totalRemainingRoomState || 0);
+    const deductionRemaining = Number(deductionLimitRemainingState || 0);
+    const cushionRemaining = Number(cushionRemainingState || 0);
+    const cushion = Number(overcontributionCushionState || 2000);
     const used = Number(roomUsedState || 0);
 
-    if (remaining <= ROOM_EPSILON || normalizedAmount > remaining + ROOM_EPSILON) {
-        showError(`This deposit would exceed your contribution room. Remaining room: ${formatMoney(remaining)}.`);
-        return false;
+    if (normalizedAmount > cushionRemaining + ROOM_EPSILON) {
+        const taxableExcess = Math.max(0, normalizedAmount - Math.max(0, cushionRemaining));
+        const proceed = await confirmDialog(
+            `This deposit exceeds your RRSP deduction limit plus ${formatMoney(cushion)} cushion and would create taxable excess contributions. Estimated taxable excess after this transaction: ${formatMoney(taxableExcess)}. You can add a Withdrawal transaction later to correct it. Continue?`,
+            {
+                title: 'Creates taxable excess',
+                confirmText: 'Continue',
+                cancelText: 'Cancel'
+            }
+        );
+        return Boolean(proceed);
+    }
+
+    if (normalizedAmount > Math.max(0, deductionRemaining) + ROOM_EPSILON) {
+        const projectedCushion = Math.max(0, cushionRemaining - normalizedAmount);
+        const proceed = await confirmDialog(
+            `This deposit goes above your RRSP deduction limit and uses your $2,000 overcontribution cushion. Remaining cushion after this deposit: ${formatMoney(projectedCushion)}. Continue?`,
+            {
+                title: 'Uses overcontribution cushion',
+                confirmText: 'Continue',
+                cancelText: 'Cancel'
+            }
+        );
+        return Boolean(proceed);
     }
 
     const projectedUsed = used + normalizedAmount;
@@ -661,6 +688,10 @@ async function loadTfsaSummary() {
         const totalAvailableRoom = Number(data.total_available_room || 0);
         const roomWithdrawalsPending = Number(data.room_withdrawals_pending || 0);
         const roomUsed = Number(data.room_used || 0);
+        const deductionLimitRemaining = Number(data.deduction_limit_remaining || 0);
+        const overcontributionCushion = Number(data.overcontribution_cushion || 2000);
+        const cushionRemaining = Number(data.cushion_remaining || 0);
+        const taxableExcessAmount = Number(data.taxable_excess_amount || 0);
         const totalUnusedContributions = Number(data.total_unused_contributions || 0);
         const totalUsedCarryForwardContributions = Number(data.total_used_carry_forward_contributions || 0);
         const minAnnualYear = Number(data.minimum_annual_year || 0);
@@ -675,6 +706,9 @@ async function loadTfsaSummary() {
 
         totalAvailableRoomState = totalAvailableRoom;
         totalRemainingRoomState = totalRemaining;
+        deductionLimitRemainingState = deductionLimitRemaining;
+        cushionRemainingState = cushionRemaining;
+        overcontributionCushionState = overcontributionCushion;
         roomUsedState = roomUsed;
 
         openingBalanceConfiguredState = openingBalanceConfigured;
@@ -696,10 +730,13 @@ async function loadTfsaSummary() {
                 <p>Annual Room Added (through ${currentYear}): <strong>${formatMoney(totalAnnualRoom)}</strong></p>
                 <p>Total Room Available: <strong>${formatMoney(totalAvailableRoom)}</strong></p>
                 <p>Net Room Used: <strong>${formatMoney(roomUsed)}</strong></p>
+                <p>Deduction Limit Remaining: <strong>${formatMoney(Math.max(0, deductionLimitRemaining))}</strong></p>
+                <p>Overcontribution Cushion Remaining: <strong>${formatMoney(cushionRemaining)}</strong> (max cushion ${formatMoney(overcontributionCushion)})</p>
                 <div class="room-gauge">
                     <div class="bar" style="width: ${gaugeWidth}%; background: ${roomBarColor};"></div>
                 </div>
                 <p class="remaining highlight">Room Remaining: <strong>${formatMoney(totalRemaining)}</strong> ${roomStatusLabelHtml}</p>
+                ${taxableExcessAmount > 0 ? `<p class="muted">You currently exceed RRSP contribution room (after the $2,000 cushion) by <strong>${formatMoney(taxableExcessAmount)}</strong>.</p>` : ''}
                 ${roomWithdrawalsPending > 0 ? `<p class="muted">RRSP withdrawals (${formatMoney(roomWithdrawalsPending)}) do not restore contribution room.</p>` : ''}
                 ${totalUnusedContributions > 0 ? `<p class="muted">Unused contributions carried forward: ${formatMoney(totalUnusedContributions)}.</p>` : ''}
                 ${totalUsedCarryForwardContributions > 0 ? `<p class="muted">Previously unused contributions now deducted: ${formatMoney(totalUsedCarryForwardContributions)}.</p>` : ''}
@@ -768,6 +805,17 @@ async function loadTfsaSummary() {
 function showError(msg) {
     alertDialog(`Error: ${msg}`, {
         title: 'Error',
+        confirmText: 'OK'
+    });
+}
+
+async function showWarning(message) {
+    const text = String(message || '').trim();
+    if (!text) {
+        return;
+    }
+    await alertDialog(text, {
+        title: 'Warning',
         confirmText: 'OK'
     });
 }
@@ -860,13 +908,14 @@ addContributionFormEl?.addEventListener('submit', async (e) => {
                 })
             });
         } else {
-            await fetchJson('/api/rrsp/contributions', {
+            const result = await fetchJson('/api/rrsp/contributions', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(payload)
             });
+            await showWarning(result?.warning);
         }
 
         addContributionFormEl.reset();
@@ -982,10 +1031,16 @@ tfsaImportFormEl?.addEventListener('submit', async (e) => {
         const setupAnnualLimitsApplied = Number(result.setup_annual_limits_applied || 0);
         const setupOpeningBalanceApplied = Boolean(result.setup_opening_balance_applied);
         const setupBaseYearApplied = Boolean(result.setup_base_year_applied);
+        const summary = await fetchJson('/api/rrsp/summary');
+        const taxableExcessAmount = Number(summary.taxable_excess_amount || 0);
+        const correctionHint = taxableExcessAmount > 0
+            ? ` Warning: estimated RRSP taxable excess amount is ${formatMoney(taxableExcessAmount)}. Add a Withdrawal transaction to reduce the excess.`
+            : '';
+
         alertDialog(
             `RRSP import complete. Parsed: ${parsed}, inserted: ${inserted}, transfers: ${transfers}, skipped: ${skipped}. `
             + `Setup rows: ${setupRowsParsed}, opening balance updated: ${setupOpeningBalanceApplied ? 'yes' : 'no'}, `
-            + `base year updated: ${setupBaseYearApplied ? 'yes' : 'no'}, annual limits applied: ${setupAnnualLimitsApplied}`,
+            + `base year updated: ${setupBaseYearApplied ? 'yes' : 'no'}, annual limits applied: ${setupAnnualLimitsApplied}.${correctionHint}`,
             {
                 title: 'RRSP Import Complete',
                 confirmText: 'OK'
@@ -1086,7 +1141,7 @@ tfsaTransactionsBodyEl?.addEventListener('click', async (event) => {
         }
 
         try {
-            await fetchJson(`/api/rrsp/transactions/${transactionId}`, {
+            const result = await fetchJson(`/api/rrsp/transactions/${transactionId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
@@ -1095,6 +1150,7 @@ tfsaTransactionsBodyEl?.addEventListener('click', async (event) => {
             });
             editingTfsaTransactionId = null;
             await loadTfsaSummary();
+            await showWarning(result?.warning);
         } catch (error) {
             showError(error.message || 'Failed to save RRSP transaction');
         }
