@@ -351,7 +351,11 @@ function renderAnnualLimitsTable() {
         <tr>
             <td>${item.year}</td>
             <td>${formatMoney(Number(item.annual_limit || 0))}</td>
-            <td><button type="button" class="btn-small" onclick="deleteTfsaAnnualLimit(${item.year})">Delete</button></td>
+            <td>
+                ${item.can_delete
+                    ? `<button type="button" class="btn-small" onclick="deleteTfsaAnnualLimit(${item.year})">Delete</button>`
+                    : '<span class="muted">Built-in</span>'}
+            </td>
         </tr>
     `).join('');
 }
