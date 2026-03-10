@@ -5,6 +5,29 @@ from django.db import transaction
 from core.models import AppSetting, TfsaAccount, TfsaAnnualLimit, TfsaContribution
 
 
+ROOM_EPSILON = 0.005
+TFSA_DEFAULT_ANNUAL_LIMITS = {
+    2009: 5000.0,
+    2010: 5000.0,
+    2011: 5000.0,
+    2012: 5000.0,
+    2013: 5500.0,
+    2014: 5500.0,
+    2015: 10000.0,
+    2016: 5500.0,
+    2017: 5500.0,
+    2018: 5500.0,
+    2019: 6000.0,
+    2020: 6000.0,
+    2021: 6000.0,
+    2022: 6000.0,
+    2023: 6500.0,
+    2024: 7000.0,
+    2025: 7000.0,
+    2026: 7000.0,
+}
+
+
 def _coerce_year(value):
     text = str(value or "").strip()
     if not text:
@@ -22,6 +45,56 @@ def _is_transfer_memo(memo):
         or normalized.startswith("[Transfer to ")
         or normalized.startswith("[Transfer from ")
     )
+
+
+def _build_annual_limit_map(annual_limits):
+    annual_limit_map = {}
+    for limit in annual_limits or []:
+        try:
+            year = int(limit["year"])
+            value = float(limit["annual_limit"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        annual_limit_map[year] = value
+    return annual_limit_map
+
+
+def _resolve_include_base_year_annual_limit(opening_balance, base_year, annual_limit_map, evaluated_year, room_used):
+    if base_year is None:
+        return False
+
+    try:
+        normalized_base_year = int(base_year)
+        normalized_evaluated_year = int(evaluated_year)
+    except (TypeError, ValueError):
+        return False
+
+    if normalized_evaluated_year < normalized_base_year:
+        return False
+
+    base_year_limit = float(annual_limit_map.get(normalized_base_year) or 0.0)
+    if base_year_limit <= 0.0:
+        return False
+
+    annual_excluding_base = sum(
+        float(value)
+        for year, value in annual_limit_map.items()
+        if (normalized_base_year + 1) <= int(year) <= normalized_evaluated_year
+    )
+    annual_including_base = annual_excluding_base + base_year_limit
+
+    available_excluding_base = float(opening_balance or 0.0) + annual_excluding_base
+    available_including_base = float(opening_balance or 0.0) + annual_including_base
+
+    remaining_excluding_base = available_excluding_base - float(room_used or 0.0)
+    remaining_including_base = available_including_base - float(room_used or 0.0)
+
+    if remaining_excluding_base < -ROOM_EPSILON <= remaining_including_base:
+        return True
+    if remaining_including_base < -ROOM_EPSILON <= remaining_excluding_base:
+        return False
+
+    return abs(remaining_including_base) + ROOM_EPSILON < abs(remaining_excluding_base)
 
 
 def is_user_tfsa_opening_balance_configured(user_id):
@@ -92,6 +165,30 @@ def ensure_tfsa_setup_from_import(user_id, inferred_base_year):
 def list_user_tfsa_annual_limits(user_id):
     rows = TfsaAnnualLimit.objects.filter(user_id=user_id).order_by("-year").values("year", "annual_limit")
     return [{"year": int(row["year"]), "annual_limit": float(row["annual_limit"])} for row in rows]
+
+
+def list_effective_tfsa_annual_limits(user_id):
+    limits_by_year = dict(TFSA_DEFAULT_ANNUAL_LIMITS)
+    override_years = set()
+    for row in TfsaAnnualLimit.objects.filter(user_id=user_id).values("year", "annual_limit"):
+        try:
+            year = int(row["year"])
+            annual_limit = float(row["annual_limit"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        limits_by_year[year] = annual_limit
+        override_years.add(year)
+
+    years_desc = sorted(limits_by_year.keys(), reverse=True)
+    return [
+        {
+            "year": int(year),
+            "annual_limit": float(limits_by_year[year]),
+            "is_default": int(year) not in override_years,
+            "can_delete": int(year) in override_years,
+        }
+        for year in years_desc
+    ]
 
 
 def upsert_user_tfsa_annual_limit(user_id, year, annual_limit):
@@ -176,20 +273,10 @@ def get_tfsa_summary(user_id):
     opening_balance = get_user_tfsa_opening_balance(user_id)
     opening_balance_base_year = get_user_tfsa_opening_balance_base_year(user_id)
     opening_balance_configured = is_user_tfsa_opening_balance_configured(user_id)
-    annual_limits = list_user_tfsa_annual_limits(user_id)
+    annual_limits = list_effective_tfsa_annual_limits(user_id)
     current_year = datetime.now().year
 
-    minimum_annual_year = int(opening_balance_base_year) + 1 if opening_balance_base_year is not None else None
-
-    candidate_annual_limits = annual_limits
-    if minimum_annual_year is not None:
-        candidate_annual_limits = [limit for limit in annual_limits if int(limit["year"]) >= minimum_annual_year]
-
-    available_annual_limits = [limit for limit in candidate_annual_limits if int(limit["year"]) <= current_year]
-    future_annual_limits = [limit for limit in candidate_annual_limits if int(limit["year"]) > current_year]
-    total_annual_room = sum(limit["annual_limit"] for limit in available_annual_limits)
-    total_future_annual_room = sum(limit["annual_limit"] for limit in future_annual_limits)
-    total_available_room = opening_balance + total_annual_room
+    annual_limit_map = _build_annual_limit_map(annual_limits)
 
     account_rows = TfsaContribution.objects.filter(user_id=user_id).values(
         "tfsa_account_id", "contribution_type", "amount"
@@ -256,6 +343,29 @@ def get_tfsa_summary(user_id):
 
     total_used = total_deposits - total_withdrawals
     room_used = room_deposits - room_withdrawals_eligible
+
+    include_base_year_annual_limit = _resolve_include_base_year_annual_limit(
+        opening_balance=opening_balance,
+        base_year=opening_balance_base_year,
+        annual_limit_map=annual_limit_map,
+        evaluated_year=current_year,
+        room_used=room_used,
+    )
+
+    minimum_annual_year = None
+    if opening_balance_base_year is not None:
+        minimum_annual_year = int(opening_balance_base_year) + (0 if include_base_year_annual_limit else 1)
+
+    candidate_annual_limits = annual_limits
+    if minimum_annual_year is not None:
+        candidate_annual_limits = [limit for limit in annual_limits if int(limit["year"]) >= minimum_annual_year]
+
+    available_annual_limits = [limit for limit in candidate_annual_limits if int(limit["year"]) <= current_year]
+    future_annual_limits = [limit for limit in candidate_annual_limits if int(limit["year"]) > current_year]
+    total_annual_room = sum(limit["annual_limit"] for limit in available_annual_limits)
+    total_future_annual_room = sum(limit["annual_limit"] for limit in future_annual_limits)
+    total_available_room = opening_balance + total_annual_room
+
     total_remaining = total_available_room - room_used
     taxable_excess_amount = max(0.0, -total_remaining)
 
@@ -281,6 +391,7 @@ def get_tfsa_summary(user_id):
         "room_used": room_used,
         "total_remaining": max(0, total_remaining),
         "taxable_excess_amount": taxable_excess_amount,
+        "base_year_annual_room_included": include_base_year_annual_limit,
     }
 
 
@@ -295,15 +406,8 @@ def validate_tfsa_deposit_room_for_date(user_id, amount, contribution_date, *, e
 
     opening_balance = get_user_tfsa_opening_balance(user_id)
     opening_balance_base_year = get_user_tfsa_opening_balance_base_year(user_id)
-    annual_limits = list_user_tfsa_annual_limits(user_id)
-
-    minimum_annual_year = int(opening_balance_base_year) + 1 if opening_balance_base_year is not None else None
-    candidate_annual_limits = annual_limits
-    if minimum_annual_year is not None:
-        candidate_annual_limits = [limit for limit in annual_limits if int(limit["year"]) >= minimum_annual_year]
-
-    available_annual_limits = [limit for limit in candidate_annual_limits if int(limit["year"]) <= target_year]
-    total_annual_room = sum(limit["annual_limit"] for limit in available_annual_limits)
+    annual_limits = list_effective_tfsa_annual_limits(user_id)
+    annual_limit_map = _build_annual_limit_map(annual_limits)
 
     room_rows = TfsaContribution.objects.filter(user_id=user_id)
     if exclude_transaction_id is not None:
@@ -331,8 +435,28 @@ def validate_tfsa_deposit_room_for_date(user_id, amount, contribution_date, *, e
         elif contribution_type == "Withdrawal" and contribution_year < target_year:
             room_withdrawals_eligible_to_year += value
 
-    total_available_room_at_target_year = opening_balance + total_annual_room
     room_used_before = room_deposits_to_year - room_withdrawals_eligible_to_year
+
+    include_base_year_annual_limit = _resolve_include_base_year_annual_limit(
+        opening_balance=opening_balance,
+        base_year=opening_balance_base_year,
+        annual_limit_map=annual_limit_map,
+        evaluated_year=target_year,
+        room_used=room_used_before,
+    )
+
+    minimum_annual_year = None
+    if opening_balance_base_year is not None:
+        minimum_annual_year = int(opening_balance_base_year) + (0 if include_base_year_annual_limit else 1)
+
+    candidate_annual_limits = annual_limits
+    if minimum_annual_year is not None:
+        candidate_annual_limits = [limit for limit in annual_limits if int(limit["year"]) >= minimum_annual_year]
+
+    available_annual_limits = [limit for limit in candidate_annual_limits if int(limit["year"]) <= target_year]
+    total_annual_room = sum(limit["annual_limit"] for limit in available_annual_limits)
+
+    total_available_room_at_target_year = opening_balance + total_annual_room
     remaining_before = total_available_room_at_target_year - room_used_before
     projected_remaining = remaining_before - normalized_amount
 

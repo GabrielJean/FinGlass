@@ -12,6 +12,7 @@ from core.services.tfsa_service import (
     delete_user_tfsa_annual_limit,
     ensure_tfsa_setup_from_import,
     get_tfsa_summary,
+    list_effective_tfsa_annual_limits,
     get_user_tfsa_opening_balance,
     get_user_tfsa_opening_balance_base_year,
     is_user_tfsa_opening_balance_configured,
@@ -94,7 +95,7 @@ def tfsa_opening_balance(request):
 def tfsa_annual_limits(request):
     user_id = request.user.id
     if request.method == "GET":
-        return JsonResponse({"annual_limits": list_user_tfsa_annual_limits(user_id)})
+        return JsonResponse({"annual_limits": list_effective_tfsa_annual_limits(user_id)})
 
     data = _read_json(request)
     setup_error = _require_opening_balance_configured(user_id)
