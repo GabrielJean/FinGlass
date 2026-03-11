@@ -6,6 +6,8 @@ const showConfirmDialog = common.showConfirmDialog;
 const showAlertDialog = common.showAlertDialog;
 const applyPageEnterMotion = common.applyPageEnterMotion;
 const ensureOverlayElementsAtBody = common.ensureOverlayElementsAtBody;
+const buildContributionRoomStatusLabelHtml = common.buildContributionRoomStatusLabelHtml;
+const getContributionRoomBarColor = common.getContributionRoomBarColor;
 const confirmDialog = (message, options = {}) => {
     if (typeof showConfirmDialog === 'function') {
         return showConfirmDialog(message, options);
@@ -20,16 +22,7 @@ const alertDialog = (message, options = {}) => {
     return Promise.resolve(true);
 };
 
-function formatMoney(value) {
-    if (typeof fmtMoney === 'function') {
-        return fmtMoney(value);
-    }
-
-    return `$${Number(value || 0).toLocaleString('en-CA', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    })}`;
-}
+const formatMoney = fmtMoney;
 
 const tfsaSummaryEl = document.getElementById('tfsa-summary');
 const accountSelectEl = document.getElementById('account-select');
@@ -82,38 +75,6 @@ let overcontributionCushionState = 2000;
 let roomUsedState = 0;
 let currentSort = { key: "contribution_date", direction: "desc" };
 const ROOM_EPSILON = 0.005;
-
-function buildContributionRoomStatusLabelHtml(roomStatus) {
-    if (!roomStatus) {
-        return '';
-    }
-
-    const labels = {
-        'near-limit': 'Near limit',
-        'over-limit': 'Over limit',
-        full: 'Full'
-    };
-
-    const text = labels[roomStatus] || '';
-    if (!text) {
-        return '';
-    }
-
-    return `<span class="room-status-label room-status-${roomStatus}">${text}</span>`;
-}
-
-function getContributionRoomBarColor(status) {
-    if (status === 'near-limit') {
-        return '#f59e0b';
-    }
-    if (status === 'full') {
-        return '#22c55e';
-    }
-    if (status === 'over-limit') {
-        return '#ef4444';
-    }
-    return '#3b82f6';
-}
 
 async function validateDepositContributionRoom(amount) {
     const normalizedAmount = Number(amount || 0);
@@ -671,15 +632,9 @@ async function loadTfsaSummary() {
         const overcontributionCushion = Number(data.overcontribution_cushion || 2000);
         const cushionRemaining = Number(data.cushion_remaining || 0);
         const taxableExcessAmount = Number(data.taxable_excess_amount || 0);
-        const craOverContributionAmount = Number(
-            data.cra_over_contribution_amount ?? Math.max(0, -deductionLimitRemaining)
-        );
-        const cushionUsed = Number(
-            data.cushion_used_amount ?? Math.max(0, overcontributionCushion - Math.max(0, cushionRemaining))
-        );
-        const isUsingCushion = (typeof data.is_using_cushion === 'boolean')
-            ? data.is_using_cushion
-            : (craOverContributionAmount > ROOM_EPSILON && taxableExcessAmount <= ROOM_EPSILON);
+        const craOverContributionAmount = Number(data.cra_over_contribution_amount || 0);
+        const cushionUsed = Number(data.cushion_used_amount || 0);
+        const isUsingCushion = Boolean(data.is_using_cushion);
         const totalUnusedContributions = Number(data.total_unused_contributions || 0);
         const totalUsedCarryForwardContributions = Number(data.total_used_carry_forward_contributions || 0);
         const minAnnualYear = Number(data.minimum_annual_year || 0);
