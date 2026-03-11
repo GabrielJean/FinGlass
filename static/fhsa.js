@@ -6,6 +6,8 @@ const showConfirmDialog = common.showConfirmDialog;
 const showAlertDialog = common.showAlertDialog;
 const applyPageEnterMotion = common.applyPageEnterMotion;
 const ensureOverlayElementsAtBody = common.ensureOverlayElementsAtBody;
+const buildContributionRoomStatusLabelHtml = common.buildContributionRoomStatusLabelHtml;
+const getContributionRoomBarColor = common.getContributionRoomBarColor;
 
 const confirmDialog = (message, options = {}) => {
     if (typeof showConfirmDialog === 'function') {
@@ -22,16 +24,7 @@ const alertDialog = (message, options = {}) => {
     return Promise.resolve(true);
 };
 
-function formatMoney(value) {
-    if (typeof fmtMoney === 'function') {
-        return fmtMoney(value);
-    }
-
-    return `$${Number(value || 0).toLocaleString('en-CA', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    })}`;
-}
+const formatMoney = fmtMoney;
 
 const fhsaSummaryEl = document.getElementById('fhsa-summary');
 const accountSelectEl = document.getElementById('account-select');
@@ -76,60 +69,6 @@ let totalRemainingRoomState = 0;
 let roomUsedState = 0;
 let currentSort = { key: "contribution_date", direction: "desc" };
 const ROOM_EPSILON = 0.005;
-
-function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
-    const available = Number(totalAvailableRoom || 0);
-    const used = Number(roomUsed || 0);
-    const remaining = Number(totalRemaining || 0);
-    const excess = Number(taxableExcessAmount || 0);
-
-    if (excess > ROOM_EPSILON) {
-        return 'over-limit';
-    }
-    if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
-        return 'full';
-    }
-
-    const usedRatio = available > ROOM_EPSILON ? (used / available) : 0;
-    if (usedRatio >= 0.9) {
-        return 'near-limit';
-    }
-
-    return null;
-}
-
-function buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
-    const status = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount);
-    if (!status) {
-        return '';
-    }
-
-    const labels = {
-        'near-limit': 'Near limit',
-        'over-limit': 'Over limit',
-        full: 'Full'
-    };
-
-    const text = labels[status] || '';
-    if (!text) {
-        return '';
-    }
-
-    return `<span class="room-status-label room-status-${status}">${text}</span>`;
-}
-
-function getContributionRoomBarColor(status) {
-    if (status === 'near-limit') {
-        return '#f59e0b';
-    }
-    if (status === 'full') {
-        return '#22c55e';
-    }
-    if (status === 'over-limit') {
-        return '#ef4444';
-    }
-    return '#3b82f6';
-}
 
 async function validateDepositContributionRoom(amount) {
     const normalizedAmount = Number(amount || 0);
@@ -552,13 +491,10 @@ async function loadFhsaSummary() {
         const roomUsed = Number(data.room_used || 0);
         const consumedRoom = Math.max(0, totalAvailableRoom - totalRemaining);
         const taxableExcessAmount = Number(data.taxable_excess_amount || 0);
-        const overContributionAmount = Number(data.over_contribution_amount ?? taxableExcessAmount);
-        const isOverContributed = (typeof data.is_over_contributed === 'boolean')
-            ? data.is_over_contributed
-            : overContributionAmount > ROOM_EPSILON;
-        const statusExcessAmount = isOverContributed ? overContributionAmount : 0;
-        const roomStatus = getContributionRoomStatus(totalAvailableRoom, consumedRoom, totalRemaining, statusExcessAmount);
-        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, consumedRoom, totalRemaining, statusExcessAmount);
+        const overContributionAmount = Number(data.over_contribution_amount || 0);
+        const isOverContributed = Boolean(data.is_over_contributed);
+        const roomStatus = data.room_status || null;
+        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(roomStatus);
         const roomBarColor = getContributionRoomBarColor(roomStatus);
         const qualifyingWithdrawals = Number(data.qualifying_withdrawals || 0);
         const nonQualifyingWithdrawals = Number(data.non_qualifying_withdrawals || 0);
@@ -597,7 +533,7 @@ async function loadFhsaSummary() {
                 <p>Account Age: <strong>${accountAgeYears}</strong> year(s) · Remaining active year(s): <strong>${accountYearsRemaining}</strong>${isAgeExpired ? ' (expired)' : ''}</p>
                 <p>Room Used (Deposits): <strong>${formatMoney(roomUsed)}</strong></p>
                 <div class="room-gauge">
-                    <div class="bar" style="width: ${totalAvailableRoom > 0 ? Math.max(0, Math.min(100, (consumedRoom / totalAvailableRoom) * 100)) : 0}%; background: ${roomBarColor};"></div>
+                    <div class="bar" style="width: ${roomStatus === 'full' || roomStatus === 'over-limit' ? 100 : (totalAvailableRoom > 0 ? Math.max(0, Math.min(100, (consumedRoom / totalAvailableRoom) * 100)) : 0)}%; background: ${roomBarColor};"></div>
                 </div>
                 <p class="remaining highlight">Room Remaining: <strong>${formatMoney(totalRemaining)}</strong> ${roomStatusLabelHtml}</p>
                 ${isOverContributed ? `<p class="muted">You currently exceed FHSA contribution room by <strong>${formatMoney(overContributionAmount)}</strong>.</p>` : ''}
@@ -866,11 +802,8 @@ fhsaImportFormEl?.addEventListener('submit', async (event) => {
         await loadFhsaSummary();
 
         const summary = await fetchJson('/api/fhsa/summary');
-        const taxableExcessAmount = Number(summary.taxable_excess_amount || 0);
-        const overContributionAmount = Number(summary.over_contribution_amount ?? taxableExcessAmount);
-        const isOverContributed = (typeof summary.is_over_contributed === 'boolean')
-            ? summary.is_over_contributed
-            : overContributionAmount > ROOM_EPSILON;
+        const overContributionAmount = Number(summary.over_contribution_amount || 0);
+        const isOverContributed = Boolean(summary.is_over_contributed);
         const correctionHint = isOverContributed
             ? ` Warning: estimated FHSA excess amount is ${formatMoney(overContributionAmount)}. Add a non-qualifying Withdrawal transaction to reduce the excess.`
             : '';

@@ -609,6 +609,35 @@
   initTheme();
   initGlobalPageEnterMotion();
 
+  function buildContributionRoomStatusLabelHtml(roomStatus) {
+    if (!roomStatus) {
+      return "";
+    }
+    const labels = {
+      "near-limit": "Near limit",
+      "over-limit": "Over limit",
+      full: "Full",
+    };
+    const text = labels[roomStatus] || "";
+    if (!text) {
+      return "";
+    }
+    return `<span class="room-status-label room-status-${roomStatus}">${text}</span>`;
+  }
+
+  function getContributionRoomBarColor(status) {
+    if (status === "near-limit") {
+      return "#f59e0b";
+    }
+    if (status === "full") {
+      return "#22c55e";
+    }
+    if (status === "over-limit") {
+      return "#ef4444";
+    }
+    return "#3b82f6";
+  }
+
   globalScope.FinGlassCommon = {
     THEME_STORAGE_KEY,
     defaultCurrencyFormatter,
@@ -633,5 +662,7 @@
     ensureOverlayElementsAtBody,
     showConfirmDialog,
     showAlertDialog,
+    buildContributionRoomStatusLabelHtml,
+    getContributionRoomBarColor,
   };
 })(window);

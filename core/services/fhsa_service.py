@@ -3,6 +3,7 @@ from datetime import date, datetime
 from django.db import transaction
 
 from core.models import AppSetting, FhsaAccount, FhsaContribution
+from core.services.room_status import compute_room_status
 
 FHSA_ANNUAL_LIMIT = 8000.0
 FHSA_LIFETIME_LIMIT = 40000.0
@@ -500,6 +501,15 @@ def get_fhsa_summary(user_id):
     over_contribution_amount = taxable_excess_amount
     is_over_contributed = over_contribution_amount > ROOM_EPSILON
     total_available_room = simulation["room_before_current_year_deposits"]
+    # consumed_room is the room actually used (capped at available); used for
+    # the status ratio so it mirrors the JS gauge calculation.
+    consumed_room = max(0.0, total_available_room - total_remaining)
+    room_status = compute_room_status(
+        total_available_room=total_available_room,
+        room_used=consumed_room,
+        total_remaining=total_remaining,
+        taxable_excess_amount=over_contribution_amount,
+    )
     lifetime_contribution_remaining = max(0.0, FHSA_LIFETIME_LIMIT - room_deposits)
     qualifying_info = get_first_qualifying_withdrawal_info(user_id)
     age_expired = bool(simulation["is_age_expired"])
@@ -561,6 +571,7 @@ def get_fhsa_summary(user_id):
         "taxable_excess_amount": taxable_excess_amount,
         "over_contribution_amount": over_contribution_amount,
         "is_over_contributed": is_over_contributed,
+        "room_status": room_status,
         "has_qualifying_withdrawal": qualifying_info["has_qualifying_withdrawal"],
         "first_qualifying_withdrawal_date": qualifying_info["first_qualifying_withdrawal_date"],
         "first_qualifying_withdrawal_year": qualifying_info["first_qualifying_withdrawal_year"],
