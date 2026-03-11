@@ -77,30 +77,8 @@ let roomUsedState = 0;
 let currentSort = { key: "contribution_date", direction: "desc" };
 const ROOM_EPSILON = 0.005;
 
-function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
-    const available = Number(totalAvailableRoom || 0);
-    const used = Number(roomUsed || 0);
-    const remaining = Number(totalRemaining || 0);
-    const excess = Number(taxableExcessAmount || 0);
-
-    if (excess > ROOM_EPSILON) {
-        return 'over-limit';
-    }
-    if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
-        return 'full';
-    }
-
-    const usedRatio = available > ROOM_EPSILON ? (used / available) : 0;
-    if (usedRatio >= 0.9) {
-        return 'near-limit';
-    }
-
-    return null;
-}
-
-function buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
-    const status = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount);
-    if (!status) {
+function buildContributionRoomStatusLabelHtml(roomStatus) {
+    if (!roomStatus) {
         return '';
     }
 
@@ -110,12 +88,12 @@ function buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, tota
         full: 'Full'
     };
 
-    const text = labels[status] || '';
+    const text = labels[roomStatus] || '';
     if (!text) {
         return '';
     }
 
-    return `<span class="room-status-label room-status-${status}">${text}</span>`;
+    return `<span class="room-status-label room-status-${roomStatus}">${text}</span>`;
 }
 
 function getContributionRoomBarColor(status) {
@@ -556,9 +534,8 @@ async function loadFhsaSummary() {
         const isOverContributed = (typeof data.is_over_contributed === 'boolean')
             ? data.is_over_contributed
             : overContributionAmount > ROOM_EPSILON;
-        const statusExcessAmount = isOverContributed ? overContributionAmount : 0;
-        const roomStatus = getContributionRoomStatus(totalAvailableRoom, consumedRoom, totalRemaining, statusExcessAmount);
-        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, consumedRoom, totalRemaining, statusExcessAmount);
+        const roomStatus = data.room_status || null;
+        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(roomStatus);
         const roomBarColor = getContributionRoomBarColor(roomStatus);
         const qualifyingWithdrawals = Number(data.qualifying_withdrawals || 0);
         const nonQualifyingWithdrawals = Number(data.non_qualifying_withdrawals || 0);
