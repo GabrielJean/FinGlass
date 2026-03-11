@@ -3,6 +3,7 @@ from datetime import datetime
 from django.db import transaction
 
 from core.models import AppSetting, TfsaAccount, TfsaAnnualLimit, TfsaContribution
+from core.services.room_status import compute_room_status
 
 
 ROOM_EPSILON = 0.005
@@ -370,6 +371,13 @@ def get_tfsa_summary(user_id):
     taxable_excess_amount = max(0.0, -total_remaining)
     over_contribution_amount = taxable_excess_amount
     is_over_contributed = over_contribution_amount > ROOM_EPSILON
+    total_remaining_clamped = max(0.0, total_remaining)
+    room_status = compute_room_status(
+        total_available_room=total_available_room,
+        room_used=room_used,
+        total_remaining=total_remaining_clamped,
+        taxable_excess_amount=over_contribution_amount,
+    )
 
     return {
         "accounts": summary,
@@ -391,10 +399,11 @@ def get_tfsa_summary(user_id):
         "room_withdrawals_eligible": room_withdrawals_eligible,
         "room_withdrawals_pending": room_withdrawals_pending,
         "room_used": room_used,
-        "total_remaining": max(0, total_remaining),
+        "total_remaining": total_remaining_clamped,
         "taxable_excess_amount": taxable_excess_amount,
         "over_contribution_amount": over_contribution_amount,
         "is_over_contributed": is_over_contributed,
+        "room_status": room_status,
         "base_year_annual_room_included": include_base_year_annual_limit,
     }
 

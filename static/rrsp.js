@@ -83,30 +83,8 @@ let roomUsedState = 0;
 let currentSort = { key: "contribution_date", direction: "desc" };
 const ROOM_EPSILON = 0.005;
 
-function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
-    const available = Number(totalAvailableRoom || 0);
-    const used = Number(roomUsed || 0);
-    const remaining = Number(totalRemaining || 0);
-    const excess = Number(taxableExcessAmount || 0);
-
-    if (excess > ROOM_EPSILON) {
-        return 'over-limit';
-    }
-    if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
-        return 'full';
-    }
-
-    const usedRatio = available > ROOM_EPSILON ? (used / available) : 0;
-    if (usedRatio >= 0.9) {
-        return 'near-limit';
-    }
-
-    return null;
-}
-
-function buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
-    const status = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount);
-    if (!status) {
+function buildContributionRoomStatusLabelHtml(roomStatus) {
+    if (!roomStatus) {
         return '';
     }
 
@@ -116,12 +94,12 @@ function buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, tota
         full: 'Full'
     };
 
-    const text = labels[status] || '';
+    const text = labels[roomStatus] || '';
     if (!text) {
         return '';
     }
 
-    return `<span class="room-status-label room-status-${status}">${text}</span>`;
+    return `<span class="room-status-label room-status-${roomStatus}">${text}</span>`;
 }
 
 function getContributionRoomBarColor(status) {
@@ -702,14 +680,13 @@ async function loadTfsaSummary() {
         const isUsingCushion = (typeof data.is_using_cushion === 'boolean')
             ? data.is_using_cushion
             : (craOverContributionAmount > ROOM_EPSILON && taxableExcessAmount <= ROOM_EPSILON);
-        const statusExcessAmount = Math.max(taxableExcessAmount, craOverContributionAmount);
         const totalUnusedContributions = Number(data.total_unused_contributions || 0);
         const totalUsedCarryForwardContributions = Number(data.total_used_carry_forward_contributions || 0);
         const minAnnualYear = Number(data.minimum_annual_year || 0);
         const openingBalanceConfigured = Boolean(data.opening_balance_configured);
         const totalRemaining = Number(data.total_remaining || 0);
-        const roomStatus = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, statusExcessAmount);
-        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining, statusExcessAmount);
+        const roomStatus = data.room_status || null;
+        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(roomStatus);
         const roomBarColor = getContributionRoomBarColor(roomStatus);
         const gaugeWidth = totalAvailableRoom > 0
             ? Math.max(0, Math.min(100, (roomUsed / totalAvailableRoom) * 100))
