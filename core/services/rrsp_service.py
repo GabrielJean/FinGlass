@@ -6,6 +6,7 @@ from core.models import AppSetting, RrspAccount, RrspAnnualLimit, RrspContributi
 
 
 RRSP_OVERCONTRIBUTION_CUSHION = 2000.0
+ROOM_EPSILON = 0.005
 
 
 def is_user_rrsp_opening_balance_configured(user_id):
@@ -234,7 +235,11 @@ def get_rrsp_summary(user_id):
     deduction_limit_remaining = total_available_room - room_used
     total_remaining = max(0.0, deduction_limit_remaining)
     cushion_remaining = (total_available_room + RRSP_OVERCONTRIBUTION_CUSHION) - room_used
+    cushion_remaining_clamped = max(0.0, cushion_remaining)
+    cra_over_contribution_amount = max(0.0, -deduction_limit_remaining)
     taxable_excess_amount = max(0.0, -cushion_remaining)
+    cushion_used_amount = max(0.0, RRSP_OVERCONTRIBUTION_CUSHION - cushion_remaining_clamped)
+    is_using_cushion = cra_over_contribution_amount > ROOM_EPSILON and taxable_excess_amount <= ROOM_EPSILON
 
     return {
         "accounts": summary,
@@ -259,7 +264,10 @@ def get_rrsp_summary(user_id):
         "total_remaining": total_remaining,
         "deduction_limit_remaining": deduction_limit_remaining,
         "overcontribution_cushion": RRSP_OVERCONTRIBUTION_CUSHION,
-        "cushion_remaining": max(0.0, cushion_remaining),
+        "cushion_remaining": cushion_remaining_clamped,
+        "cushion_used_amount": cushion_used_amount,
+        "cra_over_contribution_amount": cra_over_contribution_amount,
+        "is_using_cushion": is_using_cushion,
         "taxable_excess_amount": taxable_excess_amount,
         "total_unused_contributions": total_unused_contributions,
         "total_used_carry_forward_contributions": total_used_carry_forward_contributions,
@@ -300,12 +308,21 @@ def validate_rrsp_deposit_room(user_id, amount, *, exclude_transaction_id=None):
             room_deposits += float(row["amount"] or 0)
 
     projected_room_used = room_deposits + normalized_amount
+    projected_deduction_limit_remaining = total_available_room - projected_room_used
     projected_cushion_remaining = (total_available_room + RRSP_OVERCONTRIBUTION_CUSHION) - projected_room_used
+    projected_taxable_excess_amount = max(0.0, -projected_cushion_remaining)
+    projected_cra_over_contribution_amount = max(0.0, -projected_deduction_limit_remaining)
 
     return {
         "valid": projected_cushion_remaining >= 0,
         "deduction_limit_remaining_before": total_available_room - room_deposits,
         "cushion_remaining_before": max(0.0, (total_available_room + RRSP_OVERCONTRIBUTION_CUSHION) - room_deposits),
-        "projected_taxable_excess_amount": max(0.0, -projected_cushion_remaining),
+        "projected_deduction_limit_remaining": projected_deduction_limit_remaining,
+        "projected_cra_over_contribution_amount": projected_cra_over_contribution_amount,
+        "projected_taxable_excess_amount": projected_taxable_excess_amount,
+        "projected_is_using_cushion": (
+            projected_cra_over_contribution_amount > ROOM_EPSILON
+            and projected_taxable_excess_amount <= ROOM_EPSILON
+        ),
         "overcontribution_cushion": RRSP_OVERCONTRIBUTION_CUSHION,
     }

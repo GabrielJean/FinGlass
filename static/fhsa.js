@@ -77,12 +77,13 @@ let roomUsedState = 0;
 let currentSort = { key: "contribution_date", direction: "desc" };
 const ROOM_EPSILON = 0.005;
 
-function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining) {
+function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
     const available = Number(totalAvailableRoom || 0);
     const used = Number(roomUsed || 0);
     const remaining = Number(totalRemaining || 0);
+    const excess = Number(taxableExcessAmount || 0);
 
-    if (available > ROOM_EPSILON && used > available + ROOM_EPSILON) {
+    if (excess > ROOM_EPSILON) {
         return 'over-limit';
     }
     if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
@@ -97,8 +98,8 @@ function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining)
     return null;
 }
 
-function buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining) {
-    const status = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining);
+function buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
+    const status = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount);
     if (!status) {
         return '';
     }
@@ -549,9 +550,15 @@ async function loadFhsaSummary() {
         const totalAvailableRoom = Number(data.total_available_room || 0);
         const totalRemaining = Number(data.total_remaining || 0);
         const roomUsed = Number(data.room_used || 0);
+        const consumedRoom = Math.max(0, totalAvailableRoom - totalRemaining);
         const taxableExcessAmount = Number(data.taxable_excess_amount || 0);
-        const roomStatus = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining);
-        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining);
+        const overContributionAmount = Number(data.over_contribution_amount ?? taxableExcessAmount);
+        const isOverContributed = (typeof data.is_over_contributed === 'boolean')
+            ? data.is_over_contributed
+            : overContributionAmount > ROOM_EPSILON;
+        const statusExcessAmount = isOverContributed ? overContributionAmount : 0;
+        const roomStatus = getContributionRoomStatus(totalAvailableRoom, consumedRoom, totalRemaining, statusExcessAmount);
+        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, consumedRoom, totalRemaining, statusExcessAmount);
         const roomBarColor = getContributionRoomBarColor(roomStatus);
         const qualifyingWithdrawals = Number(data.qualifying_withdrawals || 0);
         const nonQualifyingWithdrawals = Number(data.non_qualifying_withdrawals || 0);
@@ -573,7 +580,7 @@ async function loadFhsaSummary() {
 
         totalAvailableRoomState = totalAvailableRoom;
         totalRemainingRoomState = totalRemaining;
-        roomUsedState = roomUsed;
+        roomUsedState = consumedRoom;
 
         openingBalanceConfiguredState = openingBalanceConfigured;
         applyOpeningWizardVisibility(openingBalanceConfigured);
@@ -590,10 +597,10 @@ async function loadFhsaSummary() {
                 <p>Account Age: <strong>${accountAgeYears}</strong> year(s) · Remaining active year(s): <strong>${accountYearsRemaining}</strong>${isAgeExpired ? ' (expired)' : ''}</p>
                 <p>Room Used (Deposits): <strong>${formatMoney(roomUsed)}</strong></p>
                 <div class="room-gauge">
-                    <div class="bar" style="width: ${totalAvailableRoom > 0 ? Math.max(0, Math.min(100, (roomUsed / totalAvailableRoom) * 100)) : 0}%; background: ${roomBarColor};"></div>
+                    <div class="bar" style="width: ${totalAvailableRoom > 0 ? Math.max(0, Math.min(100, (consumedRoom / totalAvailableRoom) * 100)) : 0}%; background: ${roomBarColor};"></div>
                 </div>
                 <p class="remaining highlight">Room Remaining: <strong>${formatMoney(totalRemaining)}</strong> ${roomStatusLabelHtml}</p>
-                ${taxableExcessAmount > 0 ? `<p class="muted">You currently exceed FHSA contribution room by <strong>${formatMoney(taxableExcessAmount)}</strong>.</p>` : ''}
+                ${isOverContributed ? `<p class="muted">You currently exceed FHSA contribution room by <strong>${formatMoney(overContributionAmount)}</strong>.</p>` : ''}
                 <p class="muted">Qualifying withdrawals: ${formatMoney(qualifyingWithdrawals)} · Non-qualifying withdrawals: ${formatMoney(nonQualifyingWithdrawals)}</p>
                 ${hasQualifyingWithdrawal ? `<p class="muted">First qualifying withdrawal: ${escapeHtml(firstQualifyingDate)} · Close by: ${escapeHtml(closureDeadlineYearEnd)}</p>` : ''}
             </div>
@@ -860,8 +867,12 @@ fhsaImportFormEl?.addEventListener('submit', async (event) => {
 
         const summary = await fetchJson('/api/fhsa/summary');
         const taxableExcessAmount = Number(summary.taxable_excess_amount || 0);
-        const correctionHint = taxableExcessAmount > 0
-            ? ` Warning: estimated FHSA excess amount is ${formatMoney(taxableExcessAmount)}. Add a non-qualifying Withdrawal transaction to reduce the excess.`
+        const overContributionAmount = Number(summary.over_contribution_amount ?? taxableExcessAmount);
+        const isOverContributed = (typeof summary.is_over_contributed === 'boolean')
+            ? summary.is_over_contributed
+            : overContributionAmount > ROOM_EPSILON;
+        const correctionHint = isOverContributed
+            ? ` Warning: estimated FHSA excess amount is ${formatMoney(overContributionAmount)}. Add a non-qualifying Withdrawal transaction to reduce the excess.`
             : '';
 
         alertDialog(
