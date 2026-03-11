@@ -533,7 +533,7 @@ async function loadFhsaSummary() {
                 <p>Account Age: <strong>${accountAgeYears}</strong> year(s) · Remaining active year(s): <strong>${accountYearsRemaining}</strong>${isAgeExpired ? ' (expired)' : ''}</p>
                 <p>Room Used (Deposits): <strong>${formatMoney(roomUsed)}</strong></p>
                 <div class="room-gauge">
-                    <div class="bar" style="width: ${totalAvailableRoom > 0 ? Math.max(0, Math.min(100, (consumedRoom / totalAvailableRoom) * 100)) : 0}%; background: ${roomBarColor};"></div>
+                    <div class="bar" style="width: ${roomStatus === 'full' || roomStatus === 'over-limit' ? 100 : (totalAvailableRoom > 0 ? Math.max(0, Math.min(100, (consumedRoom / totalAvailableRoom) * 100)) : 0)}%; background: ${roomBarColor};"></div>
                 </div>
                 <p class="remaining highlight">Room Remaining: <strong>${formatMoney(totalRemaining)}</strong> ${roomStatusLabelHtml}</p>
                 ${isOverContributed ? `<p class="muted">You currently exceed FHSA contribution room by <strong>${formatMoney(overContributionAmount)}</strong>.</p>` : ''}
