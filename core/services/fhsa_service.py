@@ -224,7 +224,7 @@ def _coerce_date(value):
 
 
 def _simulate_fhsa_room(opening_balance, base_year, current_year, deposits_by_year, non_qualifying_withdrawals_by_year):
-    initial_room = max(0.0, min(FHSA_LIFETIME_LIMIT, float(opening_balance or 0)))
+    initial_room = max(FHSA_ANNUAL_LIMIT, min(FHSA_LIFETIME_LIMIT, float(opening_balance or 0)))
     carryforward = max(0.0, min(FHSA_CARRY_FORWARD_CAP, initial_room - FHSA_ANNUAL_LIMIT))
     annual_room_component = min(initial_room, FHSA_ANNUAL_LIMIT + carryforward)
     re_participation_room_component = max(0.0, initial_room - annual_room_component)
