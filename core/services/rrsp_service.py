@@ -3,6 +3,7 @@ from datetime import datetime
 from django.db import transaction
 
 from core.models import AppSetting, RrspAccount, RrspAnnualLimit, RrspContribution
+from core.services.room_status import compute_room_status
 
 
 RRSP_OVERCONTRIBUTION_CUSHION = 2000.0
@@ -240,6 +241,15 @@ def get_rrsp_summary(user_id):
     taxable_excess_amount = max(0.0, -cushion_remaining)
     cushion_used_amount = max(0.0, RRSP_OVERCONTRIBUTION_CUSHION - cushion_remaining_clamped)
     is_using_cushion = cra_over_contribution_amount > ROOM_EPSILON and taxable_excess_amount <= ROOM_EPSILON
+    # For status purposes, any amount over the deduction limit (including the
+    # $2,000 cushion window) should show as 'over-limit' to surface the risk.
+    status_excess = max(taxable_excess_amount, cra_over_contribution_amount)
+    room_status = compute_room_status(
+        total_available_room=total_available_room,
+        room_used=room_used,
+        total_remaining=total_remaining,
+        taxable_excess_amount=status_excess,
+    )
 
     return {
         "accounts": summary,
@@ -271,6 +281,7 @@ def get_rrsp_summary(user_id):
         "taxable_excess_amount": taxable_excess_amount,
         "total_unused_contributions": total_unused_contributions,
         "total_used_carry_forward_contributions": total_used_carry_forward_contributions,
+        "room_status": room_status,
     }
 
 
