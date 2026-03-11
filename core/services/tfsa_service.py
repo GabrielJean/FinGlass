@@ -368,6 +368,8 @@ def get_tfsa_summary(user_id):
 
     total_remaining = total_available_room - room_used
     taxable_excess_amount = max(0.0, -total_remaining)
+    over_contribution_amount = taxable_excess_amount
+    is_over_contributed = over_contribution_amount > ROOM_EPSILON
 
     return {
         "accounts": summary,
@@ -391,6 +393,8 @@ def get_tfsa_summary(user_id):
         "room_used": room_used,
         "total_remaining": max(0, total_remaining),
         "taxable_excess_amount": taxable_excess_amount,
+        "over_contribution_amount": over_contribution_amount,
+        "is_over_contributed": is_over_contributed,
         "base_year_annual_room_included": include_base_year_annual_limit,
     }
 
