@@ -507,9 +507,9 @@ async function loadTfsaSummary() {
         const roomStatus = data.room_status || null;
         const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(roomStatus);
         const roomBarColor = getContributionRoomBarColor(roomStatus);
-        const gaugeWidth = totalAvailableRoom > 0
-            ? Math.max(0, Math.min(100, (roomUsed / totalAvailableRoom) * 100))
-            : 0;
+        const gaugeWidth = roomStatus === "full" || roomStatus === "over-limit"
+            ? 100
+            : (totalAvailableRoom > 0 ? Math.max(0, Math.min(100, (roomUsed / totalAvailableRoom) * 100)) : 0);
 
         totalAvailableRoomState = totalAvailableRoom;
         totalRemainingRoomState = totalRemaining;

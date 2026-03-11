@@ -816,17 +816,16 @@ async function refreshTfsaSummary() {
   // Display user-level total across all accounts
   const totalAvailableRoom = Number(data.total_available_room || 0);
   const totalRemaining = Number(data.total_remaining || 0);
-  const roomUsed = Number(data.room_used ?? (totalAvailableRoom - totalRemaining));
-  const taxableExcessAmount = Number(data.taxable_excess_amount || 0);
-  const overContributionAmount = Number(data.over_contribution_amount ?? taxableExcessAmount);
-  const isOverContributed = (typeof data.is_over_contributed === "boolean")
-    ? data.is_over_contributed
-    : overContributionAmount > ROOM_EPSILON;
-  const tfsaUsed = roomUsed;
-  const tfsaPercentRaw = totalAvailableRoom > 0 ? Math.round((tfsaUsed / totalAvailableRoom) * 100) : 0;
-  const tfsaPercent = Math.max(0, Math.min(100, tfsaPercentRaw));
+  const roomUsed = Number(data.room_used || 0);
+  const overContributionAmount = Number(data.over_contribution_amount || 0);
+  const isOverContributed = Boolean(data.is_over_contributed);
   const statusExcessAmount = isOverContributed ? overContributionAmount : 0;
   const roomStatus = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, statusExcessAmount);
+  const tfsaUsed = roomUsed;
+  const tfsaPercentRaw = roomStatus === "full" || roomStatus === "over-limit"
+    ? 100
+    : (totalAvailableRoom > 0 ? Math.round((tfsaUsed / totalAvailableRoom) * 100) : 0);
+  const tfsaPercent = Math.max(0, Math.min(100, tfsaPercentRaw));
   const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining, statusExcessAmount);
   const roomBarColor = getContributionRoomBarColor(roomStatus);
   tfsaSummaryGrid.innerHTML = `
@@ -868,25 +867,21 @@ async function refreshRrspSummary() {
 
   const totalAvailableRoom = Number(data.total_available_room || 0);
   const totalRemaining = Number(data.total_remaining || 0);
-  const roomUsed = Number(data.room_used ?? (totalAvailableRoom - totalRemaining));
+  const roomUsed = Number(data.room_used || 0);
   const deductionLimitRemaining = Number(data.deduction_limit_remaining || 0);
   const overcontributionCushion = Number(data.overcontribution_cushion || 2000);
   const cushionRemaining = Number(data.cushion_remaining || 0);
   const taxableExcessAmount = Number(data.taxable_excess_amount || 0);
-  const craOverContributionAmount = Number(
-    data.cra_over_contribution_amount ?? Math.max(0, -deductionLimitRemaining),
-  );
-  const cushionUsed = Number(
-    data.cushion_used_amount ?? Math.max(0, overcontributionCushion - Math.max(0, cushionRemaining)),
-  );
-  const isUsingCushion = (typeof data.is_using_cushion === "boolean")
-    ? data.is_using_cushion
-    : (craOverContributionAmount > ROOM_EPSILON && taxableExcessAmount <= ROOM_EPSILON);
+  const craOverContributionAmount = Number(data.cra_over_contribution_amount || 0);
+  const cushionUsed = Number(data.cushion_used_amount || 0);
+  const isUsingCushion = Boolean(data.is_using_cushion);
   const statusExcessAmount = Math.max(taxableExcessAmount, craOverContributionAmount);
   const rrspUsed = roomUsed;
-  const rrspPercentRaw = totalAvailableRoom > 0 ? Math.round((rrspUsed / totalAvailableRoom) * 100) : 0;
-  const rrspPercent = Math.max(0, Math.min(100, rrspPercentRaw));
   const roomStatus = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, statusExcessAmount);
+  const rrspPercentRaw = roomStatus === "full" || roomStatus === "over-limit"
+    ? 100
+    : (totalAvailableRoom > 0 ? Math.round((rrspUsed / totalAvailableRoom) * 100) : 0);
+  const rrspPercent = Math.max(0, Math.min(100, rrspPercentRaw));
   const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining, statusExcessAmount);
   const roomBarColor = getContributionRoomBarColor(roomStatus);
   rrspSummaryGrid.innerHTML = `
@@ -952,17 +947,16 @@ async function refreshFhsaSummary() {
 
   const totalAvailableRoom = Number(data.total_available_room || 0);
   const totalRemaining = Number(data.total_remaining || 0);
-  const taxableExcessAmount = Number(data.taxable_excess_amount || 0);
-  const overContributionAmount = Number(data.over_contribution_amount ?? taxableExcessAmount);
-  const isOverContributed = (typeof data.is_over_contributed === "boolean")
-    ? data.is_over_contributed
-    : overContributionAmount > ROOM_EPSILON;
+  const overContributionAmount = Number(data.over_contribution_amount || 0);
+  const isOverContributed = Boolean(data.is_over_contributed);
   const consumedRoom = Math.max(0, totalAvailableRoom - totalRemaining);
   const fhsaUsed = consumedRoom;
-  const fhsaPercentRaw = totalAvailableRoom > 0 ? Math.round((fhsaUsed / totalAvailableRoom) * 100) : 0;
-  const fhsaPercent = Math.max(0, Math.min(100, fhsaPercentRaw));
   const statusExcessAmount = isOverContributed ? overContributionAmount : 0;
   const roomStatus = getContributionRoomStatus(totalAvailableRoom, consumedRoom, totalRemaining, statusExcessAmount);
+  const fhsaPercentRaw = roomStatus === "full" || roomStatus === "over-limit"
+    ? 100
+    : (totalAvailableRoom > 0 ? Math.round((fhsaUsed / totalAvailableRoom) * 100) : 0);
+  const fhsaPercent = Math.max(0, Math.min(100, fhsaPercentRaw));
   const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, consumedRoom, totalRemaining, statusExcessAmount);
   const roomBarColor = getContributionRoomBarColor(roomStatus);
   fhsaSummaryGrid.innerHTML = `
