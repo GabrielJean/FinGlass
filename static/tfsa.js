@@ -6,6 +6,8 @@ const showConfirmDialog = common.showConfirmDialog;
 const showAlertDialog = common.showAlertDialog;
 const applyPageEnterMotion = common.applyPageEnterMotion;
 const ensureOverlayElementsAtBody = common.ensureOverlayElementsAtBody;
+const buildContributionRoomStatusLabelHtml = common.buildContributionRoomStatusLabelHtml;
+const getContributionRoomBarColor = common.getContributionRoomBarColor;
 const confirmDialog = (message, options = {}) => {
     if (typeof showConfirmDialog === 'function') {
         return showConfirmDialog(message, options);
@@ -20,16 +22,7 @@ const alertDialog = (message, options = {}) => {
     return Promise.resolve(true);
 };
 
-function formatMoney(value) {
-    if (typeof fmtMoney === 'function') {
-        return fmtMoney(value);
-    }
-
-    return `$${Number(value || 0).toLocaleString('en-CA', {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    })}`;
-}
+const formatMoney = fmtMoney;
 
 const tfsaSummaryEl = document.getElementById('tfsa-summary');
 const accountSelectEl = document.getElementById('account-select');
@@ -76,60 +69,6 @@ let totalRemainingRoomState = 0;
 let roomUsedState = 0;
 let currentSort = { key: "contribution_date", direction: "desc" };
 const ROOM_EPSILON = 0.005;
-
-function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
-    const available = Number(totalAvailableRoom || 0);
-    const used = Number(roomUsed || 0);
-    const remaining = Number(totalRemaining || 0);
-    const excess = Number(taxableExcessAmount || 0);
-
-    if (excess > ROOM_EPSILON) {
-        return 'over-limit';
-    }
-    if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
-        return 'full';
-    }
-
-    const usedRatio = available > ROOM_EPSILON ? (used / available) : 0;
-    if (usedRatio >= 0.9) {
-        return 'near-limit';
-    }
-
-    return null;
-}
-
-function buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
-    const status = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount);
-    if (!status) {
-        return '';
-    }
-
-    const labels = {
-        'near-limit': 'Near limit',
-        'over-limit': 'Over limit',
-        full: 'Full'
-    };
-
-    const text = labels[status] || '';
-    if (!text) {
-        return '';
-    }
-
-    return `<span class="room-status-label room-status-${status}">${text}</span>`;
-}
-
-function getContributionRoomBarColor(status) {
-    if (status === 'near-limit') {
-        return '#f59e0b';
-    }
-    if (status === 'full') {
-        return '#22c55e';
-    }
-    if (status === 'over-limit') {
-        return '#ef4444';
-    }
-    return '#3b82f6';
-}
 
 async function validateDepositContributionRoom(amount) {
     const normalizedAmount = Number(amount || 0);
@@ -560,20 +499,17 @@ async function loadTfsaSummary() {
         const roomWithdrawalsPending = Number(data.room_withdrawals_pending || 0);
         const roomUsed = Number(data.room_used || 0);
         const taxableExcessAmount = Number(data.taxable_excess_amount || 0);
-        const overContributionAmount = Number(data.over_contribution_amount ?? taxableExcessAmount);
-        const isOverContributed = (typeof data.is_over_contributed === 'boolean')
-            ? data.is_over_contributed
-            : overContributionAmount > ROOM_EPSILON;
+        const overContributionAmount = Number(data.over_contribution_amount || 0);
+        const isOverContributed = Boolean(data.is_over_contributed);
         const minAnnualYear = Number(data.minimum_annual_year || 0);
         const openingBalanceConfigured = Boolean(data.opening_balance_configured);
         const totalRemaining = Number(data.total_remaining || 0);
-        const statusExcessAmount = isOverContributed ? overContributionAmount : 0;
-        const roomStatus = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, statusExcessAmount);
-        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining, statusExcessAmount);
+        const roomStatus = data.room_status || null;
+        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(roomStatus);
         const roomBarColor = getContributionRoomBarColor(roomStatus);
-        const gaugeWidth = totalAvailableRoom > 0
-            ? Math.max(0, Math.min(100, (roomUsed / totalAvailableRoom) * 100))
-            : 0;
+        const gaugeWidth = roomStatus === "full" || roomStatus === "over-limit"
+            ? 100
+            : (totalAvailableRoom > 0 ? Math.max(0, Math.min(100, (roomUsed / totalAvailableRoom) * 100)) : 0);
 
         totalAvailableRoomState = totalAvailableRoom;
         totalRemainingRoomState = totalRemaining;
@@ -889,11 +825,8 @@ tfsaImportFormEl?.addEventListener('submit', async (e) => {
         const setupOpeningBalanceApplied = Boolean(result.setup_opening_balance_applied);
         const setupBaseYearApplied = Boolean(result.setup_base_year_applied);
         const summary = await fetchJson('/api/tfsa/summary');
-        const taxableExcessAmount = Number(summary.taxable_excess_amount || 0);
-        const overContributionAmount = Number(summary.over_contribution_amount ?? taxableExcessAmount);
-        const isOverContributed = (typeof summary.is_over_contributed === 'boolean')
-            ? summary.is_over_contributed
-            : overContributionAmount > ROOM_EPSILON;
+        const overContributionAmount = Number(summary.over_contribution_amount || 0);
+        const isOverContributed = Boolean(summary.is_over_contributed);
         const correctionHint = isOverContributed
             ? ` Warning: estimated taxable TFSA excess amount is ${formatMoney(overContributionAmount)}. Add a Withdrawal transaction to reduce the excess.`
             : '';
