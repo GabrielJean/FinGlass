@@ -11,6 +11,7 @@ FHSA_MAX_YEARLY_ROOM = FHSA_ANNUAL_LIMIT + FHSA_CARRY_FORWARD_CAP
 FHSA_FIRST_YEAR = 2023
 FHSA_TRACKED_OPENING_ROOM_CAP = FHSA_LIFETIME_LIMIT
 FHSA_MAX_OPEN_YEARS = 15
+ROOM_EPSILON = 0.005
 
 
 def is_user_fhsa_opening_balance_configured(user_id):
@@ -496,6 +497,8 @@ def get_fhsa_summary(user_id):
 
     total_remaining = simulation["room_after_current_year_deposits"]
     taxable_excess_amount = max(0.0, float(simulation.get("excess_current_year") or 0.0))
+    over_contribution_amount = taxable_excess_amount
+    is_over_contributed = over_contribution_amount > ROOM_EPSILON
     total_available_room = simulation["room_before_current_year_deposits"]
     lifetime_contribution_remaining = max(0.0, FHSA_LIFETIME_LIMIT - room_deposits)
     qualifying_info = get_first_qualifying_withdrawal_info(user_id)
@@ -556,6 +559,8 @@ def get_fhsa_summary(user_id):
         "room_used": room_deposits,
         "total_remaining": total_remaining,
         "taxable_excess_amount": taxable_excess_amount,
+        "over_contribution_amount": over_contribution_amount,
+        "is_over_contributed": is_over_contributed,
         "has_qualifying_withdrawal": qualifying_info["has_qualifying_withdrawal"],
         "first_qualifying_withdrawal_date": qualifying_info["first_qualifying_withdrawal_date"],
         "first_qualifying_withdrawal_year": qualifying_info["first_qualifying_withdrawal_year"],

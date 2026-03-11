@@ -83,12 +83,13 @@ let roomUsedState = 0;
 let currentSort = { key: "contribution_date", direction: "desc" };
 const ROOM_EPSILON = 0.005;
 
-function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining) {
+function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
     const available = Number(totalAvailableRoom || 0);
     const used = Number(roomUsed || 0);
     const remaining = Number(totalRemaining || 0);
+    const excess = Number(taxableExcessAmount || 0);
 
-    if (available > ROOM_EPSILON && used > available + ROOM_EPSILON) {
+    if (excess > ROOM_EPSILON) {
         return 'over-limit';
     }
     if (available <= ROOM_EPSILON || remaining <= ROOM_EPSILON || (available > ROOM_EPSILON && used >= available - ROOM_EPSILON)) {
@@ -103,8 +104,8 @@ function getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining)
     return null;
 }
 
-function buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining) {
-    const status = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining);
+function buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount = 0) {
+    const status = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, taxableExcessAmount);
     if (!status) {
         return '';
     }
@@ -692,13 +693,23 @@ async function loadTfsaSummary() {
         const overcontributionCushion = Number(data.overcontribution_cushion || 2000);
         const cushionRemaining = Number(data.cushion_remaining || 0);
         const taxableExcessAmount = Number(data.taxable_excess_amount || 0);
+        const craOverContributionAmount = Number(
+            data.cra_over_contribution_amount ?? Math.max(0, -deductionLimitRemaining)
+        );
+        const cushionUsed = Number(
+            data.cushion_used_amount ?? Math.max(0, overcontributionCushion - Math.max(0, cushionRemaining))
+        );
+        const isUsingCushion = (typeof data.is_using_cushion === 'boolean')
+            ? data.is_using_cushion
+            : (craOverContributionAmount > ROOM_EPSILON && taxableExcessAmount <= ROOM_EPSILON);
+        const statusExcessAmount = Math.max(taxableExcessAmount, craOverContributionAmount);
         const totalUnusedContributions = Number(data.total_unused_contributions || 0);
         const totalUsedCarryForwardContributions = Number(data.total_used_carry_forward_contributions || 0);
         const minAnnualYear = Number(data.minimum_annual_year || 0);
         const openingBalanceConfigured = Boolean(data.opening_balance_configured);
         const totalRemaining = Number(data.total_remaining || 0);
-        const roomStatus = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining);
-        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining);
+        const roomStatus = getContributionRoomStatus(totalAvailableRoom, roomUsed, totalRemaining, statusExcessAmount);
+        const roomStatusLabelHtml = buildContributionRoomStatusLabelHtml(totalAvailableRoom, roomUsed, totalRemaining, statusExcessAmount);
         const roomBarColor = getContributionRoomBarColor(roomStatus);
         const gaugeWidth = totalAvailableRoom > 0
             ? Math.max(0, Math.min(100, (roomUsed / totalAvailableRoom) * 100))
@@ -731,12 +742,14 @@ async function loadTfsaSummary() {
                 <p>Total Room Available: <strong>${formatMoney(totalAvailableRoom)}</strong></p>
                 <p>Net Room Used: <strong>${formatMoney(roomUsed)}</strong></p>
                 <p>Deduction Limit Remaining: <strong>${formatMoney(Math.max(0, deductionLimitRemaining))}</strong></p>
-                <p>Overcontribution Cushion Remaining: <strong>${formatMoney(cushionRemaining)}</strong> (max cushion ${formatMoney(overcontributionCushion)})</p>
+                <p>Overcontribution Cushion Remaining (tolerance only, not room): <strong>${formatMoney(cushionRemaining)}</strong> (max cushion ${formatMoney(overcontributionCushion)})</p>
                 <div class="room-gauge">
                     <div class="bar" style="width: ${gaugeWidth}%; background: ${roomBarColor};"></div>
                 </div>
                 <p class="remaining highlight">Room Remaining: <strong>${formatMoney(totalRemaining)}</strong> ${roomStatusLabelHtml}</p>
+                ${craOverContributionAmount > 0 ? `<p class="muted">You are over your CRA deduction room by <strong>${formatMoney(craOverContributionAmount)}</strong>.</p>` : ''}
                 ${taxableExcessAmount > 0 ? `<p class="muted">You currently exceed RRSP contribution room (after the $2,000 cushion) by <strong>${formatMoney(taxableExcessAmount)}</strong>.</p>` : ''}
+                ${isUsingCushion ? `<p class="muted">Warning: this overage is currently within the RRSP $2,000 cushion (${formatMoney(cushionUsed)} used), but the cushion is only a correction tolerance and is not part of CRA contribution room.</p>` : ''}
                 ${roomWithdrawalsPending > 0 ? `<p class="muted">RRSP withdrawals (${formatMoney(roomWithdrawalsPending)}) do not restore contribution room.</p>` : ''}
                 ${totalUnusedContributions > 0 ? `<p class="muted">Unused contributions carried forward: ${formatMoney(totalUnusedContributions)}.</p>` : ''}
                 ${totalUsedCarryForwardContributions > 0 ? `<p class="muted">Previously unused contributions now deducted: ${formatMoney(totalUsedCarryForwardContributions)}.</p>` : ''}
