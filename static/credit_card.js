@@ -15,6 +15,7 @@ const filterCategorySummaryEl = document.getElementById("filterCategorySummary")
 const filterCategoryOptionsEl = document.getElementById("filterCategoryOptions");
 const filterMerchantEl = document.getElementById("filterMerchant");
 const filterIncludeHiddenEl = document.getElementById("filterIncludeHidden");
+const quickDateButtonsEl = filtersForm?.querySelector("[data-quick-date-buttons]");
 const selectAllCreditTxEl = document.getElementById("selectAllCreditTx");
 const hideSelectedCreditTxBtn = document.getElementById("hideSelectedCreditTxBtn");
 const deleteSelectedCreditTxBtn = document.getElementById("deleteSelectedCreditTxBtn");
@@ -34,6 +35,7 @@ const markTableBodyRefreshed = common.markTableBodyRefreshed;
 const animateNumber = common.animateNumber;
 const applyPageEnterMotion = common.applyPageEnterMotion;
 const ensureOverlayElementsAtBody = common.ensureOverlayElementsAtBody;
+const setupQuickDateButtons = common.setupQuickDateButtons;
 
 const ccMonthlyCtx = document.getElementById("ccMonthlyChart");
 const ccCategoryCtx = document.getElementById("ccCategoryChart");
@@ -955,8 +957,22 @@ filtersForm.addEventListener("submit", async (event) => {
   }
 });
 
+const quickDateControls = setupQuickDateButtons?.({
+  container: quickDateButtonsEl,
+  startInput: filterStartDateEl,
+  endInput: filterEndDateEl,
+  onApply: async () => {
+    try {
+      await applyTransactionFilters({ statusMessage: "Quick date filter applied." });
+    } catch (err) {
+      setErrorStatus(err.message);
+    }
+  },
+});
+
 document.getElementById("resetCreditFiltersBtn").addEventListener("click", async () => {
   try {
+    quickDateControls?.clearActive?.();
     await applyTransactionFilters({
       resetDates: true,
       resetCard: true,

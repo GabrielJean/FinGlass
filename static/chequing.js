@@ -13,6 +13,7 @@ const filterCategoryEl = document.getElementById("filterCategory");
 const filterDirectionEl = document.getElementById("filterDirection");
 const filterSearchEl = document.getElementById("filterSearch");
 const filterIncludeHiddenEl = document.getElementById("filterIncludeHidden");
+const quickDateButtonsEl = filtersForm?.querySelector("[data-quick-date-buttons]");
 const resetFiltersBtn = document.getElementById("resetFiltersBtn");
 const selectAllTxEl = document.getElementById("selectAllTx");
 const hideSelectedBtn = document.getElementById("hideSelectedBtn");
@@ -55,6 +56,7 @@ const markTableBodyRefreshed = common.markTableBodyRefreshed;
 const applyPageEnterMotion = common.applyPageEnterMotion;
 const currencyFormatter = common.defaultCurrencyFormatter;
 const ensureOverlayElementsAtBody = common.ensureOverlayElementsAtBody;
+const setupQuickDateButtons = common.setupQuickDateButtons;
 
 let chequingMonthlyChart;
 let loadedTransactions = [];
@@ -662,9 +664,26 @@ filtersForm?.addEventListener("submit", async (event) => {
   }
 });
 
+const quickDateControls = setupQuickDateButtons?.({
+  container: quickDateButtonsEl,
+  startInput: filterStartDateEl,
+  endInput: filterEndDateEl,
+  onApply: async () => {
+    try {
+      await loadAccounts();
+      await loadCategories();
+      await refreshAll();
+      setStatus("Quick date filter applied.");
+    } catch (err) {
+      setErrorStatus(err.message);
+    }
+  },
+});
+
 resetFiltersBtn?.addEventListener("click", async () => {
   if (filterStartDateEl) filterStartDateEl.value = "";
   if (filterEndDateEl) filterEndDateEl.value = "";
+  quickDateControls?.clearActive?.();
   if (filterAccountLabelEl) filterAccountLabelEl.value = "";
   if (filterCategoryEl) filterCategoryEl.value = "";
   if (filterDirectionEl) filterDirectionEl.value = "";
