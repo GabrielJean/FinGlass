@@ -133,12 +133,22 @@ def chequing_dashboard(request):
     rows = [_tx_dict(row) for row in queryset]
 
     inflow_rows = [row for row in rows if float(row.get("amount") or 0) > 0]
+    transfer_in_rows = [
+        row
+        for row in inflow_rows
+        if _is_internal_transfer_from_savings_or_investing(row)
+    ]
     external_inflow_rows = [
         row
         for row in inflow_rows
         if not _is_internal_transfer_from_savings_or_investing(row)
     ]
     outflow_rows = [row for row in rows if float(row.get("amount") or 0) < 0]
+    transfer_out_rows = [
+        row
+        for row in outflow_rows
+        if _is_internal_transfer_to_savings_or_investing(row)
+    ]
     spending_outflow_rows = [
         row
         for row in outflow_rows
@@ -147,15 +157,22 @@ def chequing_dashboard(request):
 
     total_in = round(sum(float(row.get("amount") or 0) for row in external_inflow_rows), 2)
     total_out = round(abs(sum(float(row.get("amount") or 0) for row in spending_outflow_rows)), 2)
+    total_saved_invested = round(abs(sum(float(row.get("amount") or 0) for row in transfer_out_rows)), 2)
+    total_removed_from_saved_invested = round(sum(float(row.get("amount") or 0) for row in transfer_in_rows), 2)
+    net_saved_invested = round(total_saved_invested - total_removed_from_saved_invested, 2)
     net_flow = round(total_in - total_out, 2)
 
     summary = {
         "total_in": total_in,
         "total_out": total_out,
+        "total_saved_invested": total_saved_invested,
+        "net_saved_invested": net_saved_invested,
         "net_flow": net_flow,
         "transactions": len(rows),
         "inflow_transactions": len(external_inflow_rows),
         "outflow_transactions": len(spending_outflow_rows),
+        "saved_invested_transactions": len(transfer_out_rows),
+        "removed_from_saved_invested_transactions": len(transfer_in_rows),
     }
 
     monthly_totals = defaultdict(lambda: {"in": 0.0, "out": 0.0})

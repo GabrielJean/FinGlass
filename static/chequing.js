@@ -3,6 +3,7 @@ const chequingAsOfEl = document.getElementById("chequingAsOf");
 const summaryMoneyInEl = document.getElementById("summaryMoneyIn");
 const summaryMoneyOutEl = document.getElementById("summaryMoneyOut");
 const summaryNetFlowEl = document.getElementById("summaryNetFlow");
+const summaryMoneySavedInvestedEl = document.getElementById("summaryMoneySavedInvested");
 const summaryTransactionsEl = document.getElementById("summaryTransactions");
 
 const filtersForm = document.getElementById("chequingFiltersForm");
@@ -120,6 +121,9 @@ function renderSummary(data) {
   summaryMoneyInEl.textContent = fmtMoney(summary.total_in || 0);
   summaryMoneyOutEl.textContent = fmtMoney(summary.total_out || 0);
   summaryNetFlowEl.textContent = fmtMoney(summary.net_flow || 0);
+  if (summaryMoneySavedInvestedEl) {
+    summaryMoneySavedInvestedEl.textContent = fmtMoney(summary.net_saved_invested || 0);
+  }
   summaryTransactionsEl.textContent = Number(summary.transactions || 0).toString();
 
   chequingAsOfEl.textContent = data.latest_transaction_date
