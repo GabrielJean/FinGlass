@@ -1,6 +1,7 @@
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from django.shortcuts import redirect
+from django.conf import settings
 
 
 class LoginRequiredMiddleware:
@@ -62,4 +63,29 @@ class SecurityHeadersMiddleware:
             "base-uri 'self'; "
             "form-action 'self'",
         )
+        return response
+
+
+class AdaptiveCookieSecurityMiddleware:
+    """Set cookie Secure flags to match the request scheme.
+
+    This allows one image to work for both HTTP and HTTPS deployments.
+    """
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        is_https = bool(request.is_secure())
+
+        session_cookie_name = getattr(settings, "SESSION_COOKIE_NAME", "sessionid")
+        csrf_cookie_name = getattr(settings, "CSRF_COOKIE_NAME", "csrftoken")
+
+        if session_cookie_name in response.cookies:
+            response.cookies[session_cookie_name]["secure"] = is_https
+
+        if csrf_cookie_name in response.cookies:
+            response.cookies[csrf_cookie_name]["secure"] = is_https
+
         return response
