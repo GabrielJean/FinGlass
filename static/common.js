@@ -444,6 +444,9 @@
     if (range === "7d") {
       return addDays(endDate, -6);
     }
+    if (range === "ytd") {
+      return new Date(endDate.getFullYear(), 0, 1);
+    }
     if (range === "30d") {
       return addDays(endDate, -29);
     }
