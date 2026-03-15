@@ -184,7 +184,7 @@
       <section class="card">
         <h2>Summary</h2>
         <p id="chequingAsOf" class="muted">No chequing data imported yet.</p>
-        <p class="muted">Money In/Out excludes internal transfers to and from savings/investing accounts.</p>
+        <p class="muted">Money In/Out excludes internal transfers; transfers are combined into Net Saved / Invested.</p>
         <div class="summary-grid credit-summary-grid">
           <article class="summary-card">
             <p class="summary-label">Money In</p>
@@ -197,6 +197,10 @@
           <article class="summary-card">
             <p class="summary-label">Net Flow</p>
             <p class="summary-value" id="summaryNetFlow">$0.00</p>
+          </article>
+          <article class="summary-card">
+            <p class="summary-label">Net Saved / Invested</p>
+            <p class="summary-value" id="summaryMoneySavedInvested">$0.00</p>
           </article>
           <article class="summary-card">
             <p class="summary-label">Transactions</p>
@@ -263,6 +267,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="/static/common.js?v=20260305-globalmotion"></script>
     <script src="/static/user_profile_menu.js"></script>
-    <script src="/static/chequing.js?v=20260315-recategorize"></script>
+    <script src="/static/chequing.js?v=20260315-summarytransfers"></script>
   </body>
 </html>
