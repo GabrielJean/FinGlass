@@ -417,6 +417,121 @@
     });
   }
 
+  function toDateInputValue(date) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function toStartOfDay(date) {
+    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  }
+
+  function addDays(date, delta) {
+    const next = new Date(date);
+    next.setDate(next.getDate() + delta);
+    return next;
+  }
+
+  function addMonths(date, delta) {
+    const next = new Date(date);
+    next.setMonth(next.getMonth() + delta);
+    return next;
+  }
+
+  function resolveQuickDateStart(endDate, range) {
+    if (range === "7d") {
+      return addDays(endDate, -6);
+    }
+    if (range === "30d") {
+      return addDays(endDate, -29);
+    }
+    if (range === "90d") {
+      return addDays(endDate, -89);
+    }
+    if (range === "6m") {
+      return addMonths(endDate, -6);
+    }
+    if (range === "12m") {
+      return addMonths(endDate, -12);
+    }
+    return null;
+  }
+
+  function setupQuickDateButtons(options = {}) {
+    const container = options.container;
+    const startInput = options.startInput;
+    const endInput = options.endInput;
+    const onApply = options.onApply;
+    const getNow = typeof options.getNow === "function" ? options.getNow : () => new Date();
+
+    if (!(container instanceof globalScope.HTMLElement) || !startInput || !endInput) {
+      return { clearActive: () => {} };
+    }
+
+    const buttons = Array.from(container.querySelectorAll("button[data-quick-date-range]"));
+    if (!buttons.length) {
+      return { clearActive: () => {} };
+    }
+
+    let suppressInputClear = false;
+
+    function setActiveButton(activeButton) {
+      buttons.forEach((button) => {
+        const isActive = button === activeButton;
+        button.classList.toggle("quick-date-active", isActive);
+        button.setAttribute("aria-pressed", isActive ? "true" : "false");
+      });
+    }
+
+    function clearActive() {
+      setActiveButton(null);
+    }
+
+    function maybeClearActiveOnManualDateChange() {
+      if (suppressInputClear) {
+        return;
+      }
+      clearActive();
+    }
+
+    startInput.addEventListener("change", maybeClearActiveOnManualDateChange);
+    endInput.addEventListener("change", maybeClearActiveOnManualDateChange);
+
+    buttons.forEach((button) => {
+      button.setAttribute("aria-pressed", "false");
+      button.addEventListener("click", async (event) => {
+        event.preventDefault();
+
+        const range = String(button.dataset.quickDateRange || "").trim();
+        if (!range) {
+          return;
+        }
+
+        const endDate = toStartOfDay(getNow());
+        const startDate = resolveQuickDateStart(endDate, range);
+        if (!startDate) {
+          return;
+        }
+
+        setActiveButton(button);
+        suppressInputClear = true;
+        startInput.value = toDateInputValue(startDate);
+        endInput.value = toDateInputValue(endDate);
+        startInput.dispatchEvent(new Event("change", { bubbles: true }));
+        endInput.dispatchEvent(new Event("change", { bubbles: true }));
+        suppressInputClear = false;
+
+        if (typeof onApply === "function") {
+          await onApply({ range, startDate, endDate, button });
+        }
+      });
+    });
+
+    return { clearActive };
+  }
+
   let dialogElements;
   let dialogResolver = null;
   let dialogCanCancel = true;
@@ -660,6 +775,7 @@
     animateNumber,
     applyPageEnterMotion,
     ensureOverlayElementsAtBody,
+    setupQuickDateButtons,
     showConfirmDialog,
     showAlertDialog,
     buildContributionRoomStatusLabelHtml,

@@ -121,6 +121,13 @@ button.btn-secondary:hover,
   filter: none;
 }
 
+button[data-quick-date-range][aria-pressed="true"],
+button.quick-date-active {
+  background: #334155;
+  border-color: #94a3b8;
+  box-shadow: 0 0 0 2px rgba(148, 163, 184, 0.28);
+}
+
 button.btn-danger,
 .btn-link.btn-danger,
 button[data-action="delete"],
