@@ -7,7 +7,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 
 from core.constants import CHEQUING_DEFAULT_PROVIDER, CHEQUING_SUPPORTED_PROVIDERS
 from core.models import ChequingAccount, ChequingTransaction
-from core.services.chequing_service import parse_bool_query
+from core.services.chequing_service import normalize_chequing_category, parse_bool_query
 
 
 _INTERNAL_TRANSFER_OUT_CODES = {"TRFOUT", "TRFOUTTF"}
@@ -464,6 +464,28 @@ def delete_many_chequing_transactions(request):
     ).delete()
 
     return JsonResponse({"deleted": deleted})
+
+
+@require_http_methods(["POST"])
+def recategorize_chequing_transactions(request):
+    queryset = ChequingTransaction.objects.filter(user=request.user)
+    scanned = queryset.count()
+
+    to_update = []
+    for row in queryset.iterator():
+        normalized_category = normalize_chequing_category(row.transaction_code, row.description, row.amount)
+        if not normalized_category:
+            continue
+        current_category = str(row.category or "").strip()
+        if current_category == normalized_category:
+            continue
+        row.category = normalized_category
+        to_update.append(row)
+
+    if to_update:
+        ChequingTransaction.objects.bulk_update(to_update, ["category"])
+
+    return JsonResponse({"scanned": scanned, "updated": len(to_update)})
 
 
 @require_http_methods(["DELETE"])
