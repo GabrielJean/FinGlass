@@ -33,6 +33,7 @@ const chequingAccountAddFormEl = document.getElementById("chequing-account-add-f
 const chequingAccountAddProviderSelectEl = document.getElementById("chequing-account-add-provider");
 const chequingAccountAddLabelInputEl = document.getElementById("chequing-account-add-label");
 const chequingAccountsListBodyEl = document.getElementById("chequing-accounts-list-body");
+const chequingRecategorizeBtnEl = document.getElementById("chequing-recategorize-btn");
 
 const chequingAccountRenameModalEl = document.getElementById("chequingAccountRenameModal");
 const chequingAccountRenameFormEl = document.getElementById("chequing-account-rename-form");
@@ -639,6 +640,16 @@ async function deleteAllTransactions() {
   setStatus("Deleted chequing transactions.");
 }
 
+async function recategorizeChequingTransactions() {
+  const response = await fetchJson("/api/chequing/transactions/recategorize", {
+    method: "POST",
+  });
+  return {
+    scanned: Number(response?.scanned || 0),
+    updated: Number(response?.updated || 0),
+  };
+}
+
 filtersForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   try {
@@ -933,6 +944,30 @@ if (chequingAccountDeleteConfirmBtnEl) {
       setStatus(`Account "${label}" and its transactions deleted.`);
     } catch (err) {
       setErrorStatus(err.message);
+    }
+  });
+}
+
+if (chequingRecategorizeBtnEl) {
+  chequingRecategorizeBtnEl.addEventListener("click", async () => {
+    const confirmed = window.confirm(
+      "Rebuild categories for existing chequing transactions using current mapping rules?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const previousDisabled = chequingRecategorizeBtnEl.disabled;
+    chequingRecategorizeBtnEl.disabled = true;
+    try {
+      const result = await recategorizeChequingTransactions();
+      await loadCategories();
+      await refreshAll();
+      setStatus(`Recategorized ${result.updated} of ${result.scanned} chequing transaction(s).`);
+    } catch (err) {
+      setErrorStatus(err.message);
+    } finally {
+      chequingRecategorizeBtnEl.disabled = previousDisabled;
     }
   });
 }

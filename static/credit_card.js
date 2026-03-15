@@ -56,6 +56,7 @@ const creditCardAddFormEl = document.getElementById("credit-card-add-form");
 const creditCardAddProviderSelectEl = document.getElementById("credit-card-add-provider");
 const creditCardAddLabelInputEl = document.getElementById("credit-card-add-label");
 const creditCardsListBodyEl = document.getElementById("credit-cards-list-body");
+const creditCardRecategorizeBtnEl = document.getElementById("credit-card-recategorize-btn");
 const creditCardResetDataBtnEl = document.getElementById("credit-card-reset-data-btn");
 const creditCardResetConfirmModalEl = document.getElementById("creditCardResetConfirmModal");
 const creditCardResetConfirmBackdropEl = document.getElementById("creditCardResetConfirmBackdrop");
@@ -1675,6 +1676,16 @@ async function handleResetAllCreditCardData() {
   }
 }
 
+async function recategorizeCreditCardTransactions() {
+  const response = await fetchJson("/api/credit-card/transactions/recategorize", {
+    method: "POST",
+  });
+  return {
+    scanned: Number(response?.scanned || 0),
+    updated: Number(response?.updated || 0),
+  };
+}
+
 // Settings menu event listeners
 if (creditCardSettingsToggleBtnEl) {
   creditCardSettingsToggleBtnEl.addEventListener("click", openCreditCardSettingsMenu);
@@ -1743,6 +1754,30 @@ if (creditCardDeleteConfirmInputEl) {
 
 if (creditCardResetDataBtnEl) {
   creditCardResetDataBtnEl.addEventListener("click", openCreditCardResetConfirmModal);
+}
+
+if (creditCardRecategorizeBtnEl) {
+  creditCardRecategorizeBtnEl.addEventListener("click", async () => {
+    const confirmed = window.confirm(
+      "Normalize categories for existing credit card transactions using current mapping rules?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    const previousDisabled = creditCardRecategorizeBtnEl.disabled;
+    creditCardRecategorizeBtnEl.disabled = true;
+    try {
+      const result = await recategorizeCreditCardTransactions();
+      await loadCategories();
+      await refreshAll();
+      setStatus(`Recategorized ${result.updated} of ${result.scanned} credit card transaction(s).`);
+    } catch (err) {
+      setErrorStatus(err.message);
+    } finally {
+      creditCardRecategorizeBtnEl.disabled = previousDisabled;
+    }
+  });
 }
 
 if (creditCardResetCancelBtnEl) {

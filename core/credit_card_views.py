@@ -426,6 +426,26 @@ def delete_all_credit_card_transactions(request):
     return JsonResponse({"deleted": deleted})
 
 
+@require_http_methods(["POST"])
+def recategorize_credit_card_transactions(request):
+    queryset = CreditCardTransaction.objects.filter(user=request.user)
+    scanned = queryset.count()
+
+    to_update = []
+    for row in queryset.iterator():
+        normalized_category = normalize_credit_card_category(row.merchant_category)
+        current_category = str(row.merchant_category or "").strip()
+        if current_category == normalized_category:
+            continue
+        row.merchant_category = normalized_category
+        to_update.append(row)
+
+    if to_update:
+        CreditCardTransaction.objects.bulk_update(to_update, ["merchant_category"])
+
+    return JsonResponse({"scanned": scanned, "updated": len(to_update)})
+
+
 @require_http_methods(["PATCH"])
 def rename_credit_card(request, card_label):
     payload = _read_json(request)
