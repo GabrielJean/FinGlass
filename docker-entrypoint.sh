@@ -1,6 +1,8 @@
 #!/bin/bash
 set -eu -o pipefail
 
+mkdir -p /app/data
+
 echo "=== Running Migrations ==="
 python -u manage.py migrate --noinput
 
