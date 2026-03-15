@@ -65,6 +65,63 @@
   height: 340px !important;
 }
 
+.overview-mode-card {
+  margin-top: 1.25rem;
+}
+
+.overview-mode-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.overview-mode-header h2 {
+  margin-bottom: 0.35rem;
+}
+
+.overview-mode-header .muted {
+  margin: 0;
+}
+
+.overview-mode-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem;
+  border-radius: 999px;
+  border: 1px solid #334155;
+  background: linear-gradient(180deg, #0f172a 0%, #111827 100%);
+}
+
+.overview-mode-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #cbd5e1;
+  background: transparent;
+  cursor: pointer;
+  transition: background-color 160ms ease, color 160ms ease, transform 120ms ease;
+}
+
+.overview-mode-btn:hover {
+  color: #f1f5f9;
+  background: rgba(59, 130, 246, 0.15);
+}
+
+.overview-mode-btn.is-active {
+  color: #ffffff;
+  background: linear-gradient(180deg, #3b82f6 0%, #2563eb 100%);
+  box-shadow: 0 8px 20px rgba(37, 99, 235, 0.35);
+}
+
+.overview-mode-btn:active {
+  transform: translateY(1px);
+}
+
 /* Modals & Dialogs */
 .settings-menu {
   position: fixed;
@@ -138,6 +195,22 @@
   background: rgba(127, 29, 29, 0.12);
 }
 
+.chequing-account-actions .btn-link + .btn-link {
+  margin-left: 0.35rem;
+}
+
+.credit-card-actions .btn-link + .btn-link {
+  margin-left: 0.35rem;
+}
+
+.credit-card-delete-confirm-modal .row {
+  margin-top: 0.6rem;
+}
+
+.credit-card-delete-confirm-modal .row > button + button {
+  margin-left: 0.5rem;
+}
+
 .tfsa-opening-wizard-modal {
   position: fixed;
   top: 50%;
@@ -184,6 +257,11 @@
   z-index: 2225;
 }
 
+#creditCardDialogBackdrop,
+#chequingDialogBackdrop {
+  z-index: 2228;
+}
+
 .tfsa-reset-confirm-actions {
   justify-content: flex-end;
   margin-top: 0.35rem;
@@ -212,6 +290,24 @@
 
 .finglass-dialog-message {
   white-space: pre-line;
+}
+
+.export-wizard-modal-card {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(700px, calc(100vw - 2rem));
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  margin: 0;
+  z-index: 2230;
+}
+
+.export-wizard-modal-card.fg-page-enter-item,
+.export-wizard-modal-card.fg-page-enter-item.fg-page-enter-show {
+  animation: none !important;
+  transform: translate(-50%, -50%) !important;
 }
 
 .change-password-backdrop {

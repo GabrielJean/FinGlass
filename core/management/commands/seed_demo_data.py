@@ -24,6 +24,9 @@ from django.db import transaction
 
 from core.models import (
     AppSetting,
+    ChequingAccount,
+    ChequingTransaction,
+    CreditCardAccount,
     CreditCardTransaction,
     FhsaAccount,
     FhsaContribution,
@@ -37,6 +40,8 @@ from core.models import (
     TfsaContribution,
     Transaction,
 )
+from core.constants import CHEQUING_DEFAULT_PROVIDER
+from core.services.chequing_service import normalize_chequing_category
 
 User = get_user_model()
 
@@ -348,6 +353,11 @@ def _seed_credit_card(user, stdout):
     d = start
     while d <= end:
         for provider, card_label, card_last4, rewards_rate, weight_mult in CARDS:
+            CreditCardAccount.objects.get_or_create(
+                user=user,
+                label=card_label,
+                defaults={"provider": provider},
+            )
             for category, freq in MONTHLY_FREQ.items():
                 adjusted_freq = max(1, int(freq * weight_mult))
                 for _ in range(rng.randint(max(1, adjusted_freq - 1), adjusted_freq + 1)):
@@ -384,6 +394,88 @@ def _seed_credit_card(user, stdout):
             d = date(d.year, d.month + 1, 1)
 
     stdout.write(f"    Created {created} credit card transaction(s).")
+
+
+def _seed_chequing(user, stdout):
+    """Chequing account inflow/outflow history with fully anonymous synthetic data."""
+    stdout.write("  Seeding chequing transactions...")
+    created = 0
+    rng = random.Random(29)
+
+    start = date(2025, 1, 1)
+    end = date(2026, 2, 28)
+
+    employers = ["Northstar Fabrication", "Maple Vertex Systems", "Harborline Logistics"]
+    billers = [
+        ("AUTO LOAN SERVICING", -240.0, -340.0),
+        ("CREDIT CARD PAYMENT", -650.0, -1850.0),
+        ("INSURANCE PREMIUM", -90.0, -220.0),
+        ("MOBILE + INTERNET", -85.0, -170.0),
+        ("GROCERY RECURRING", -45.0, -140.0),
+    ]
+    transfer_recipients = ["Roommate", "Family", "Friend", "Shared Expenses"]
+
+    running_balance = Decimal("1800.00")
+    account_labels = ["Everyday Banking", "Bills & Transfers"]
+    for label in account_labels:
+        ChequingAccount.objects.get_or_create(
+            user=user,
+            label=label,
+            defaults={"provider": CHEQUING_DEFAULT_PROVIDER},
+        )
+
+    d = start
+    while d <= end:
+        monthly_events = [
+            ("Everyday Banking", "INT", "Interest earned", rng.uniform(4.2, 6.3), 1),
+            ("Everyday Banking", "AFT_IN", f"Direct deposit payroll - {rng.choice(employers)}", rng.uniform(2525.0, 2950.0), 2),
+            ("Everyday Banking", "AFT_IN", f"Direct deposit payroll - {rng.choice(employers)}", rng.uniform(2525.0, 2950.0), 16),
+            ("Everyday Banking", "TRFOUTTF", "Transfer to savings", -rng.uniform(150.0, 300.0), 10),
+            ("Bills & Transfers", "TRFOUTTF", "Transfer to savings", -rng.uniform(900.0, 1700.0), 11),
+            ("Bills & Transfers", "E_TRFOUT", f"Interac e-Transfer Out - {rng.choice(transfer_recipients)}", -rng.uniform(80.0, 350.0), 12),
+            ("Everyday Banking", "E_TRFIN", f"Interac e-Transfer Received - {rng.choice(transfer_recipients)}", rng.uniform(20.0, 120.0), 14),
+        ]
+
+        for biller, low, high in billers[:3]:
+            monthly_events.append(("Bills & Transfers", "AFT_OUT", f"Pre-authorized debit to {biller}", rng.uniform(low, high), rng.randint(18, 27)))
+
+        for account_label, tx_code, description, amount, default_day in monthly_events:
+            day = min(max(1, default_day + rng.randint(-1, 2)), 28)
+            tx_date = date(d.year, d.month, max(1, day))
+            tx_amount = Decimal(str(round(amount, 2)))
+
+            running_balance += tx_amount
+
+            exists = ChequingTransaction.objects.filter(
+                user=user,
+                transaction_date=tx_date,
+                transaction_code=tx_code,
+                description=description,
+                amount=tx_amount,
+            ).exists()
+            if exists:
+                continue
+
+            ChequingTransaction.objects.create(
+                user=user,
+                account_label=account_label,
+                transaction_date=tx_date,
+                transaction_code=tx_code,
+                description=description,
+                category=normalize_chequing_category(tx_code, description, float(tx_amount)),
+                amount=tx_amount,
+                balance=running_balance,
+                currency="CAD",
+                source_filename="seed_demo_data",
+            )
+            created += 1
+
+        if d.month == 12:
+            d = date(d.year + 1, 1, 1)
+        else:
+            d = date(d.year, d.month + 1, 1)
+
+    stdout.write(f"    Created {created} chequing transaction(s).")
 
 
 def _seed_tfsa(user, stdout):
@@ -547,6 +639,9 @@ def _flush_user_data(user, stdout):
         HoldingSnapshot.objects.filter(user=user).delete()
         NetWorthHistory.objects.filter(user=user).delete()
         CreditCardTransaction.objects.filter(user=user).delete()
+        CreditCardAccount.objects.filter(user=user).delete()
+        ChequingTransaction.objects.filter(user=user).delete()
+        ChequingAccount.objects.filter(user=user).delete()
         TfsaContribution.objects.filter(user=user).delete()
         TfsaAccount.objects.filter(user=user).delete()
         TfsaAnnualLimit.objects.filter(user=user).delete()
@@ -647,6 +742,7 @@ class Command(BaseCommand):
             _seed_holdings(user, self.stdout)
             _seed_net_worth(user, self.stdout)
             _seed_credit_card(user, self.stdout)
+            _seed_chequing(user, self.stdout)
             _seed_tfsa(user, self.stdout)
             _seed_rrsp(user, self.stdout)
             _seed_fhsa(user, self.stdout)

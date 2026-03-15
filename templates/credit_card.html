@@ -58,9 +58,16 @@
                 <div class="settings-menu-col">
                   <div class="settings-menu-section">
                     <h3>Manage Credit Cards</h3>
-                    <p class="muted">Add a new card label, rename existing cards, or delete all transactions for a card.</p>
+                    <p class="muted">Select a bank, add a new card label, rename existing cards, or delete all transactions for a card.</p>
 
                     <form id="credit-card-add-form" class="form-grid">
+                      <label>
+                        Bank
+                        <select id="credit-card-add-provider">
+                          <option value="rogers_bank">Rogers Bank</option>
+                          <option value="scotiabank">Scotiabank</option>
+                        </select>
+                      </label>
                       <label>
                         New Card Label
                         <input type="text" id="credit-card-add-label" placeholder="e.g., Chase Sapphire, TD Visa" required />
@@ -72,6 +79,7 @@
                       <table id="creditCardsListTable">
                         <thead>
                           <tr>
+                            <th>Bank</th>
                             <th>Card Label</th>
                             <th>Transactions</th>
                             <th>Actions</th>
@@ -97,6 +105,7 @@
 
       <div id="creditCardSettingsBackdrop" class="settings-backdrop hidden" aria-hidden="true"></div>
       <div id="creditCardResetConfirmBackdrop" class="settings-backdrop hidden" aria-hidden="true"></div>
+      <div id="creditCardDialogBackdrop" class="settings-backdrop hidden" aria-hidden="true"></div>
 
       <section class="card credit-card-reset-confirm-modal hidden" id="creditCardResetConfirmModal" aria-hidden="true" aria-labelledby="creditCardResetConfirmTitle">
         <h2 id="creditCardResetConfirmTitle">Reset Credit Card Data</h2>
@@ -137,6 +146,7 @@
           Card Label
           <input type="text" id="credit-card-delete-confirm-input" autocomplete="off" spellcheck="false" placeholder="Card label" />
         </label>
+        <p id="credit-card-delete-confirm-error" class="error-message hidden" aria-live="polite"></p>
         <div class="row">
           <button id="credit-card-delete-cancel-btn" type="button" class="btn-secondary">Cancel</button>
           <button id="credit-card-delete-confirm-btn" type="button" class="btn-danger" disabled>Delete Card</button>
@@ -310,6 +320,6 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="/static/common.js?v=20260305-globalmotion"></script>
     <script src="/static/user_profile_menu.js"></script>
-    <script src="/static/credit_card.js"></script>
+    <script src="/static/credit_card.js?v=20260314-dialogfix"></script>
   </body>
 </html>

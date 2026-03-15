@@ -1,0 +1,405 @@
+import json
+from collections import defaultdict
+
+from django.db.models import Count
+from django.http import JsonResponse
+from django.views.decorators.http import require_GET, require_http_methods
+
+from core.constants import CHEQUING_DEFAULT_PROVIDER, CHEQUING_SUPPORTED_PROVIDERS
+from core.models import ChequingAccount, ChequingTransaction
+from core.services.chequing_service import parse_bool_query
+
+
+def _read_json(request):
+    try:
+        if not request.body:
+            return {}
+        return json.loads(request.body.decode("utf-8"))
+    except (ValueError, UnicodeDecodeError):
+        return {}
+
+
+def _tx_dict(row):
+    amount = float(row.amount or 0)
+    return {
+        "id": row.id,
+        "account_label": row.account_label,
+        "transaction_date": row.transaction_date.isoformat() if row.transaction_date else "",
+        "transaction_code": row.transaction_code or "",
+        "description": row.description or "",
+        "category": row.category or "Other",
+        "amount": amount,
+        "balance": float(row.balance) if row.balance is not None else None,
+        "currency": row.currency or "CAD",
+        "is_hidden": bool(row.is_hidden),
+        "direction": "in" if amount > 0 else "out" if amount < 0 else "neutral",
+    }
+
+
+def _normalize_account_label(value):
+    label = str(value or "").strip()
+    return label[:128]
+
+
+def _normalize_chequing_provider(value):
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return CHEQUING_DEFAULT_PROVIDER
+    return CHEQUING_SUPPORTED_PROVIDERS.get(raw)
+
+
+@require_http_methods(["GET", "DELETE"])
+def chequing_transactions_collection(request):
+    if request.method == "GET":
+        return chequing_transactions(request)
+    return delete_all_chequing_transactions(request)
+
+
+@require_GET
+def chequing_dashboard(request):
+    start_date = str(request.GET.get("start_date") or "").strip()
+    end_date = str(request.GET.get("end_date") or "").strip()
+    category = str(request.GET.get("category") or "").strip()
+    search = str(request.GET.get("search") or "").strip()
+    account_label = str(request.GET.get("account_label") or "").strip()
+    include_hidden = parse_bool_query(request.GET.get("include_hidden"))
+
+    queryset = ChequingTransaction.objects.filter(user=request.user)
+    if start_date:
+        queryset = queryset.filter(transaction_date__gte=start_date)
+    if end_date:
+        queryset = queryset.filter(transaction_date__lte=end_date)
+    if category:
+        queryset = queryset.filter(category=category)
+    if account_label:
+        queryset = queryset.filter(account_label=account_label)
+    if search:
+        queryset = queryset.filter(description__icontains=search)
+    if not include_hidden:
+        queryset = queryset.filter(is_hidden=False)
+
+    rows = [_tx_dict(row) for row in queryset]
+
+    inflow_rows = [row for row in rows if float(row.get("amount") or 0) > 0]
+    outflow_rows = [row for row in rows if float(row.get("amount") or 0) < 0]
+
+    total_in = round(sum(float(row.get("amount") or 0) for row in inflow_rows), 2)
+    total_out = round(abs(sum(float(row.get("amount") or 0) for row in outflow_rows)), 2)
+    net_flow = round(total_in - total_out, 2)
+
+    summary = {
+        "total_in": total_in,
+        "total_out": total_out,
+        "net_flow": net_flow,
+        "transactions": len(rows),
+        "inflow_transactions": len(inflow_rows),
+        "outflow_transactions": len(outflow_rows),
+    }
+
+    monthly_totals = defaultdict(lambda: {"in": 0.0, "out": 0.0})
+    for row in rows:
+        month = str(row.get("transaction_date") or "")[:7]
+        amount = float(row.get("amount") or 0)
+        if not month:
+            continue
+        if amount >= 0:
+            monthly_totals[month]["in"] += amount
+        else:
+            monthly_totals[month]["out"] += abs(amount)
+
+    monthly = []
+    for month in sorted(monthly_totals.keys()):
+        month_in = round(monthly_totals[month]["in"], 2)
+        month_out = round(monthly_totals[month]["out"], 2)
+        monthly.append({"month": month, "in": month_in, "out": month_out, "net": round(month_in - month_out, 2)})
+
+    category_totals = defaultdict(lambda: {"in": 0.0, "out": 0.0, "count": 0})
+    for row in rows:
+        name = str(row.get("category") or "Other").strip() or "Other"
+        amount = float(row.get("amount") or 0)
+        if amount >= 0:
+            category_totals[name]["in"] += amount
+        else:
+            category_totals[name]["out"] += abs(amount)
+        category_totals[name]["count"] += 1
+
+    categories = []
+    for name, totals in category_totals.items():
+        category_in = round(totals["in"], 2)
+        category_out = round(totals["out"], 2)
+        categories.append(
+            {
+                "category": name,
+                "total_in": category_in,
+                "total_out": category_out,
+                "net": round(category_in - category_out, 2),
+                "count": totals["count"],
+            }
+        )
+
+    categories.sort(key=lambda item: item.get("total_out", 0), reverse=True)
+
+    return JsonResponse(
+        {
+            "summary": summary,
+            "monthly": monthly,
+            "categories": categories,
+        }
+    )
+
+
+@require_GET
+def chequing_categories(request):
+    include_hidden = parse_bool_query(request.GET.get("include_hidden"))
+    queryset = ChequingTransaction.objects.filter(user=request.user)
+    if not include_hidden:
+        queryset = queryset.filter(is_hidden=False)
+
+    rows = queryset.values_list("category", flat=True).distinct().order_by("category")
+    categories = sorted({str(value or "Other").strip() or "Other" for value in rows})
+    return JsonResponse(categories, safe=False)
+
+
+@require_GET
+def chequing_accounts(request):
+    include_hidden = parse_bool_query(request.GET.get("include_hidden"))
+    tx_counts = {
+        str(row["account_label"] or "").strip(): int(row["count"] or 0)
+        for row in ChequingTransaction.objects.filter(user=request.user)
+        .values("account_label")
+        .annotate(count=Count("id"))
+        if str(row["account_label"] or "").strip()
+    }
+    providers_by_label = {
+        str(row.get("label") or "").strip(): str(row.get("provider") or CHEQUING_DEFAULT_PROVIDER).strip() or CHEQUING_DEFAULT_PROVIDER
+        for row in ChequingAccount.objects.filter(user=request.user).values("label", "provider")
+        if str(row.get("label") or "").strip()
+    }
+    accounts = set(providers_by_label.keys())
+
+    tx_queryset = ChequingTransaction.objects.filter(user=request.user)
+    if not include_hidden:
+        tx_queryset = tx_queryset.filter(is_hidden=False)
+
+    tx_labels = tx_queryset.values_list("account_label", flat=True).distinct()
+    for label in tx_labels:
+        normalized = str(label or "").strip()
+        if not normalized:
+            continue
+        accounts.add(normalized)
+        if normalized not in providers_by_label:
+            providers_by_label[normalized] = CHEQUING_DEFAULT_PROVIDER
+
+    return JsonResponse([
+        {
+            "label": label,
+            "provider": providers_by_label.get(label, CHEQUING_DEFAULT_PROVIDER),
+            "transactions": tx_counts.get(label, 0),
+        }
+        for label in sorted(accounts)
+    ], safe=False)
+
+
+@require_http_methods(["POST"])
+def create_chequing_account(request):
+    payload = _read_json(request)
+    label = _normalize_account_label(payload.get("label"))
+    provider = _normalize_chequing_provider(payload.get("provider"))
+    if not label:
+        return JsonResponse({"error": "label is required"}, status=400)
+    if not provider:
+        supported = ", ".join(CHEQUING_SUPPORTED_PROVIDERS.values())
+        return JsonResponse({"error": f"Unsupported chequing bank. Supported banks: {supported}"}, status=400)
+
+    account, created = ChequingAccount.objects.get_or_create(
+        user=request.user,
+        label=label,
+        defaults={"provider": provider},
+    )
+    if not created:
+        if account.provider != provider:
+            return JsonResponse({"error": "Chequing account label already exists under a different bank"}, status=400)
+        return JsonResponse({"error": "Chequing account already exists"}, status=400)
+
+    return JsonResponse({"created": 1, "label": account.label, "provider": account.provider})
+
+
+@require_http_methods(["PATCH"])
+def rename_chequing_account(request, account_label):
+    payload = _read_json(request)
+    new_label = _normalize_account_label(payload.get("new_label"))
+    old_label = _normalize_account_label(account_label)
+
+    if not old_label:
+        return JsonResponse({"error": "account label is required"}, status=400)
+    if not new_label:
+        return JsonResponse({"error": "new_label is required"}, status=400)
+    if new_label == old_label:
+        return JsonResponse({"updated": 0, "old_label": old_label, "new_label": new_label})
+
+    if ChequingAccount.objects.filter(user=request.user, label=new_label).exists():
+        return JsonResponse({"error": "Chequing account already exists"}, status=400)
+
+    tx_exists = ChequingTransaction.objects.filter(user=request.user, account_label=old_label).exists()
+    account_exists = ChequingAccount.objects.filter(user=request.user, label=old_label).exists()
+    if not tx_exists and not account_exists:
+        return JsonResponse({"error": "Chequing account not found"}, status=404)
+
+    ChequingTransaction.objects.filter(user=request.user, account_label=old_label).update(account_label=new_label)
+
+    if account_exists:
+        ChequingAccount.objects.filter(user=request.user, label=old_label).update(label=new_label)
+    else:
+        ChequingAccount.objects.create(user=request.user, label=new_label, provider=CHEQUING_DEFAULT_PROVIDER)
+
+    return JsonResponse({"updated": 1, "old_label": old_label, "new_label": new_label})
+
+
+@require_http_methods(["DELETE"])
+def delete_chequing_account(request, account_label):
+    label = _normalize_account_label(account_label)
+    if not label:
+        return JsonResponse({"error": "account label is required"}, status=400)
+
+    deleted_tx, _ = ChequingTransaction.objects.filter(user=request.user, account_label=label).delete()
+    ChequingAccount.objects.filter(user=request.user, label=label).delete()
+
+    if deleted_tx == 0:
+        return JsonResponse({"error": "Chequing account not found"}, status=404)
+
+    return JsonResponse({"deleted": deleted_tx, "account_label": label})
+
+
+@require_GET
+def chequing_transactions(request):
+    start_date = str(request.GET.get("start_date") or "").strip()
+    end_date = str(request.GET.get("end_date") or "").strip()
+    category = str(request.GET.get("category") or "").strip()
+    search = str(request.GET.get("search") or "").strip()
+    account_label = str(request.GET.get("account_label") or "").strip()
+    direction = str(request.GET.get("direction") or "").strip().lower()
+    include_zero = parse_bool_query(request.GET.get("include_zero"))
+    include_hidden = parse_bool_query(request.GET.get("include_hidden"))
+    limit_raw = str(request.GET.get("limit") or "").strip().lower()
+
+    if not limit_raw:
+        limit = 300
+    elif limit_raw in {"all", "none"}:
+        limit = None
+    else:
+        try:
+            limit = int(limit_raw)
+        except ValueError:
+            return JsonResponse({"error": "limit must be an integer or 'all'"}, status=400)
+        if limit < 1:
+            return JsonResponse({"error": "limit must be >= 1 or 'all'"}, status=400)
+
+    queryset = ChequingTransaction.objects.filter(user=request.user)
+    if start_date:
+        queryset = queryset.filter(transaction_date__gte=start_date)
+    if end_date:
+        queryset = queryset.filter(transaction_date__lte=end_date)
+    if category:
+        queryset = queryset.filter(category=category)
+    if account_label:
+        queryset = queryset.filter(account_label=account_label)
+    if search:
+        queryset = queryset.filter(description__icontains=search)
+    if direction == "in":
+        queryset = queryset.filter(amount__gt=0)
+    elif direction == "out":
+        queryset = queryset.filter(amount__lt=0)
+    if not include_zero:
+        queryset = queryset.exclude(amount=0)
+    if not include_hidden:
+        queryset = queryset.filter(is_hidden=False)
+
+    rows = queryset.order_by("-transaction_date", "-id")
+
+    data = []
+    for row in rows:
+        data.append(_tx_dict(row))
+        if limit is not None and len(data) >= limit:
+            break
+
+    return JsonResponse(data, safe=False)
+
+
+@require_http_methods(["PATCH"])
+def set_chequing_transaction_hidden(request, transaction_id):
+    payload = _read_json(request)
+    hidden = bool(payload.get("hidden", True))
+
+    updated = ChequingTransaction.objects.filter(
+        id=transaction_id,
+        user=request.user,
+    ).update(is_hidden=hidden)
+    if updated == 0:
+        return JsonResponse({"error": "Chequing transaction not found"}, status=404)
+    return JsonResponse({"updated": 1, "hidden": hidden})
+
+
+@require_http_methods(["POST"])
+def set_many_chequing_transactions_hidden(request):
+    payload = _read_json(request)
+    hidden = bool(payload.get("hidden", True))
+    ids = payload.get("ids")
+    if not isinstance(ids, list) or len(ids) == 0:
+        return JsonResponse({"error": "ids must be a non-empty array"}, status=400)
+
+    normalized_ids = []
+    for item in ids:
+        try:
+            normalized_ids.append(int(item))
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "ids must contain only integers"}, status=400)
+
+    updated = ChequingTransaction.objects.filter(
+        user=request.user,
+        id__in=normalized_ids,
+    ).update(is_hidden=hidden)
+
+    return JsonResponse({"updated": updated, "hidden": hidden})
+
+
+@require_http_methods(["DELETE"])
+def delete_chequing_transaction(request, transaction_id):
+    deleted, _ = ChequingTransaction.objects.filter(
+        id=transaction_id,
+        user=request.user,
+    ).delete()
+    if deleted == 0:
+        return JsonResponse({"error": "Chequing transaction not found"}, status=404)
+    return JsonResponse({"deleted": 1})
+
+
+@require_http_methods(["POST"])
+def delete_many_chequing_transactions(request):
+    payload = _read_json(request)
+    ids = payload.get("ids")
+    if not isinstance(ids, list) or len(ids) == 0:
+        return JsonResponse({"error": "ids must be a non-empty array"}, status=400)
+
+    normalized_ids = []
+    for item in ids:
+        try:
+            normalized_ids.append(int(item))
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "ids must contain only integers"}, status=400)
+
+    deleted, _ = ChequingTransaction.objects.filter(
+        user=request.user,
+        id__in=normalized_ids,
+    ).delete()
+
+    return JsonResponse({"deleted": deleted})
+
+
+@require_http_methods(["DELETE"])
+def delete_all_chequing_transactions(request):
+    account_label = str(request.GET.get("account_label") or "").strip()
+    queryset = ChequingTransaction.objects.filter(user=request.user)
+    if account_label:
+        queryset = queryset.filter(account_label=account_label)
+    deleted, _ = queryset.delete()
+    return JsonResponse({"deleted": deleted})

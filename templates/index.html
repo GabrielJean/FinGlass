@@ -10,7 +10,7 @@
     <link rel="stylesheet" href="/static/css/forms.css" />
     <link rel="stylesheet" href="/static/css/buttons.css" />
     <link rel="stylesheet" href="/static/css/tables.css" />
-    <link rel="stylesheet" href="/static/css/components.css?v=20260304-roomstatus" />
+    <link rel="stylesheet" href="/static/css/components.css?v=20260314-overviewsplit" />
     <link rel="stylesheet" href="/static/css/theme.css" />
     <link rel="stylesheet" href="/static/css/responsive.css" />
   </head>
@@ -72,6 +72,7 @@
               <label class="feature-toggle-label"><input id="featureHoldingsOverview" type="checkbox" checked /> Holdings Overview</label>
               <label class="feature-toggle-label"><input id="featureAcbTracker" type="checkbox" checked /> ACB Tracker</label>
               <label class="feature-toggle-label"><input id="featureNetWorth" type="checkbox" checked /> Net Worth Tracker</label>
+              <label class="feature-toggle-label"><input id="featureChequingTracker" type="checkbox" checked /> Chequing Tracker</label>
               <label class="feature-toggle-label"><input id="featureCreditCard" type="checkbox" checked /> Credit Card</label>
               <label class="feature-toggle-label"><input id="featureTfsaTracker" type="checkbox" checked /> TFSA Tracker</label>
               <label class="feature-toggle-label"><input id="featureRrspTracker" type="checkbox" checked /> RRSP Tracker</label>
@@ -94,8 +95,8 @@
       <div id="settingsBackdrop" class="settings-backdrop hidden" aria-hidden="true"></div>
 
       <!-- Export Wizard Modal -->
-      <div id="exportWizardModal" class="settings-backdrop hidden" aria-hidden="true" style="z-index: 2000;">
-        <div class="card" style="position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); max-width: 700px; width: 90%; max-height: 90vh; overflow-y: auto; z-index: 2001; background: var(--bg-primary, #111827); color: var(--text-primary, #e2e8f0);">
+      <div id="exportWizardModal" class="settings-backdrop hidden" aria-hidden="true">
+        <div id="exportWizardCard" class="card export-wizard-modal-card hidden" aria-hidden="true" style="background: var(--bg-primary, #111827); color: var(--text-primary, #e2e8f0);">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
             <div>
               <h2 style="margin: 0; color: var(--text-primary, #e2e8f0);">📦 Backup & Export Wizard</h2>
@@ -161,6 +162,7 @@
                 <button id="exportTransactionsBtn" class="btn-secondary">Transactions (ACB)</button>
                 <button id="exportHoldingsBtn" class="btn-secondary">Holdings</button>
                 <button id="exportNetWorthBtn" class="btn-secondary">Net Worth</button>
+                <button id="exportChequingBtn" class="btn-secondary">Chequing</button>
                 <button id="exportCreditCardsBtn" class="btn-secondary">Credit Cards</button>
                 <button id="exportTfsaBtn" class="btn-secondary">TFSA Data</button>
                 <button id="exportRrspBtn" class="btn-secondary">RRSP Data</button>
@@ -183,11 +185,43 @@
           <div class="import-hero-info">
             <h3 class="import-info-title">What you can import:</h3>
             <ul class="import-info-list">
+              <li><strong>Chequing Transactions</strong> · Money in/out from your bank statement CSV</li>
+              <li><strong>Credit Card Statements</strong> · Transaction history for expense tracking</li>
               <li><strong>Investment Transactions</strong> · CSV from your broker for ACB tracking</li>
               <li><strong>Holdings Snapshot</strong> · Current portfolio positions from your broker</li>
-              <li><strong>Credit Card Statements</strong> · Transaction history for expense tracking</li>
               <li><strong>Tax Documents</strong> · PDF slips with ROC and reinvested gains</li>
             </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="card overview-mode-card" id="overviewModeSection">
+        <div class="overview-mode-header">
+          <div>
+            <h2>Dashboard Overview</h2>
+            <p id="overviewModeDescription" class="muted">Investment overview is active.</p>
+          </div>
+          <div class="overview-mode-switch" role="tablist" aria-label="Dashboard overview mode">
+            <button
+              id="overviewExpensesBtn"
+              type="button"
+              class="overview-mode-btn is-active"
+              role="tab"
+              aria-selected="true"
+              data-mode="expenses"
+            >
+              💸 Expenses
+            </button>
+            <button
+              id="overviewInvestmentsBtn"
+              type="button"
+              class="overview-mode-btn"
+              role="tab"
+              aria-selected="false"
+              data-mode="investments"
+            >
+              📈 Investments
+            </button>
           </div>
         </div>
       </section>
@@ -339,6 +373,37 @@
         </div>
       </section>
 
+      <section class="card" id="chequingSection">
+        <div class="row section-title-row">
+          <h2>Chequing Tracker · Quick Overview</h2>
+          <a class="btn-link" href="/chequing">Open Full Page</a>
+        </div>
+        <p id="chequingAsOf" class="muted">No chequing data imported yet.</p>
+        <div class="summary-grid credit-summary-grid">
+          <article class="summary-card">
+            <p class="summary-label">Money In</p>
+            <p class="summary-value" id="cheqMoneyIn">$0.00</p>
+          </article>
+          <article class="summary-card">
+            <p class="summary-label">Money Out</p>
+            <p class="summary-value" id="cheqMoneyOut">$0.00</p>
+          </article>
+          <article class="summary-card">
+            <p class="summary-label">Net Flow</p>
+            <p class="summary-value" id="cheqNetFlow">$0.00</p>
+          </article>
+          <article class="summary-card">
+            <p class="summary-label">Transactions</p>
+            <p class="summary-value" id="cheqTransactions">0</p>
+          </article>
+        </div>
+
+        <div class="chart-card cc-monthly-chart-card">
+          <h3>Monthly Flow</h3>
+          <canvas id="chequingMonthlyChart"></canvas>
+        </div>
+      </section>
+
       <section class="card" id="creditCardSection">
         <div class="row section-title-row">
           <h2>Credit Card Expenses · Quick Overview</h2>
@@ -381,7 +446,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
     <script src="/static/common.js?v=20260305-globalmotion"></script>
-    <script src="/static/overview.js?v=20260304-roomstatus" defer></script>
+    <script src="/static/overview.js?v=20260314-exportcenter2" defer></script>
 
     <!-- Change Password Modal -->
     <div id="changePasswordModal" class="settings-backdrop change-password-backdrop hidden" aria-hidden="true">

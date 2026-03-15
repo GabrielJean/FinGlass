@@ -1,6 +1,8 @@
 from django.conf import settings
 from django.db import models
 
+from core.constants import CHEQUING_DEFAULT_PROVIDER
+
 
 class Transaction(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="transactions")
@@ -119,6 +121,47 @@ class CreditCardTransaction(models.Model):
             models.Index(fields=["provider", "transaction_date", "id"], name="idx_cc_provider_date"),
             models.Index(fields=["provider", "merchant_category"], name="idx_cc_provider_category"),
         ]
+
+
+class CreditCardAccount(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="credit_card_accounts")
+    provider = models.CharField(max_length=64)
+    label = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "label"], name="credit_card_accounts_user_label_unique")]
+
+
+class ChequingTransaction(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chequing_transactions")
+    account_label = models.CharField(max_length=128)
+    transaction_date = models.DateField()
+    transaction_code = models.CharField(max_length=64, null=True, blank=True)
+    description = models.CharField(max_length=255, null=True, blank=True)
+    category = models.CharField(max_length=64, default="Other")
+    amount = models.DecimalField(max_digits=20, decimal_places=6)
+    balance = models.DecimalField(max_digits=20, decimal_places=6, null=True, blank=True)
+    currency = models.CharField(max_length=8, default="CAD")
+    is_hidden = models.BooleanField(default=False)
+    source_filename = models.CharField(max_length=255, null=True, blank=True)
+    imported_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["transaction_date", "id"], name="idx_chequing_tx_date"),
+            models.Index(fields=["category", "transaction_date"], name="idx_chequing_category_date"),
+        ]
+
+
+class ChequingAccount(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="chequing_accounts")
+    provider = models.CharField(max_length=64, default=CHEQUING_DEFAULT_PROVIDER)
+    label = models.CharField(max_length=128)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["user", "label"], name="chequing_accounts_user_label_unique")]
 
 
 class AppSetting(models.Model):
