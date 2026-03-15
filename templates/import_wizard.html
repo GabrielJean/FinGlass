@@ -384,6 +384,20 @@
         justify-content: center;
       }
 
+      .wizard-file-count-badge {
+        display: inline-flex;
+        align-items: center;
+        margin-left: 0.75rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: #93c5fd;
+        background: rgba(59, 130, 246, 0.15);
+        border: 1px solid rgba(59, 130, 246, 0.35);
+        vertical-align: middle;
+      }
+
       .wizard-spacer {
         flex: 1;
       }
@@ -490,7 +504,7 @@
 
         <!-- Step 2: Upload File -->
         <div id="step2" class="wizard-step-content" style="display: none;">
-          <h2 id="step2Title">Upload File</h2>
+          <h2 id="step2Title">Upload File <span id="step2FileCountBadge" class="wizard-file-count-badge" style="display: none;">0 files selected</span></h2>
           <p class="muted" id="step2Description">Drag and drop your file or click to browse</p>
 
           <div id="formatRequirements" class="format-requirements">

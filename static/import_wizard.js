@@ -7,7 +7,7 @@ const WIZARD_MOTION_MS = 220;
 // State
 let currentStep = 1;
 let selectedImportType = null;
-let uploadedFile = null;
+let uploadedFiles = [];
 let parsedData = null;
 let batchId = null;
 let selectedCreditCardProvider = '';
@@ -28,6 +28,7 @@ const submitBtn = document.getElementById('submitBtn');
 const importTypeCards = document.querySelectorAll('.import-type-card');
 const fileInput = document.getElementById('fileInput');
 const dropzone = document.getElementById('dropzone');
+const step2FileCountBadge = document.getElementById('step2FileCountBadge');
 const fileInfo = document.getElementById('fileInfo');
 const uploadError = document.getElementById('uploadError');
 const formatRequirements = document.getElementById('formatRequirements');
@@ -191,7 +192,7 @@ function setupEventListeners() {
       selectedCreditCardProvider = creditCardProviderSelect.value;
       await loadCreditCardLabels();
       // Bank selection affects parsing rules; force re-upload when it changes.
-      if (uploadedFile) {
+      if (uploadedFiles.length > 0) {
         clearFile();
       }
     });
@@ -200,7 +201,7 @@ function setupEventListeners() {
   if (creditCardLabelSelect) {
     creditCardLabelSelect.addEventListener('change', () => {
       selectedCreditCardLabel = String(creditCardLabelSelect.value || '').trim();
-      if (uploadedFile) {
+      if (uploadedFiles.length > 0) {
         clearFile();
       }
     });
@@ -209,7 +210,7 @@ function setupEventListeners() {
   if (creditCardNewLabel) {
     creditCardNewLabel.addEventListener('input', () => {
       newCreditCardLabel = String(creditCardNewLabel.value || '').trim();
-      if (uploadedFile) {
+      if (uploadedFiles.length > 0) {
         clearFile();
       }
     });
@@ -219,7 +220,7 @@ function setupEventListeners() {
     toggleCreditCardLabelModeBtn.addEventListener('click', () => {
       const nextMode = creditCardLabelMode === 'existing' ? 'new' : 'existing';
       setCreditCardLabelMode(nextMode);
-      if (uploadedFile) {
+      if (uploadedFiles.length > 0) {
         clearFile();
       }
     });
@@ -228,7 +229,7 @@ function setupEventListeners() {
   if (chequingAccountSelect) {
     chequingAccountSelect.addEventListener('change', () => {
       selectedChequingAccount = String(chequingAccountSelect.value || '').trim();
-      if (uploadedFile) {
+      if (uploadedFiles.length > 0) {
         clearFile();
       }
     });
@@ -237,7 +238,7 @@ function setupEventListeners() {
   if (chequingAccountNewLabel) {
     chequingAccountNewLabel.addEventListener('input', () => {
       newChequingAccountLabel = String(chequingAccountNewLabel.value || '').trim();
-      if (uploadedFile) {
+      if (uploadedFiles.length > 0) {
         clearFile();
       }
     });
@@ -247,7 +248,7 @@ function setupEventListeners() {
     toggleChequingAccountModeBtn.addEventListener('click', () => {
       const nextMode = chequingAccountMode === 'existing' ? 'new' : 'existing';
       setChequingAccountMode(nextMode);
-      if (uploadedFile) {
+      if (uploadedFiles.length > 0) {
         clearFile();
       }
     });
@@ -264,6 +265,26 @@ function setupEventListeners() {
       setPreviewFullscreen(false);
     }
   });
+}
+
+function supportsMultiFileImport() {
+  return selectedImportType === 'credit-card' || selectedImportType === 'chequing';
+}
+
+function updateStep2FileCountBadge() {
+  if (!step2FileCountBadge) {
+    return;
+  }
+
+  const shouldShow = supportsMultiFileImport() && uploadedFiles.length > 0;
+  step2FileCountBadge.style.display = shouldShow ? 'inline-flex' : 'none';
+
+  if (!shouldShow) {
+    return;
+  }
+
+  const suffix = uploadedFiles.length === 1 ? 'file' : 'files';
+  step2FileCountBadge.textContent = `${uploadedFiles.length} ${suffix} selected`;
 }
 
 function setPreviewFullscreen(enabled) {
@@ -380,7 +401,7 @@ function goToStep(step) {
       showError('Please select an import type');
       return;
     }
-    if (currentStep === 2 && !uploadedFile) {
+    if (currentStep === 2 && uploadedFiles.length === 0) {
       showError('Please upload a file');
       return;
     }
@@ -421,7 +442,7 @@ function renderStep(step) {
     nextBtn.style.display = selectedImportType ? 'inline-block' : 'none';
   } else if (step === 2) {
     setupStep2();
-    if (uploadedFile) {
+    if (uploadedFiles.length > 0) {
       nextBtn.style.display = 'inline-block';
     }
   } else if (step === 3) {
@@ -478,6 +499,21 @@ async function setupStep2() {
 
   // Set file input accept attribute
   fileInput.setAttribute('accept', config.accept);
+  fileInput.multiple = supportsMultiFileImport();
+  updateStep2FileCountBadge();
+
+  const dropzoneTextEl = dropzone?.querySelector('.dropzone-text');
+  const dropzoneHintEl = dropzone?.querySelector('.dropzone-hint');
+  if (dropzoneTextEl) {
+    dropzoneTextEl.textContent = supportsMultiFileImport()
+      ? 'Drag & drop your files here'
+      : 'Drag & drop your file here';
+  }
+  if (dropzoneHintEl) {
+    dropzoneHintEl.textContent = supportsMultiFileImport()
+      ? 'or click to browse and select multiple files'
+      : 'or click to browse';
+  }
 
   // Template download (if applicable)
   if (config.templateName && selectedImportType !== 'tax-pdf') {
@@ -491,7 +527,7 @@ async function setupStep2() {
   }
 
   // Reset file state when coming back to this step
-  if (!uploadedFile) {
+  if (uploadedFiles.length === 0) {
     setAnimatedVisibility(dropzone, true, 'block');
     setAnimatedVisibility(fileInfo, false, 'block');
     setAnimatedVisibility(uploadError, false, 'block');
@@ -587,20 +623,20 @@ function handleDrop(e) {
   e.preventDefault();
   dropzone.classList.remove('drag-over');
 
-  const files = e.dataTransfer.files;
+  const files = Array.from(e.dataTransfer.files || []);
   if (files.length > 0) {
-    processFile(files[0]);
+    processFiles(files);
   }
 }
 
 function handleFileSelect(e) {
-  const files = e.target.files;
+  const files = Array.from(e.target.files || []);
   if (files.length > 0) {
-    processFile(files[0]);
+    processFiles(files);
   }
 }
 
-async function processFile(file) {
+async function processFiles(incomingFiles) {
   if (selectedImportType === 'credit-card' && !selectedCreditCardProvider) {
     showError('Please select a credit card bank before uploading your file');
     return;
@@ -614,18 +650,25 @@ async function processFile(file) {
     }
   }
 
-  uploadedFile = file;
+  const files = supportsMultiFileImport() ? incomingFiles : incomingFiles.slice(0, 1);
+  uploadedFiles = files;
+  updateStep2FileCountBadge();
   setAnimatedVisibility(uploadError, false, 'block');
 
   const config = importTypeConfig[selectedImportType];
-  const fileExt = '.' + file.name.split('.').pop().toLowerCase();
-
-  // Validate file type
-  if (!config.fileTypes.includes(fileExt)) {
-    showError(`Invalid file type. Expected: ${config.fileTypes.join(', ')}`);
-    uploadedFile = null;
-    return;
+  for (const file of files) {
+    const fileExt = '.' + String(file.name || '').split('.').pop().toLowerCase();
+    if (!config.fileTypes.includes(fileExt)) {
+      showError(`Invalid file type. Expected: ${config.fileTypes.join(', ')}`);
+      uploadedFiles = [];
+      updateStep2FileCountBadge();
+      return;
+    }
   }
+
+  const totalBytes = files.reduce((sum, file) => sum + Number(file.size || 0), 0);
+  const firstFile = files[0];
+  const firstFileExt = '.' + String(firstFile.name || '').split('.').pop().toLowerCase();
 
   // Show file info
   setAnimatedVisibility(dropzone, false, 'block');
@@ -638,7 +681,7 @@ async function processFile(file) {
 
   const iconEl = document.createElement('div');
   iconEl.classList.add('file-info-icon');
-  iconEl.textContent = fileExt === '.pdf' ? '📄' : '📊';
+  iconEl.textContent = firstFileExt === '.pdf' ? '📄' : '📊';
   infoContainer.appendChild(iconEl);
 
   const detailsEl = document.createElement('div');
@@ -646,13 +689,17 @@ async function processFile(file) {
 
   const nameEl = document.createElement('div');
   nameEl.classList.add('file-info-name');
-  // Using textContent ensures the file name is not interpreted as HTML
-  nameEl.textContent = file.name;
+  nameEl.textContent = files.length === 1 ? firstFile.name : `${files.length} files selected`;
   detailsEl.appendChild(nameEl);
 
   const metaEl = document.createElement('div');
   metaEl.classList.add('file-info-meta');
-  metaEl.textContent = `${formatFileSize(file.size)} • ${fileExt.toUpperCase().substring(1)}`;
+  const extensionSet = Array.from(new Set(files.map((file) => {
+    const ext = '.' + String(file.name || '').split('.').pop().toLowerCase();
+    return ext.toUpperCase().substring(1);
+  })));
+  const extensionSummary = extensionSet.length === 1 ? extensionSet[0] : 'MIXED';
+  metaEl.textContent = `${formatFileSize(totalBytes)} • ${extensionSummary}`;
   detailsEl.appendChild(metaEl);
 
   infoContainer.appendChild(detailsEl);
@@ -666,19 +713,28 @@ async function processFile(file) {
 
   fileInfo.appendChild(infoContainer);
 
+  if (files.length > 1) {
+    const listEl = document.createElement('div');
+    listEl.classList.add('file-info-meta');
+    listEl.style.marginTop = '0.375rem';
+    listEl.textContent = files.map((file) => file.name).join(', ');
+    detailsEl.appendChild(listEl);
+  }
+
   // Parse file
   try {
-    await parseFile(file);
+    await parseFiles(files);
     nextBtn.style.display = 'inline-block';
   } catch (error) {
     showError(error.message || 'Failed to parse file');
-    uploadedFile = null;
+    uploadedFiles = [];
+    updateStep2FileCountBadge();
   }
 }
 
-async function parseFile(file) {
+async function parseFiles(files) {
   const config = importTypeConfig[selectedImportType];
-  const formData = buildImportFormData(file, { previewOnly: true });
+  const formData = buildImportFormData(files, { previewOnly: true });
 
   const result = await fetchJson(config.endpoint, {
     method: 'POST',
@@ -817,26 +873,26 @@ async function submitImport() {
     const config = importTypeConfig[selectedImportType];
 
     if (config.direct) {
-      if (!uploadedFile) {
+      if (uploadedFiles.length === 0) {
         throw new Error('Please upload a file before importing');
       }
 
       const importResult = await fetchJson(config.endpoint, {
         method: 'POST',
-        body: buildImportFormData(uploadedFile, { previewOnly: false }),
+        body: buildImportFormData(uploadedFiles, { previewOnly: false }),
         credentials: 'include'
       });
 
       showCompletion(`Successfully imported ${importResult.imported || importResult.inserted || 0} record(s)`);
       goToStep(4);
     } else {
-      if (!uploadedFile) {
+      if (uploadedFiles.length === 0) {
         throw new Error('Please upload a file before importing');
       }
 
       const createResult = await fetchJson(config.endpoint, {
         method: 'POST',
-        body: buildImportFormData(uploadedFile, { previewOnly: false }),
+        body: buildImportFormData(uploadedFiles, { previewOnly: false }),
         credentials: 'include'
       });
 
@@ -860,11 +916,14 @@ async function submitImport() {
   }
 }
 
-function buildImportFormData(file, options = {}) {
+function buildImportFormData(files, options = {}) {
   const { previewOnly = false } = options;
   const config = importTypeConfig[selectedImportType];
   const formData = new FormData();
-  formData.append('file', file);
+  const normalizedFiles = Array.isArray(files) ? files : [files];
+  normalizedFiles.forEach((file) => {
+    formData.append('file', file);
+  });
 
   if (config?.subtype) {
     formData.append('import_type', config.subtype);
@@ -936,7 +995,8 @@ function showError(message) {
 }
 
 function clearFile() {
-  uploadedFile = null;
+  uploadedFiles = [];
+  updateStep2FileCountBadge();
   parsedData = null;
   batchId = null;
   fileInput.value = '';
@@ -949,7 +1009,8 @@ function clearFile() {
 function resetWizard() {
   currentStep = 1;
   selectedImportType = null;
-  uploadedFile = null;
+  uploadedFiles = [];
+  updateStep2FileCountBadge();
   parsedData = null;
   batchId = null;
   selectedCreditCardProvider = '';
