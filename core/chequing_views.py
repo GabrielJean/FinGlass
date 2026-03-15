@@ -109,6 +109,13 @@ def chequing_dashboard(request):
     account_label = str(request.GET.get("account_label") or "").strip()
     include_hidden = parse_bool_query(request.GET.get("include_hidden"))
 
+    latest_transaction_date = (
+        ChequingTransaction.objects.filter(user=request.user)
+        .order_by("-transaction_date", "-id")
+        .values_list("transaction_date", flat=True)
+        .first()
+    )
+
     queryset = ChequingTransaction.objects.filter(user=request.user)
     if start_date:
         queryset = queryset.filter(transaction_date__gte=start_date)
@@ -207,6 +214,7 @@ def chequing_dashboard(request):
             "summary": summary,
             "monthly": monthly,
             "categories": categories,
+            "latest_transaction_date": latest_transaction_date.isoformat() if latest_transaction_date else "",
         }
     )
 
