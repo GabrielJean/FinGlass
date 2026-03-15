@@ -1,0 +1,37 @@
+from core.services.settings_service import parse_setting_bool
+
+
+OUTFLOW_CODES = {"E_TRFOUT", "AFT_OUT", "TRFOUT", "TRFOUTTF", "P2P_SENT", "OBP_OUT"}
+INFLOW_CODES = {"AFT_IN", "E_TRFIN", "P2P_RECEIVED", "INT", "TRFINTF"}
+
+
+def parse_bool_query(value):
+    return parse_setting_bool(value)
+
+
+def normalize_chequing_category(transaction_code, description, amount):
+    code = str(transaction_code or "").strip().upper()
+    numeric_amount = float(amount or 0)
+
+    if code == "INT":
+        return "Interest Earned"
+    if code == "AFT_IN":
+        return "Direct Deposit"
+    if code == "AFT_OUT":
+        return "Pre-Authorized Debit"
+    if code in {"E_TRFIN", "P2P_RECEIVED"}:
+        return "Cash Received (People)"
+    if code in {"E_TRFOUT", "P2P_SENT"}:
+        return "Cash Sent (People)"
+    if code == "OBP_OUT":
+        return "Online Bill Payments"
+    if code in {"TRFOUT", "TRFOUTTF"}:
+        return "Internal Transfer Out (Savings/Expenses)"
+    if code == "TRFINTF":
+        return "Internal Transfer In (Savings/Expenses)"
+
+    if numeric_amount > 0:
+        return "Other Inflow"
+    if numeric_amount < 0:
+        return "Other Outflow"
+    return "Other"

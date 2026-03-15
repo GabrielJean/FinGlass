@@ -7,6 +7,7 @@ DEFAULT_FEATURE_SETTINGS = {
     "acb_tracker": True,
     "net_worth": True,
     "credit_card": True,
+    "chequing_tracker": True,
     "tfsa_tracker": True,
     "rrsp_tracker": True,
     "fhsa_tracker": True,
@@ -20,4 +21,9 @@ SUPPORTED_TRANSACTION_TYPES = {
     "Reinvested Dividend",
     "Reinvested Capital Gains Distribution",
     "Split",
+}
+
+CHEQUING_DEFAULT_PROVIDER = "WealthSimple"
+CHEQUING_SUPPORTED_PROVIDERS = {
+    "wealthsimple": "WealthSimple",
 }

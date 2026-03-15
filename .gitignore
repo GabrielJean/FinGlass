@@ -5,3 +5,6 @@ staticfiles/
 .mypy_cache/
 .pytest_cache/
 staticfiles/
+.claude
+.playwright
+.playwright-cli

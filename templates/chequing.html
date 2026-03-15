@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Chequing Tracker · FinGlass</title>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg" />
+    <link rel="stylesheet" href="/static/css/base.css" />
+    <link rel="stylesheet" href="/static/css/layout.css" />
+    <link rel="stylesheet" href="/static/css/forms.css" />
+    <link rel="stylesheet" href="/static/css/buttons.css" />
+    <link rel="stylesheet" href="/static/css/tables.css" />
+    <link rel="stylesheet" href="/static/css/components.css" />
+    <link rel="stylesheet" href="/static/css/theme.css" />
+    <link rel="stylesheet" href="/static/css/responsive.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="page-header row">
+        <div>
+          <h1>Chequing Account Tracker</h1>
+          <p class="muted">Track money in and money out with simple categories.</p>
+        </div>
+        <div class="header-actions">
+          <div class="header-controls-bar">
+            <div class="user-profile-wrap">
+            <span
+              id="userProfileAdminBadge"
+              class="user-admin-badge"
+              aria-hidden="true"
+              title="Superadmin"
+              {% if not request.user.is_superuser %} hidden{% endif %}
+            ><span class="admin-badge-text">Admin</span></span>
+            <button id="userProfileBtn" type="button" class="btn-user-profile" aria-label="User menu" aria-expanded="false" aria-controls="userProfileMenu">
+              <span id="userProfileUsername">{{ request.user.username }}</span>
+              <span class="profile-caret">▼</span>
+            </button>
+            <div id="userProfileMenu" class="user-profile-menu hidden" aria-hidden="true">
+              {% if request.user.is_superuser %}<button id="adminDashboardBtn" type="button" class="menu-item"><span class="menu-icon">⚙</span><span class="menu-label">Admin Panel</span></button>{% endif %}
+              <button id="logoutMenuBtn" type="button" class="menu-item"><span class="menu-icon">🚪</span><span class="menu-label">Logout</span></button>
+            </div>
+            </div>
+            <div class="settings-menu-wrap">
+            <button
+              id="chequingSettingsToggleBtn"
+              class="settings-gear-btn"
+              type="button"
+              aria-label="Open chequing settings"
+              aria-expanded="false"
+              aria-controls="chequingSettingsSection"
+            >
+              ⚙
+            </button>
+
+            <section class="card settings-menu hidden" id="chequingSettingsSection" aria-hidden="true">
+              <h2>Chequing Settings</h2>
+              <div class="settings-menu-grid">
+                <div class="settings-menu-col">
+                  <div class="settings-menu-section">
+                    <h3>Manage Accounts</h3>
+                    <p class="muted">Add, rename, or delete chequing accounts.</p>
+
+                    <form id="chequing-account-add-form" class="form-grid">
+                      <label>
+                        Bank
+                        <select id="chequing-account-add-provider">
+                          <option value="wealthsimple">WealthSimple</option>
+                        </select>
+                      </label>
+                      <label>
+                        New Account Label
+                        <input type="text" id="chequing-account-add-label" placeholder="e.g., Joint Account, Everyday Banking" required />
+                      </label>
+                      <button type="submit">Add Account</button>
+                    </form>
+
+                    <div class="table-wrap" style="margin-top: 1rem;">
+                      <table id="chequingAccountsListTable">
+                        <thead>
+                          <tr>
+                            <th>Bank</th>
+                            <th>Account Label</th>
+                            <th>Transactions</th>
+                            <th>Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody id="chequing-accounts-list-body"></tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </section>
+            </div>
+          </div>
+          <a class="btn-link btn-secondary" href="/">← Back to Overview</a>
+        </div>
+      </header>
+
+      <div id="chequingSettingsBackdrop" class="settings-backdrop hidden" aria-hidden="true"></div>
+      <div id="chequingDialogBackdrop" class="settings-backdrop hidden" aria-hidden="true"></div>
+
+      <section class="card credit-card-rename-modal hidden" id="chequingAccountRenameModal" aria-hidden="true" aria-labelledby="chequingAccountRenameTitle">
+        <h2 id="chequingAccountRenameTitle">Rename Chequing Account</h2>
+        <form id="chequing-account-rename-form" class="form-grid">
+          <label>
+            Current Label
+            <input type="text" id="chequing-account-rename-old-label" disabled />
+          </label>
+          <label>
+            New Label
+            <input type="text" id="chequing-account-rename-new-label" placeholder="e.g., Household Chequing" required />
+          </label>
+          <div class="row">
+            <button id="chequing-account-rename-cancel-btn" type="button" class="btn-secondary">Cancel</button>
+            <button id="chequing-account-rename-confirm-btn" type="submit" class="btn-primary">Rename Account</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card credit-card-delete-confirm-modal hidden" id="chequingAccountDeleteConfirmModal" aria-hidden="true" aria-labelledby="chequingAccountDeleteConfirmTitle">
+        <h2 id="chequingAccountDeleteConfirmTitle">Delete Chequing Account</h2>
+        <p class="muted">This will permanently delete all transactions for <strong id="chequing-account-delete-label-display"></strong>.</p>
+        <p class="muted">Type the account label to confirm:</p>
+        <label>
+          Account Label
+          <input type="text" id="chequing-account-delete-confirm-input" autocomplete="off" spellcheck="false" placeholder="Account label" />
+        </label>
+        <p id="chequing-account-delete-confirm-error" class="error-message hidden" aria-live="polite"></p>
+        <div class="row">
+          <button id="chequing-account-delete-cancel-btn" type="button" class="btn-secondary">Cancel</button>
+          <button id="chequing-account-delete-confirm-btn" type="button" class="btn-danger" disabled>Delete Account</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Filters</h2>
+        <form id="chequingFiltersForm" class="form-grid">
+          <label>From Date
+            <input id="filterStartDate" type="date" />
+          </label>
+          <label>To Date
+            <input id="filterEndDate" type="date" />
+          </label>
+          <label>Account
+            <select id="filterAccountLabel">
+              <option value="">All accounts</option>
+            </select>
+          </label>
+          <label>Category
+            <select id="filterCategory">
+              <option value="">All categories</option>
+            </select>
+          </label>
+          <label>Direction
+            <select id="filterDirection">
+              <option value="">All</option>
+              <option value="out">Money out</option>
+              <option value="in">Money in</option>
+            </select>
+          </label>
+          <label>Description contains
+            <input id="filterSearch" type="text" placeholder="e.g. HONDA, ROGERS" />
+          </label>
+          <label>
+            Show hidden
+            <select id="filterIncludeHidden">
+              <option value="false" selected>No</option>
+              <option value="true">Yes</option>
+            </select>
+          </label>
+          <div class="row">
+            <button id="applyFiltersBtn" type="submit">Apply Filters</button>
+            <button id="resetFiltersBtn" type="button" class="btn-secondary">Reset</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="card">
+        <h2>Summary</h2>
+        <p id="chequingAsOf" class="muted">No chequing data imported yet.</p>
+        <div class="summary-grid credit-summary-grid">
+          <article class="summary-card">
+            <p class="summary-label">Money In</p>
+            <p class="summary-value" id="summaryMoneyIn">$0.00</p>
+          </article>
+          <article class="summary-card">
+            <p class="summary-label">Money Out</p>
+            <p class="summary-value" id="summaryMoneyOut">$0.00</p>
+          </article>
+          <article class="summary-card">
+            <p class="summary-label">Net Flow</p>
+            <p class="summary-value" id="summaryNetFlow">$0.00</p>
+          </article>
+          <article class="summary-card">
+            <p class="summary-label">Transactions</p>
+            <p class="summary-value" id="summaryTransactions">0</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Monthly Flow</h2>
+        <div class="chart-card span-2">
+          <canvas id="chequingMonthlyChart"></canvas>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Category Breakdown</h2>
+        <div class="table-wrap">
+          <table id="chequingCategoryTable">
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th>Money Out</th>
+                <th>Money In</th>
+                <th>Net</th>
+                <th>Transactions</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Transactions</h2>
+        <div class="row actions-row">
+          <button id="hideSelectedBtn" type="button" class="btn-secondary">Hide Selected</button>
+          <button id="deleteSelectedBtn" type="button" class="btn-danger">Delete Selected</button>
+          <button id="deleteAllBtn" type="button" class="btn-danger">Delete All</button>
+          <span id="selectionStatus" class="muted">0 selected</span>
+        </div>
+        <div class="table-wrap">
+          <table id="chequingTransactionsTable">
+            <thead>
+              <tr>
+                <th><input id="selectAllTx" type="checkbox" aria-label="Select all transactions" /></th>
+                <th data-sort-key="transaction_date">Date</th>
+                <th data-sort-key="account_label">Account</th>
+                <th data-sort-key="description">Description</th>
+                <th data-sort-key="category">Category</th>
+                <th data-sort-key="amount">Amount</th>
+                <th data-sort-key="balance">Balance</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+
+      <p id="status" class="muted"></p>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+    <script src="/static/common.js?v=20260305-globalmotion"></script>
+    <script src="/static/user_profile_menu.js"></script>
+    <script src="/static/chequing.js?v=20260314-dialogfix"></script>
+  </body>
+</html>

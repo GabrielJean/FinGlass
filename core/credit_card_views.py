@@ -1,13 +1,21 @@
 import json
 from collections import defaultdict
 
-from django.db.models import Q
+from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_http_methods
 
 from core.credit_card_categories import normalize_credit_card_category
-from core.models import CreditCardTransaction
+from core.models import CreditCardAccount, CreditCardTransaction
 from core.services.credit_card_service import parse_bool_query, parse_credit_card_category_filters
+
+
+CREDIT_CARD_SUPPORTED_PROVIDERS = {
+    "rogers": "rogers_bank",
+    "rogers_bank": "rogers_bank",
+    "scotia": "scotiabank",
+    "scotiabank": "scotiabank",
+}
 
 
 def _read_json(request):
@@ -39,6 +47,13 @@ def _tx_dict(row):
         "activity_type": row.activity_type,
         "reference_number": row.reference_number,
     }
+
+
+def _normalize_credit_card_provider(value):
+    raw = str(value or "").strip().lower()
+    if not raw:
+        return ""
+    return CREDIT_CARD_SUPPORTED_PROVIDERS.get(raw, raw)
 
 
 @require_http_methods(["GET", "DELETE"])
@@ -245,20 +260,90 @@ def credit_card_transactions(request):
 
 @require_GET
 def credit_card_cards(request):
-    provider = str(request.GET.get("provider") or "").strip()
+    provider = _normalize_credit_card_provider(request.GET.get("provider"))
     queryset = CreditCardTransaction.objects.filter(user=request.user)
     if provider:
         queryset = queryset.filter(provider=provider)
 
+    accounts_queryset = CreditCardAccount.objects.filter(user=request.user)
+    if provider:
+        accounts_queryset = accounts_queryset.filter(provider=provider)
+
+    cards = {
+        str(label or "").strip()
+        for label in accounts_queryset.values_list("label", flat=True)
+        if str(label or "").strip()
+    }
+
     rows = queryset.values_list("card_label", "provider").distinct()
-    cards = sorted(
-        {
-            str(card if card else provider_name if provider_name else "").strip()
-            for card, provider_name in rows
-            if str(card if card else provider_name if provider_name else "").strip()
-        }
-    )
+    for card, provider_name in rows:
+        normalized = str(card if card else provider_name if provider_name else "").strip()
+        if normalized:
+            cards.add(normalized)
+
+    cards = sorted(cards)
     return JsonResponse(cards, safe=False)
+
+
+@require_GET
+def credit_card_cards_manage(request):
+    tx_counts = {
+        str(row["card_label"] or row["provider"] or "").strip(): int(row["count"] or 0)
+        for row in CreditCardTransaction.objects.filter(user=request.user)
+        .values("card_label", "provider")
+        .annotate(count=Count("id"))
+        if str(row["card_label"] or row["provider"] or "").strip()
+    }
+
+    provider_by_label = {
+        str(row["label"] or "").strip(): str(row["provider"] or "").strip()
+        for row in CreditCardAccount.objects.filter(user=request.user).values("label", "provider")
+        if str(row["label"] or "").strip()
+    }
+
+    tx_rows = CreditCardTransaction.objects.filter(user=request.user).values("card_label", "provider").distinct()
+    for row in tx_rows:
+        label = str(row.get("card_label") or row.get("provider") or "").strip()
+        if not label:
+            continue
+        if label not in provider_by_label:
+            provider_by_label[label] = str(row.get("provider") or "").strip()
+
+    return JsonResponse(
+        [
+            {
+                "provider": provider_by_label.get(label, "") or "",
+                "label": label,
+                "transactions": tx_counts.get(label, 0),
+            }
+            for label in sorted(provider_by_label.keys())
+        ],
+        safe=False,
+    )
+
+
+@require_http_methods(["POST"])
+def create_credit_card(request):
+    payload = _read_json(request)
+    label = str(payload.get("label") or "").strip()
+    provider = _normalize_credit_card_provider(payload.get("provider"))
+
+    if not label:
+        return JsonResponse({"error": "label is required"}, status=400)
+    if provider not in {"rogers_bank", "scotiabank"}:
+        return JsonResponse({"error": "Unsupported credit card bank. Supported banks: Rogers Bank, Scotiabank"}, status=400)
+
+    account, created = CreditCardAccount.objects.get_or_create(
+        user=request.user,
+        label=label,
+        defaults={"provider": provider},
+    )
+    if not created:
+        if account.provider != provider:
+            return JsonResponse({"error": "Card label already exists under a different bank"}, status=400)
+        return JsonResponse({"error": "Credit card already exists"}, status=400)
+
+    return JsonResponse({"created": 1, "provider": account.provider, "label": account.label})
 
 
 @require_http_methods(["PATCH"])
@@ -349,14 +434,30 @@ def rename_credit_card(request, card_label):
     if not new_label:
         return JsonResponse({"error": "new_label is required"}, status=400)
 
-    # Update transactions with matching card_label OR provider (cards list can return either)
+    account = CreditCardAccount.objects.filter(user=request.user, label=card_label).first()
+    if account and CreditCardAccount.objects.filter(user=request.user, label=new_label).exclude(id=account.id).exists():
+        return JsonResponse({"error": "Credit card already exists"}, status=400)
+
     updated = CreditCardTransaction.objects.filter(
         user=request.user
     ).filter(
         Q(card_label=card_label) | Q(provider=card_label)
     ).update(card_label=new_label)
 
-    if updated == 0:
+    if account:
+        account.label = new_label
+        account.save(update_fields=["label"])
+    elif updated > 0 and not CreditCardAccount.objects.filter(user=request.user, label=new_label).exists():
+        provider_value = (
+            CreditCardTransaction.objects.filter(user=request.user)
+            .filter(Q(card_label=new_label) | Q(provider=card_label))
+            .values_list("provider", flat=True)
+            .first()
+            or ""
+        )
+        CreditCardAccount.objects.create(user=request.user, provider=str(provider_value or "").strip(), label=new_label)
+
+    if updated == 0 and not account:
         return JsonResponse({"error": "Credit card not found"}, status=404)
 
     return JsonResponse({"updated": updated, "old_label": card_label, "new_label": new_label})
@@ -364,14 +465,15 @@ def rename_credit_card(request, card_label):
 
 @require_http_methods(["DELETE"])
 def delete_credit_card(request, card_label):
-    # Delete transactions with matching card_label OR provider (cards list can return either)
+    account_deleted, _ = CreditCardAccount.objects.filter(user=request.user, label=card_label).delete()
+
     deleted, _ = CreditCardTransaction.objects.filter(
         user=request.user
     ).filter(
         Q(card_label=card_label) | Q(provider=card_label)
     ).delete()
 
-    if deleted == 0:
+    if deleted == 0 and account_deleted == 0:
         return JsonResponse({"error": "Credit card not found"}, status=404)
 
     return JsonResponse({"deleted": deleted, "card_label": card_label})

@@ -11,6 +11,13 @@ let uploadedFile = null;
 let parsedData = null;
 let batchId = null;
 let selectedCreditCardProvider = '';
+let selectedCreditCardLabel = '';
+let newCreditCardLabel = '';
+let creditCardLabelMode = 'existing';
+let selectedChequingAccount = '';
+let newChequingAccountLabel = '';
+let chequingAccountMode = 'existing';
+let isPreviewFullscreen = false;
 
 // DOM Elements
 const wizardSteps = document.querySelectorAll('.wizard-step');
@@ -27,6 +34,19 @@ const formatRequirements = document.getElementById('formatRequirements');
 const templateDownload = document.getElementById('templateDownload');
 const creditCardProviderGroup = document.getElementById('creditCardProviderGroup');
 const creditCardProviderSelect = document.getElementById('creditCardProvider');
+const creditCardLabelSelect = document.getElementById('creditCardLabelSelect');
+const creditCardNewLabel = document.getElementById('creditCardNewLabel');
+const creditCardExistingWrap = document.getElementById('creditCardExistingWrap');
+const creditCardNewWrap = document.getElementById('creditCardNewWrap');
+const toggleCreditCardLabelModeBtn = document.getElementById('toggleCreditCardLabelModeBtn');
+const chequingAccountGroup = document.getElementById('chequingAccountGroup');
+const chequingAccountSelect = document.getElementById('chequingAccountSelect');
+const chequingAccountNewLabel = document.getElementById('chequingAccountNewLabel');
+const chequingAccountExistingWrap = document.getElementById('chequingAccountExistingWrap');
+const chequingAccountNewWrap = document.getElementById('chequingAccountNewWrap');
+const toggleChequingAccountModeBtn = document.getElementById('toggleChequingAccountModeBtn');
+const previewTableContainer = document.getElementById('previewTableContainer');
+const togglePreviewFullscreenBtn = document.getElementById('togglePreviewFullscreenBtn');
 const previewTableHead = document.getElementById('previewTableHead');
 const previewTableBody = document.getElementById('previewTableBody');
 const previewStats = document.getElementById('previewStats');
@@ -90,12 +110,32 @@ const importTypeConfig = {
         <li><strong>Rogers Bank Mastercard:</strong> Download transaction history from online banking</li>
         <li><strong>Scotiabank Credit Card:</strong> Download account activity/statement CSV export</li>
         <li>File should include: Transaction Date, Posted Date, Description, Amount, Category</li>
-        <li>Select the provider before uploading so the correct parser is used</li>
+        <li>Select the bank before uploading so the correct parser is used</li>
         <li>Categories are automatically normalized for tracking</li>
       </ul>
     `,
     templateName: 'credit_card_template.csv',
     endpoint: '/api/import/credit-card/rogers-csv',
+    direct: true
+  },
+  chequing: {
+    title: 'Chequing Transactions',
+    fileTypes: ['.csv'],
+    accept: 'text/csv,.csv',
+    description: 'Upload your chequing account transaction CSV file',
+    requirements: `
+      <h4>Expected CSV Columns:</h4>
+      <ul>
+        <li><code>date</code> - Transaction date (YYYY-MM-DD)</li>
+        <li><code>transaction</code> - Bank transaction code (e.g. AFT_IN, E_TRFOUT)</li>
+        <li><code>description</code> - Transaction description</li>
+        <li><code>amount</code> - Positive for money in, negative for money out</li>
+        <li><code>balance</code> - Account balance after transaction</li>
+        <li><code>currency</code> - Currency code (e.g. CAD)</li>
+      </ul>
+    `,
+    templateName: 'chequing_template.csv',
+    endpoint: '/api/import/chequing/courant-csv',
     direct: true
   },
   'tax-pdf': {
@@ -147,13 +187,148 @@ function setupEventListeners() {
   fileInput.addEventListener('change', handleFileSelect);
 
   if (creditCardProviderSelect) {
-    creditCardProviderSelect.addEventListener('change', () => {
+    creditCardProviderSelect.addEventListener('change', async () => {
       selectedCreditCardProvider = creditCardProviderSelect.value;
-      // Provider affects parsing rules; force re-upload when it changes.
+      await loadCreditCardLabels();
+      // Bank selection affects parsing rules; force re-upload when it changes.
       if (uploadedFile) {
         clearFile();
       }
     });
+  }
+
+  if (creditCardLabelSelect) {
+    creditCardLabelSelect.addEventListener('change', () => {
+      selectedCreditCardLabel = String(creditCardLabelSelect.value || '').trim();
+      if (uploadedFile) {
+        clearFile();
+      }
+    });
+  }
+
+  if (creditCardNewLabel) {
+    creditCardNewLabel.addEventListener('input', () => {
+      newCreditCardLabel = String(creditCardNewLabel.value || '').trim();
+      if (uploadedFile) {
+        clearFile();
+      }
+    });
+  }
+
+  if (toggleCreditCardLabelModeBtn) {
+    toggleCreditCardLabelModeBtn.addEventListener('click', () => {
+      const nextMode = creditCardLabelMode === 'existing' ? 'new' : 'existing';
+      setCreditCardLabelMode(nextMode);
+      if (uploadedFile) {
+        clearFile();
+      }
+    });
+  }
+
+  if (chequingAccountSelect) {
+    chequingAccountSelect.addEventListener('change', () => {
+      selectedChequingAccount = String(chequingAccountSelect.value || '').trim();
+      if (uploadedFile) {
+        clearFile();
+      }
+    });
+  }
+
+  if (chequingAccountNewLabel) {
+    chequingAccountNewLabel.addEventListener('input', () => {
+      newChequingAccountLabel = String(chequingAccountNewLabel.value || '').trim();
+      if (uploadedFile) {
+        clearFile();
+      }
+    });
+  }
+
+  if (toggleChequingAccountModeBtn) {
+    toggleChequingAccountModeBtn.addEventListener('click', () => {
+      const nextMode = chequingAccountMode === 'existing' ? 'new' : 'existing';
+      setChequingAccountMode(nextMode);
+      if (uploadedFile) {
+        clearFile();
+      }
+    });
+  }
+
+  if (togglePreviewFullscreenBtn) {
+    togglePreviewFullscreenBtn.addEventListener('click', () => {
+      setPreviewFullscreen(!isPreviewFullscreen);
+    });
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && isPreviewFullscreen) {
+      setPreviewFullscreen(false);
+    }
+  });
+}
+
+function setPreviewFullscreen(enabled) {
+  isPreviewFullscreen = Boolean(enabled);
+
+  if (previewTableContainer) {
+    previewTableContainer.classList.toggle('fullscreen', isPreviewFullscreen);
+  }
+
+  document.body.classList.toggle('preview-fullscreen-open', isPreviewFullscreen);
+
+  if (togglePreviewFullscreenBtn) {
+    togglePreviewFullscreenBtn.textContent = isPreviewFullscreen ? '🗕 Exit Full Screen' : '⛶ Full Screen';
+  }
+}
+
+function setCreditCardLabelMode(mode) {
+  creditCardLabelMode = mode === 'new' ? 'new' : 'existing';
+
+  if (creditCardExistingWrap) {
+    creditCardExistingWrap.style.display = creditCardLabelMode === 'existing' ? 'block' : 'none';
+  }
+  if (creditCardNewWrap) {
+    creditCardNewWrap.style.display = creditCardLabelMode === 'new' ? 'block' : 'none';
+  }
+  if (toggleCreditCardLabelModeBtn) {
+    toggleCreditCardLabelModeBtn.textContent = creditCardLabelMode === 'existing' ? 'Create New Card' : 'Use Existing Card';
+  }
+
+  if (creditCardLabelMode === 'new') {
+    selectedCreditCardLabel = '';
+    if (creditCardLabelSelect) {
+      creditCardLabelSelect.value = '';
+    }
+  } else {
+    newCreditCardLabel = '';
+    if (creditCardNewLabel) {
+      creditCardNewLabel.value = '';
+    }
+  }
+}
+
+function setChequingAccountMode(mode) {
+  chequingAccountMode = mode === 'new' ? 'new' : 'existing';
+
+  if (chequingAccountExistingWrap) {
+    chequingAccountExistingWrap.style.display = chequingAccountMode === 'existing' ? 'block' : 'none';
+  }
+  if (chequingAccountNewWrap) {
+    chequingAccountNewWrap.style.display = chequingAccountMode === 'new' ? 'block' : 'none';
+  }
+  if (toggleChequingAccountModeBtn) {
+    toggleChequingAccountModeBtn.textContent = chequingAccountMode === 'existing' ? 'Create New Account' : 'Use Existing Account';
+  }
+
+  if (chequingAccountMode === 'new') {
+    selectedChequingAccount = '';
+    if (chequingAccountSelect) {
+      chequingAccountSelect.value = '';
+    }
+  } else {
+    newChequingAccountLabel = '';
+    if (chequingAccountNewLabel) {
+      chequingAccountNewLabel.value = '';
+    }
   }
 }
 
@@ -238,6 +413,10 @@ function renderStep(step) {
   nextBtn.style.display = 'none';
   submitBtn.style.display = 'none';
 
+  if (step !== 3 && isPreviewFullscreen) {
+    setPreviewFullscreen(false);
+  }
+
   if (step === 1) {
     nextBtn.style.display = selectedImportType ? 'inline-block' : 'none';
   } else if (step === 2) {
@@ -251,7 +430,7 @@ function renderStep(step) {
   }
 }
 
-function setupStep2() {
+async function setupStep2() {
   const config = importTypeConfig[selectedImportType];
 
   document.getElementById('step2Title').textContent = `Upload ${config.title}`;
@@ -261,9 +440,40 @@ function setupStep2() {
 
   const isCreditCardImport = selectedImportType === 'credit-card';
   setAnimatedVisibility(creditCardProviderGroup, isCreditCardImport, 'block');
-  if (!isCreditCardImport && creditCardProviderSelect) {
+  if (isCreditCardImport) {
+    setCreditCardLabelMode('existing');
+    await loadCreditCardLabels();
+  } else if (creditCardProviderSelect) {
     selectedCreditCardProvider = '';
     creditCardProviderSelect.value = '';
+    selectedCreditCardLabel = '';
+    newCreditCardLabel = '';
+    if (creditCardLabelSelect) {
+      creditCardLabelSelect.innerHTML = '<option value="">Use bank default label</option>';
+      creditCardLabelSelect.value = '';
+    }
+    if (creditCardNewLabel) {
+      creditCardNewLabel.value = '';
+    }
+    setCreditCardLabelMode('existing');
+  }
+
+  const isChequingImport = selectedImportType === 'chequing';
+  setAnimatedVisibility(chequingAccountGroup, isChequingImport, 'block');
+  if (isChequingImport) {
+    setChequingAccountMode('existing');
+    await loadChequingAccounts();
+  } else {
+    selectedChequingAccount = '';
+    newChequingAccountLabel = '';
+    if (chequingAccountSelect) {
+      chequingAccountSelect.innerHTML = '<option value="">Select an account</option>';
+      chequingAccountSelect.value = '';
+    }
+    if (chequingAccountNewLabel) {
+      chequingAccountNewLabel.value = '';
+    }
+    setChequingAccountMode('existing');
   }
 
   // Set file input accept attribute
@@ -286,6 +496,81 @@ function setupStep2() {
     setAnimatedVisibility(fileInfo, false, 'block');
     setAnimatedVisibility(uploadError, false, 'block');
   }
+}
+
+async function loadCreditCardLabels() {
+  if (!creditCardLabelSelect) {
+    return;
+  }
+
+  const previousValue = String(creditCardLabelSelect.value || selectedCreditCardLabel || '').trim();
+  const provider = String(selectedCreditCardProvider || creditCardProviderSelect?.value || '').trim();
+  const query = provider ? `?provider=${encodeURIComponent(provider)}` : '';
+
+  let labels = [];
+  try {
+    const rows = await fetchJson(`/api/credit-card/cards${query}`);
+    if (Array.isArray(rows)) {
+      labels = rows.map((value) => String(value || '').trim()).filter((value) => value);
+    }
+  } catch (_) {
+    labels = [];
+  }
+
+  const uniqueLabels = Array.from(new Set(labels)).sort((a, b) => a.localeCompare(b));
+  creditCardLabelSelect.innerHTML = '';
+
+  const defaultOption = document.createElement('option');
+  defaultOption.value = '';
+  defaultOption.textContent = 'Use bank default label';
+  creditCardLabelSelect.appendChild(defaultOption);
+
+  uniqueLabels.forEach((label) => {
+    const option = document.createElement('option');
+    option.value = label;
+    option.textContent = label;
+    creditCardLabelSelect.appendChild(option);
+  });
+
+  creditCardLabelSelect.value = previousValue;
+  if (creditCardLabelSelect.value !== previousValue) {
+    creditCardLabelSelect.value = '';
+  }
+  selectedCreditCardLabel = String(creditCardLabelSelect.value || '').trim();
+}
+
+async function loadChequingAccounts() {
+  if (!chequingAccountSelect) {
+    return;
+  }
+
+  const previousValue = String(chequingAccountSelect.value || selectedChequingAccount || '').trim();
+  const accounts = await fetchJson('/api/chequing/accounts?include_hidden=true');
+  const accountLabels = Array.isArray(accounts)
+    ? accounts.map((row) => String(row?.label || '').trim()).filter((value) => value)
+    : [];
+
+  const uniqueLabels = Array.from(new Set(accountLabels)).sort((a, b) => a.localeCompare(b));
+
+  chequingAccountSelect.innerHTML = '';
+
+  const defaultOption = document.createElement('option');
+  defaultOption.value = '';
+  defaultOption.textContent = 'Select an account';
+  chequingAccountSelect.appendChild(defaultOption);
+
+  uniqueLabels.forEach((label) => {
+    const option = document.createElement('option');
+    option.value = label;
+    option.textContent = label;
+    chequingAccountSelect.appendChild(option);
+  });
+
+  chequingAccountSelect.value = previousValue;
+  if (chequingAccountSelect.value !== previousValue) {
+    chequingAccountSelect.value = '';
+  }
+  selectedChequingAccount = String(chequingAccountSelect.value || '').trim();
 }
 
 function handleDragOver(e) {
@@ -317,8 +602,16 @@ function handleFileSelect(e) {
 
 async function processFile(file) {
   if (selectedImportType === 'credit-card' && !selectedCreditCardProvider) {
-    showError('Please select a credit card provider before uploading your file');
+    showError('Please select a credit card bank before uploading your file');
     return;
+  }
+
+  if (selectedImportType === 'chequing') {
+    const accountLabel = getSelectedChequingAccountLabel();
+    if (!accountLabel) {
+      showError('Please select or enter a chequing account label before uploading your file');
+      return;
+    }
   }
 
   uploadedFile = file;
@@ -449,7 +742,12 @@ function renderDirectPreviewTable(rows) {
   if (!rows || rows.length === 0) return;
 
   const firstRow = rows[0];
-  const columns = Object.keys(firstRow);
+  const columns = Object.keys(firstRow).filter((col) => {
+    if (selectedImportType === 'chequing' && col === 'transaction_code') {
+      return false;
+    }
+    return true;
+  });
 
   // Render header
   previewTableHead.innerHTML = `
@@ -574,6 +872,14 @@ function buildImportFormData(file, options = {}) {
 
   if (selectedImportType === 'credit-card') {
     formData.append('provider', selectedCreditCardProvider);
+    const cardLabel = getSelectedCreditCardLabel();
+    if (cardLabel) {
+      formData.append('card_label', cardLabel);
+    }
+  }
+
+  if (selectedImportType === 'chequing') {
+    formData.append('account_label', getSelectedChequingAccountLabel());
   }
 
   if (previewOnly) {
@@ -581,6 +887,42 @@ function buildImportFormData(file, options = {}) {
   }
 
   return formData;
+}
+
+function getSelectedCreditCardLabel() {
+  if (creditCardLabelMode === 'new') {
+    return String(creditCardNewLabel?.value || newCreditCardLabel || '').trim();
+  }
+
+  const typed = String(creditCardNewLabel?.value || newCreditCardLabel || '').trim();
+  if (typed) {
+    return typed;
+  }
+
+  const selected = String(creditCardLabelSelect?.value || selectedCreditCardLabel || '').trim();
+  if (selected) {
+    return selected;
+  }
+
+  return '';
+}
+
+function getSelectedChequingAccountLabel() {
+  if (chequingAccountMode === 'new') {
+    return String(chequingAccountNewLabel?.value || newChequingAccountLabel || '').trim();
+  }
+
+  const typed = String(chequingAccountNewLabel?.value || newChequingAccountLabel || '').trim();
+  if (typed) {
+    return typed;
+  }
+
+  const selected = String(chequingAccountSelect?.value || selectedChequingAccount || '').trim();
+  if (selected) {
+    return selected;
+  }
+
+  return '';
 }
 
 function showCompletion(message) {
@@ -611,10 +953,32 @@ function resetWizard() {
   parsedData = null;
   batchId = null;
   selectedCreditCardProvider = '';
+  selectedCreditCardLabel = '';
+  newCreditCardLabel = '';
+  creditCardLabelMode = 'existing';
+  selectedChequingAccount = '';
+  newChequingAccountLabel = '';
+  chequingAccountMode = 'existing';
   fileInput.value = '';
   if (creditCardProviderSelect) {
     creditCardProviderSelect.value = '';
   }
+  if (creditCardLabelSelect) {
+    creditCardLabelSelect.innerHTML = '<option value="">Use bank default label</option>';
+    creditCardLabelSelect.value = '';
+  }
+  if (creditCardNewLabel) {
+    creditCardNewLabel.value = '';
+  }
+  setCreditCardLabelMode('existing');
+  if (chequingAccountSelect) {
+    chequingAccountSelect.innerHTML = '<option value="">Select an account</option>';
+    chequingAccountSelect.value = '';
+  }
+  if (chequingAccountNewLabel) {
+    chequingAccountNewLabel.value = '';
+  }
+  setChequingAccountMode('existing');
 
   importTypeCards.forEach(card => card.classList.remove('selected'));
   setAnimatedVisibility(dropzone, true, 'block');

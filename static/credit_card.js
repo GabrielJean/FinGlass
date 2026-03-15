@@ -51,7 +51,9 @@ const creditMerchantBreakdownBody = document.querySelector("#creditMerchantBreak
 const creditCardSettingsSectionEl = document.getElementById("creditCardSettingsSection");
 const creditCardSettingsToggleBtnEl = document.getElementById("creditCardSettingsToggleBtn");
 const creditCardSettingsBackdropEl = document.getElementById("creditCardSettingsBackdrop");
+const creditCardDialogBackdropEl = document.getElementById("creditCardDialogBackdrop");
 const creditCardAddFormEl = document.getElementById("credit-card-add-form");
+const creditCardAddProviderSelectEl = document.getElementById("credit-card-add-provider");
 const creditCardAddLabelInputEl = document.getElementById("credit-card-add-label");
 const creditCardsListBodyEl = document.getElementById("credit-cards-list-body");
 const creditCardResetDataBtnEl = document.getElementById("credit-card-reset-data-btn");
@@ -69,6 +71,7 @@ const creditCardRenameConfirmBtnEl = document.getElementById("credit-card-rename
 const creditCardDeleteConfirmModalEl = document.getElementById("creditCardDeleteConfirmModal");
 const creditCardDeleteLabelDisplayEl = document.getElementById("credit-card-delete-label-display");
 const creditCardDeleteConfirmInputEl = document.getElementById("credit-card-delete-confirm-input");
+const creditCardDeleteConfirmErrorEl = document.getElementById("credit-card-delete-confirm-error");
 const creditCardDeleteCancelBtnEl = document.getElementById("credit-card-delete-cancel-btn");
 const creditCardDeleteConfirmBtnEl = document.getElementById("credit-card-delete-confirm-btn");
 
@@ -148,6 +151,17 @@ function createOrReplaceChart(currentChart, ctx, config) {
     currentChart.destroy();
   }
   return new Chart(ctx, config);
+}
+
+function formatCreditCardProviderName(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "rogers_bank") {
+    return "Rogers Bank";
+  }
+  if (normalized === "scotiabank") {
+    return "Scotiabank";
+  }
+  return String(value || "").trim();
 }
 
 function sortBreakdownRows(rows, sortState) {
@@ -1380,6 +1394,10 @@ function closeCreditCardRenameModal() {
   creditCardRenameOldLabelEl.value = "";
   creditCardRenameNewLabelEl.value = "";
   renamingCardLabel = null;
+  if (creditCardDialogBackdropEl && (creditCardDeleteConfirmModalEl?.classList.contains("hidden") ?? true)) {
+    creditCardDialogBackdropEl.classList.add("hidden");
+    creditCardDialogBackdropEl.setAttribute("aria-hidden", "true");
+  }
 }
 
 function closeCreditCardDeleteConfirmModal() {
@@ -1392,6 +1410,10 @@ function closeCreditCardDeleteConfirmModal() {
   creditCardDeleteLabelDisplayEl.textContent = "";
   deletingCardLabel = null;
   updateCreditCardDeleteConfirmButtonState();
+  if (creditCardDialogBackdropEl && (creditCardRenameModalEl?.classList.contains("hidden") ?? true)) {
+    creditCardDialogBackdropEl.classList.add("hidden");
+    creditCardDialogBackdropEl.setAttribute("aria-hidden", "true");
+  }
 }
 
 function updateCreditCardResetConfirmButtonState() {
@@ -1404,9 +1426,13 @@ function updateCreditCardResetConfirmButtonState() {
 function updateCreditCardDeleteConfirmButtonState() {
   if (!creditCardDeleteConfirmInputEl || !creditCardDeleteConfirmBtnEl || !deletingCardLabel) {
     creditCardDeleteConfirmBtnEl.disabled = true;
+    if (creditCardDeleteConfirmErrorEl) {
+      creditCardDeleteConfirmErrorEl.textContent = "";
+      creditCardDeleteConfirmErrorEl.classList.add("hidden");
+    }
     return;
   }
-  creditCardDeleteConfirmBtnEl.disabled = creditCardDeleteConfirmInputEl.value.trim() !== deletingCardLabel;
+  creditCardDeleteConfirmBtnEl.disabled = false;
 }
 
 async function refreshCreditCardsList() {
@@ -1416,23 +1442,28 @@ async function refreshCreditCardsList() {
     }
     creditCardsListBodyEl.innerHTML = "";
 
-    const cards = await fetchJson("/api/credit-card/cards");
+    const cards = await fetchJson("/api/credit-card/cards/manage");
     if (!Array.isArray(cards)) {
-      creditCardsListBodyEl.innerHTML = "<tr><td colspan='3' class='muted'>No credit cards found</td></tr>";
+      creditCardsListBodyEl.innerHTML = "<tr><td colspan='4' class='muted'>No credit cards found</td></tr>";
       return;
     }
 
-    creditCardsList = cards;
+    creditCardsList = cards.map((row) => String(row?.label || "").trim()).filter((value) => value);
 
-    for (const cardLabel of cards) {
-      const txResponse = await fetchJson(`/api/credit-card/transactions?card_label=${encodeURIComponent(cardLabel)}&limit=all`);
-      const txCount = Array.isArray(txResponse) ? txResponse.length : 0;
+    for (const cardRow of cards) {
+      const cardLabel = String(cardRow?.label || "").trim();
+      const provider = String(cardRow?.provider || "").trim();
+      const txCount = Number(cardRow?.transactions || 0);
+      if (!cardLabel) {
+        continue;
+      }
 
       const row = document.createElement("tr");
       row.innerHTML = `
+        <td>${escapeHtml(formatCreditCardProviderName(provider))}</td>
         <td>${escapeHtml(cardLabel)}</td>
         <td>${txCount}</td>
-        <td>
+        <td class="credit-card-actions">
           <button class="btn-link credit-card-rename-btn" data-card-label="${escapeHtml(cardLabel)}">Rename</button>
           <button class="btn-link credit-card-delete-btn" data-card-label="${escapeHtml(cardLabel)}">Delete</button>
         </td>
@@ -1463,9 +1494,14 @@ function openCreditCardRenameModal(cardLabel) {
   if (!creditCardRenameModalEl) {
     return;
   }
+  ensureOverlayElementsAtBody?.(creditCardDialogBackdropEl, creditCardRenameModalEl);
   renamingCardLabel = cardLabel;
   creditCardRenameOldLabelEl.value = cardLabel;
   creditCardRenameNewLabelEl.value = "";
+  if (creditCardDialogBackdropEl) {
+    creditCardDialogBackdropEl.classList.remove("hidden");
+    creditCardDialogBackdropEl.setAttribute("aria-hidden", "false");
+  }
   creditCardRenameModalEl.classList.remove("hidden");
   creditCardRenameModalEl.setAttribute("aria-hidden", "false");
   creditCardRenameNewLabelEl.focus();
@@ -1475,9 +1511,18 @@ function openCreditCardDeleteConfirmModal(cardLabel) {
   if (!creditCardDeleteConfirmModalEl) {
     return;
   }
+  ensureOverlayElementsAtBody?.(creditCardDialogBackdropEl, creditCardDeleteConfirmModalEl);
   deletingCardLabel = cardLabel;
   creditCardDeleteLabelDisplayEl.textContent = escapeHtml(cardLabel);
   creditCardDeleteConfirmInputEl.value = "";
+  if (creditCardDeleteConfirmErrorEl) {
+    creditCardDeleteConfirmErrorEl.textContent = "";
+    creditCardDeleteConfirmErrorEl.classList.add("hidden");
+  }
+  if (creditCardDialogBackdropEl) {
+    creditCardDialogBackdropEl.classList.remove("hidden");
+    creditCardDialogBackdropEl.setAttribute("aria-hidden", "false");
+  }
   creditCardDeleteConfirmModalEl.classList.remove("hidden");
   creditCardDeleteConfirmModalEl.setAttribute("aria-hidden", "false");
   updateCreditCardDeleteConfirmButtonState();
@@ -1488,8 +1533,13 @@ async function handleAddCreditCard(e) {
   e.preventDefault();
   try {
     const newLabel = (creditCardAddLabelInputEl.value || "").trim();
+    const provider = String(creditCardAddProviderSelectEl?.value || "").trim();
     if (!newLabel) {
       setErrorStatus("Card label cannot be empty");
+      return;
+    }
+    if (!provider) {
+      setErrorStatus("Please select a bank");
       return;
     }
 
@@ -1499,10 +1549,15 @@ async function handleAddCreditCard(e) {
       return;
     }
 
-    // Just refresh the list - the user will need to add transactions manually or via import
+    await fetchJson("/api/credit-card/cards/create", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider, label: newLabel }),
+    });
+
     creditCardAddLabelInputEl.value = "";
-    setStatus("Card label added. Transactions can now be imported with this label.");
-    refreshCreditCardsList();
+    setStatus(`Card "${newLabel}" added.`);
+    await refreshCreditCardsList();
   } catch (err) {
     setErrorStatus(`Error adding card: ${err.message}`);
   }
@@ -1554,6 +1609,20 @@ async function handleDeleteCreditCard() {
   try {
     if (!deletingCardLabel) {
       return;
+    }
+
+    const typedLabel = String(creditCardDeleteConfirmInputEl?.value || "").trim();
+    if (typedLabel !== deletingCardLabel) {
+      if (creditCardDeleteConfirmErrorEl) {
+        creditCardDeleteConfirmErrorEl.textContent = `Card label does not match. Type "${deletingCardLabel}" exactly.`;
+        creditCardDeleteConfirmErrorEl.classList.remove("hidden");
+      }
+      return;
+    }
+
+    if (creditCardDeleteConfirmErrorEl) {
+      creditCardDeleteConfirmErrorEl.textContent = "";
+      creditCardDeleteConfirmErrorEl.classList.add("hidden");
     }
 
     const response = await fetchJson(
@@ -1615,6 +1684,18 @@ if (creditCardSettingsBackdropEl) {
   creditCardSettingsBackdropEl.addEventListener("click", closeCreditCardSettingsMenu);
 }
 
+if (creditCardDialogBackdropEl) {
+  creditCardDialogBackdropEl.addEventListener("click", () => {
+    if (creditCardDeleteConfirmModalEl && !creditCardDeleteConfirmModalEl.classList.contains("hidden")) {
+      closeCreditCardDeleteConfirmModal();
+      return;
+    }
+    if (creditCardRenameModalEl && !creditCardRenameModalEl.classList.contains("hidden")) {
+      closeCreditCardRenameModal();
+    }
+  });
+}
+
 if (creditCardAddFormEl) {
   creditCardAddFormEl.addEventListener("submit", handleAddCreditCard);
 }
@@ -1642,7 +1723,13 @@ if (creditCardDeleteConfirmBtnEl) {
 }
 
 if (creditCardDeleteConfirmInputEl) {
-  creditCardDeleteConfirmInputEl.addEventListener("input", updateCreditCardDeleteConfirmButtonState);
+  creditCardDeleteConfirmInputEl.addEventListener("input", () => {
+    if (creditCardDeleteConfirmErrorEl && !creditCardDeleteConfirmErrorEl.classList.contains("hidden")) {
+      creditCardDeleteConfirmErrorEl.textContent = "";
+      creditCardDeleteConfirmErrorEl.classList.add("hidden");
+    }
+    updateCreditCardDeleteConfirmButtonState();
+  });
   creditCardDeleteConfirmInputEl.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") {
       return;

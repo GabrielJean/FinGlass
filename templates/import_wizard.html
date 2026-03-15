@@ -15,7 +15,7 @@
     <link rel="stylesheet" href="/static/css/responsive.css" />
     <style>
       .wizard-container {
-        max-width: 900px;
+        max-width: 1320px;
         margin: 2rem auto;
       }
 
@@ -250,7 +250,8 @@
       }
 
       .preview-table-container {
-        max-height: 400px;
+        max-height: 68vh;
+        min-height: 440px;
         overflow: auto;
         margin: 1.5rem 0;
         border-radius: 0.5rem;
@@ -259,7 +260,30 @@
 
       .preview-table {
         width: 100%;
-        font-size: 0.875rem;
+        font-size: 0.938rem;
+      }
+
+      .preview-table-toolbar {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 0.75rem;
+      }
+
+      .preview-table-container.fullscreen {
+        position: fixed;
+        inset: 1rem;
+        z-index: 1200;
+        margin: 0;
+        max-height: none;
+        min-height: 0;
+        height: calc(100vh - 2rem);
+        background: rgba(15, 23, 42, 0.98);
+        border: 1px solid rgba(71, 85, 105, 0.8);
+        box-shadow: 0 24px 64px rgba(2, 6, 23, 0.7);
+      }
+
+      body.preview-fullscreen-open {
+        overflow: hidden;
       }
 
       .preview-table th {
@@ -338,6 +362,12 @@
         color: #cbd5e1;
       }
 
+      .wizard-provider-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+        gap: 1rem;
+      }
+
       .wizard-preview-stats {
         margin: 1rem 0;
       }
@@ -364,7 +394,7 @@
       <header class="page-header">
         <div>
           <h1>Import Wizard</h1>
-          <p class="muted">Import transactions, holdings, or credit card data into FinGlass</p>
+          <p class="muted">Import transactions, holdings, credit card, or chequing data into FinGlass</p>
         </div>
         <div class="header-actions">
           <div class="header-controls-bar">
@@ -440,6 +470,14 @@
               </div>
             </div>
 
+            <div class="import-type-card" data-type="chequing">
+              <div class="import-type-icon">🏦</div>
+              <div class="import-type-title">Chequing Transactions</div>
+              <div class="import-type-description">
+                Import chequing account transactions to track money in/out and simple spending categories
+              </div>
+            </div>
+
             <div class="import-type-card" data-type="tax-pdf">
               <div class="import-type-icon">📄</div>
               <div class="import-type-title">Tax Documents</div>
@@ -464,12 +502,47 @@
           </div>
 
           <div id="creditCardProviderGroup" class="wizard-provider-group" style="display: none;">
-            <label for="creditCardProvider">Credit Card Provider</label>
-            <select id="creditCardProvider" class="input">
-              <option value="">Select provider</option>
-              <option value="rogers">Rogers Bank</option>
-              <option value="scotiabank">Scotiabank</option>
-            </select>
+            <div class="wizard-provider-grid">
+              <div>
+                <label for="creditCardProvider">Credit Card Bank</label>
+                <select id="creditCardProvider" class="input">
+                  <option value="">Select bank</option>
+                  <option value="rogers">Rogers Bank</option>
+                  <option value="scotiabank">Scotiabank</option>
+                </select>
+              </div>
+              <div id="creditCardExistingWrap">
+                <label for="creditCardLabelSelect">Existing card label</label>
+                <select id="creditCardLabelSelect" class="input">
+                  <option value="">Use bank default label</option>
+                </select>
+              </div>
+              <div id="creditCardNewWrap" style="display: none;">
+                <label for="creditCardNewLabel">New card label</label>
+                <input id="creditCardNewLabel" class="input" type="text" placeholder="e.g., Scotia Momentum Visa" />
+              </div>
+            </div>
+            <div class="wizard-provider-group" style="margin-top: 0.75rem;">
+              <button id="toggleCreditCardLabelModeBtn" type="button" class="btn-secondary">Create New Card</button>
+            </div>
+          </div>
+
+          <div id="chequingAccountGroup" class="wizard-provider-group" style="display: none;">
+            <div class="wizard-provider-grid">
+              <div id="chequingAccountExistingWrap">
+                <label for="chequingAccountSelect">Chequing Account</label>
+                <select id="chequingAccountSelect" class="input">
+                  <option value="">Select an account</option>
+                </select>
+              </div>
+              <div id="chequingAccountNewWrap" style="display: none;">
+                <label for="chequingAccountNewLabel">New account label</label>
+                <input id="chequingAccountNewLabel" class="input" type="text" placeholder="e.g., Joint Chequing" />
+              </div>
+            </div>
+            <div class="wizard-provider-group" style="margin-top: 0.75rem;">
+              <button id="toggleChequingAccountModeBtn" type="button" class="btn-secondary">Create New Account</button>
+            </div>
           </div>
 
           <input type="file" id="fileInput" style="display: none;" />
@@ -491,7 +564,11 @@
           <div id="previewStats" class="wizard-preview-stats"></div>
           <div id="previewWarnings"></div>
 
-          <div class="preview-table-container">
+          <div class="preview-table-toolbar">
+            <button id="togglePreviewFullscreenBtn" type="button" class="btn-secondary">⛶ Full Screen</button>
+          </div>
+
+          <div id="previewTableContainer" class="preview-table-container">
             <table class="preview-table">
               <thead id="previewTableHead"></thead>
               <tbody id="previewTableBody"></tbody>

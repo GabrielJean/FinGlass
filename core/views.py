@@ -38,6 +38,12 @@ def credit_card_page(request):
     return render(request, "credit_card.html", {"provider": provider})
 
 
+def chequing_page(request):
+    if not _feature_enabled(request, "chequing_tracker"):
+        return JsonResponse({"error": "Chequing tracker is disabled in settings"}, status=403)
+    return render(request, "chequing.html")
+
+
 def net_worth_page(request):
     if not _feature_enabled(request, "net_worth"):
         return JsonResponse({"error": "Net worth tracker is disabled in settings"}, status=403)

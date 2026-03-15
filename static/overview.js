@@ -21,6 +21,7 @@ const portfolioGraphsSection = document.getElementById("portfolioGraphsSection")
 const acbTrackerSection = document.getElementById("acbTrackerSection");
 const netWorthSection = document.getElementById("netWorthSection");
 const creditCardSection = document.getElementById("creditCardSection");
+const chequingSection = document.getElementById("chequingSection");
 const tfsaSection = document.getElementById("tfsaSection");
 const rrspSection = document.getElementById("rrspSection");
 const fhsaSection = document.getElementById("fhsaSection");
@@ -30,11 +31,15 @@ const featureHoldingsOverviewCheckbox = document.getElementById("featureHoldings
 const featureAcbTrackerCheckbox = document.getElementById("featureAcbTracker");
 const featureNetWorthCheckbox = document.getElementById("featureNetWorth");
 const featureCreditCardCheckbox = document.getElementById("featureCreditCard");
+const featureChequingTrackerCheckbox = document.getElementById("featureChequingTracker");
 const featureTfsaTrackerCheckbox = document.getElementById("featureTfsaTracker");
 const featureRrspTrackerCheckbox = document.getElementById("featureRrspTracker");
 const featureFhsaTrackerCheckbox = document.getElementById("featureFhsaTracker");
 const themeToggleBtn = document.getElementById("themeToggleBtn");
 const themeIcon = document.getElementById("themeIcon");
+const overviewInvestmentsBtn = document.getElementById("overviewInvestmentsBtn");
+const overviewExpensesBtn = document.getElementById("overviewExpensesBtn");
+const overviewModeDescriptionEl = document.getElementById("overviewModeDescription");
 
 const acbBySecurityCtx = document.getElementById("acbBySecurityChart");
 const marketValueByAccountCtx = document.getElementById("marketValueByAccountChart");
@@ -42,10 +47,16 @@ const marketValueByTypeCtx = document.getElementById("marketValueByTypeChart");
 const topHoldingsCtx = document.getElementById("topHoldingsChart");
 const netWorthCtx = document.getElementById("netWorthChart");
 const ccMonthlyCtx = document.getElementById("ccMonthlyChart");
+const chequingMonthlyCtx = document.getElementById("chequingMonthlyChart");
 
 const creditCardAsOfEl = document.getElementById("creditCardAsOf");
 const ccTotalExpensesEl = document.getElementById("ccTotalExpenses");
 const ccTransactionsEl = document.getElementById("ccTransactions");
+const chequingAsOfEl = document.getElementById("chequingAsOf");
+const cheqMoneyInEl = document.getElementById("cheqMoneyIn");
+const cheqMoneyOutEl = document.getElementById("cheqMoneyOut");
+const cheqNetFlowEl = document.getElementById("cheqNetFlow");
+const cheqTransactionsEl = document.getElementById("cheqTransactions");
 const common = window.FinGlassCommon || {};
 
 let acbBySecurityChart;
@@ -54,6 +65,7 @@ let marketValueByTypeChart;
 let topHoldingsChart;
 let netWorthChart;
 let ccMonthlyChart;
+let chequingMonthlyChart;
 let transactionTypes = [];
 let netWorthEntries = [];
 const CASH_ACCOUNT_NUMBER = "__CASH__";
@@ -63,12 +75,15 @@ const DEFAULT_FEATURE_SETTINGS = {
   acb_tracker: true,
   net_worth: true,
   credit_card: true,
+  chequing_tracker: true,
   tfsa_tracker: true,
   rrsp_tracker: true,
   fhsa_tracker: true,
 };
 let featureSettings = { ...DEFAULT_FEATURE_SETTINGS };
 let syncingFeatureUi = false;
+const OVERVIEW_MODE_STORAGE_KEY = "fg.dashboard.overviewMode";
+let currentOverviewMode = "investments";
 
 const currencyFormatter = common.defaultCurrencyFormatter;
 const showConfirmDialog = common.showConfirmDialog;
@@ -262,6 +277,7 @@ function syncFeatureCheckboxes(settings) {
   if (featureAcbTrackerCheckbox) featureAcbTrackerCheckbox.checked = Boolean(settings.acb_tracker);
   if (featureNetWorthCheckbox) featureNetWorthCheckbox.checked = Boolean(settings.net_worth);
   if (featureCreditCardCheckbox) featureCreditCardCheckbox.checked = Boolean(settings.credit_card);
+  if (featureChequingTrackerCheckbox) featureChequingTrackerCheckbox.checked = Boolean(settings.chequing_tracker);
   if (featureTfsaTrackerCheckbox) featureTfsaTrackerCheckbox.checked = Boolean(settings.tfsa_tracker);
   if (featureRrspTrackerCheckbox) featureRrspTrackerCheckbox.checked = Boolean(settings.rrsp_tracker);
   if (featureFhsaTrackerCheckbox) featureFhsaTrackerCheckbox.checked = Boolean(settings.fhsa_tracker);
@@ -276,23 +292,69 @@ function collectFeatureSettingsFromUi() {
     acb_tracker: Boolean(featureAcbTrackerCheckbox?.checked),
     net_worth: Boolean(featureNetWorthCheckbox?.checked),
     credit_card: Boolean(featureCreditCardCheckbox?.checked),
+    chequing_tracker: Boolean(featureChequingTrackerCheckbox?.checked),
     tfsa_tracker: Boolean(featureTfsaTrackerCheckbox?.checked),
     rrsp_tracker: Boolean(featureRrspTrackerCheckbox?.checked),
     fhsa_tracker: Boolean(featureFhsaTrackerCheckbox?.checked),
   };
 }
 
+function normalizeOverviewMode(mode) {
+  return mode === "investments" ? "investments" : "expenses";
+}
+
+function syncOverviewModeUi() {
+  const isInvestments = currentOverviewMode === "investments";
+  if (overviewInvestmentsBtn) {
+    overviewInvestmentsBtn.classList.toggle("is-active", isInvestments);
+    overviewInvestmentsBtn.setAttribute("aria-selected", isInvestments ? "true" : "false");
+  }
+  if (overviewExpensesBtn) {
+    overviewExpensesBtn.classList.toggle("is-active", !isInvestments);
+    overviewExpensesBtn.setAttribute("aria-selected", !isInvestments ? "true" : "false");
+  }
+
+  if (overviewModeDescriptionEl) {
+    overviewModeDescriptionEl.textContent = isInvestments
+      ? "Investment overview is active: holdings, ACB, account trackers, and net worth."
+      : "Expense overview is active: credit card and chequing cash flow.";
+  }
+}
+
+function setOverviewMode(mode, options = {}) {
+  const { persist = true, announce = false } = options;
+  const nextMode = normalizeOverviewMode(mode);
+  if (currentOverviewMode === nextMode) {
+    return;
+  }
+
+  currentOverviewMode = nextMode;
+  syncOverviewModeUi();
+  applyFeatureVisibility(featureSettings);
+
+  if (persist) {
+    window.localStorage?.setItem(OVERVIEW_MODE_STORAGE_KEY, currentOverviewMode);
+  }
+  if (announce) {
+    setStatus(currentOverviewMode === "investments" ? "Switched to investment overview." : "Switched to expense overview.");
+  }
+}
+
 function applyFeatureVisibility(settings) {
+  const showInvestments = currentOverviewMode === "investments";
+  const showExpenses = currentOverviewMode === "expenses";
+
   toggleSection(importsSection, settings.imports);
-  toggleSection(holdingsOverviewSection, settings.holdings_overview);
-  toggleSection(holdingsSecuritiesSection, settings.holdings_overview);
-  toggleSection(portfolioGraphsSection, settings.holdings_overview);
-  toggleSection(acbTrackerSection, settings.acb_tracker);
-  toggleSection(netWorthSection, settings.net_worth);
-  toggleSection(creditCardSection, settings.credit_card);
-  toggleSection(tfsaSection, settings.tfsa_tracker);
-  toggleSection(rrspSection, settings.rrsp_tracker);
-  toggleSection(fhsaSection, settings.fhsa_tracker);
+  toggleSection(holdingsOverviewSection, settings.holdings_overview && showInvestments);
+  toggleSection(holdingsSecuritiesSection, settings.holdings_overview && showInvestments);
+  toggleSection(portfolioGraphsSection, settings.holdings_overview && showInvestments);
+  toggleSection(acbTrackerSection, settings.acb_tracker && showInvestments);
+  toggleSection(netWorthSection, settings.net_worth && showInvestments);
+  toggleSection(creditCardSection, settings.credit_card && showExpenses);
+  toggleSection(chequingSection, settings.chequing_tracker && showExpenses);
+  toggleSection(tfsaSection, settings.tfsa_tracker && showInvestments);
+  toggleSection(rrspSection, settings.rrsp_tracker && showInvestments);
+  toggleSection(fhsaSection, settings.fhsa_tracker && showInvestments);
 }
 
 function openSettingsMenu() {
@@ -750,6 +812,54 @@ function renderCreditCardDashboard(data) {
 async function refreshCreditCardDashboard() {
   const data = await fetchJson("/api/credit-card/dashboard");
   renderCreditCardDashboard(data);
+}
+
+function renderChequingDashboard(data) {
+  const summary = data.summary || {};
+  cheqMoneyInEl.textContent = fmtMoney(summary.total_in || 0);
+  cheqMoneyOutEl.textContent = fmtMoney(summary.total_out || 0);
+  cheqNetFlowEl.textContent = fmtMoney(summary.net_flow || 0);
+  cheqTransactionsEl.textContent = Number(summary.transactions || 0).toString();
+
+  chequingAsOfEl.textContent = data.latest_transaction_date
+    ? `Imported through ${data.latest_transaction_date}.`
+    : "No chequing data imported yet.";
+
+  const monthly = data.monthly || [];
+  chequingMonthlyChart = createOrReplaceChart(chequingMonthlyChart, chequingMonthlyCtx, {
+    type: "bar",
+    data: {
+      labels: monthly.map((row) => row.month),
+      datasets: [
+        {
+          label: "Money In",
+          data: monthly.map((row) => Number(row.in || 0)),
+          backgroundColor: "rgba(16, 185, 129, 0.5)",
+          borderColor: "#10b981",
+          borderWidth: 1,
+        },
+        {
+          label: "Money Out",
+          data: monthly.map((row) => Number(row.out || 0)),
+          backgroundColor: "rgba(239, 68, 68, 0.5)",
+          borderColor: "#ef4444",
+          borderWidth: 1,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { ticks: { callback: moneyTickCallback } },
+      },
+    },
+  });
+}
+
+async function refreshChequingDashboard() {
+  const data = await fetchJson("/api/chequing/dashboard");
+  renderChequingDashboard(data);
 }
 
 function renderNetWorth(entries) {
@@ -1268,12 +1378,29 @@ if (settingsToggleBtn && settingsSection) {
   });
 }
 
+const storedOverviewMode = window.localStorage?.getItem(OVERVIEW_MODE_STORAGE_KEY);
+currentOverviewMode = normalizeOverviewMode(storedOverviewMode);
+syncOverviewModeUi();
+
+if (overviewInvestmentsBtn) {
+  overviewInvestmentsBtn.addEventListener("click", () => {
+    setOverviewMode("investments", { persist: true, announce: true });
+  });
+}
+
+if (overviewExpensesBtn) {
+  overviewExpensesBtn.addEventListener("click", () => {
+    setOverviewMode("expenses", { persist: true, announce: true });
+  });
+}
+
 [
   featureImportsCheckbox,
   featureHoldingsOverviewCheckbox,
   featureAcbTrackerCheckbox,
   featureNetWorthCheckbox,
   featureCreditCardCheckbox,
+  featureChequingTrackerCheckbox,
   featureTfsaTrackerCheckbox,
   featureRrspTrackerCheckbox,
   featureFhsaTrackerCheckbox,
@@ -1310,22 +1437,36 @@ if (themeToggleBtn) {
 // Export Wizard Modal
 const openExportWizardBtn = document.getElementById("openExportWizardBtn");
 const exportWizardModal = document.getElementById("exportWizardModal");
+const exportWizardCard = document.getElementById("exportWizardCard");
 const closeExportWizardBtn = document.getElementById("closeExportWizardBtn");
 
 function openExportWizard() {
-  if (exportWizardModal) {
-    exportWizardModal.classList.remove("hidden");
-    exportWizardModal.setAttribute("aria-hidden", "false");
-    document.body.style.overflow = "hidden";
+  if (!exportWizardModal || !exportWizardCard) {
+    return;
   }
+
+  ensureOverlayElementsAtBody?.(exportWizardModal, exportWizardCard);
+  exportWizardCard.style.position = "fixed";
+  exportWizardCard.style.top = "50%";
+  exportWizardCard.style.left = "50%";
+  exportWizardCard.style.transform = "translate(-50%, -50%)";
+  exportWizardModal.classList.remove("hidden");
+  exportWizardModal.setAttribute("aria-hidden", "false");
+  exportWizardCard.classList.remove("hidden");
+  exportWizardCard.setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
 }
 
 function closeExportWizard() {
-  if (exportWizardModal) {
-    exportWizardModal.classList.add("hidden");
-    exportWizardModal.setAttribute("aria-hidden", "true");
-    document.body.style.overflow = "";
+  if (!exportWizardModal || !exportWizardCard) {
+    return;
   }
+
+  exportWizardModal.classList.add("hidden");
+  exportWizardModal.setAttribute("aria-hidden", "true");
+  exportWizardCard.classList.add("hidden");
+  exportWizardCard.setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
 }
 
 if (openExportWizardBtn) {
@@ -1341,7 +1482,6 @@ if (closeExportWizardBtn) {
 
 if (exportWizardModal) {
   exportWizardModal.addEventListener("click", (event) => {
-    // Close if clicking the backdrop (not the card itself)
     if (event.target === exportWizardModal) {
       closeExportWizard();
     }
@@ -1360,6 +1500,7 @@ const exportTransactionsBtn = document.getElementById("exportTransactionsBtn");
 const exportHoldingsBtn = document.getElementById("exportHoldingsBtn");
 const exportNetWorthBtn = document.getElementById("exportNetWorthBtn");
 const exportCreditCardsBtn = document.getElementById("exportCreditCardsBtn");
+const exportChequingBtn = document.getElementById("exportChequingBtn");
 const exportTfsaBtn = document.getElementById("exportTfsaBtn");
 const exportRrspBtn = document.getElementById("exportRrspBtn");
 const exportFhsaBtn = document.getElementById("exportFhsaBtn");
@@ -1535,6 +1676,18 @@ if (exportCreditCardsBtn) {
   });
 }
 
+if (exportChequingBtn) {
+  exportChequingBtn.addEventListener("click", async () => {
+    try {
+      setStatus("Exporting chequing data...");
+      downloadFile("/api/export/chequing");
+      setStatus("Chequing export started.");
+    } catch (err) {
+      setErrorStatus("Export failed: " + err.message);
+    }
+  });
+}
+
 if (exportTfsaBtn) {
   exportTfsaBtn.addEventListener("click", async () => {
     try {
@@ -1573,13 +1726,21 @@ if (exportFhsaBtn) {
 
 (async function init() {
   try {
-    applyPageEnterMotion?.({ selector: ".page-header, .card", maxItems: 14, staggerMs: 24 });
+    applyPageEnterMotion?.({ selector: ".page-header, .card:not(.export-wizard-modal-card)", maxItems: 14, staggerMs: 24 });
     setLoadingState?.(document.body, true, "Loading dashboard…");
     updateThemeIcon();
     await loadCurrentUser();
     await loadFeatureSettings();
     transactionTypes = await fetchJson("/api/transaction-types");
-    await Promise.all([refreshOverview(), refreshNetWorthTracker(), refreshCreditCardDashboard(), refreshTfsaSummary(), refreshRrspSummary(), refreshFhsaSummary()]);
+    await Promise.all([
+      refreshOverview(),
+      refreshNetWorthTracker(),
+      refreshCreditCardDashboard(),
+      refreshChequingDashboard(),
+      refreshTfsaSummary(),
+      refreshRrspSummary(),
+      refreshFhsaSummary(),
+    ]);
     setStatus("Ready.");
   } catch (err) {
     setErrorStatus(err.message);

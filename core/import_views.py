@@ -11,8 +11,10 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods
 from pypdf import PdfReader
 
+from core.constants import CHEQUING_DEFAULT_PROVIDER, CHEQUING_SUPPORTED_PROVIDERS
 from core.credit_card_categories import normalize_credit_card_category
-from core.models import CreditCardTransaction, HoldingSnapshot, ImportBatch, ImportBatchRow, Transaction
+from core.models import ChequingAccount, ChequingTransaction, CreditCardAccount, CreditCardTransaction, HoldingSnapshot, ImportBatch, ImportBatchRow, Transaction
+from core.services.chequing_service import normalize_chequing_category
 
 SUPPORTED_IMPORT_TYPES = {"activities_csv", "tax_pdf"}
 EPSILON = Decimal("0.000001")
@@ -546,7 +548,56 @@ def parse_credit_csv_text(csv_text, provider, card_label=None):
     if provider_value in {"scotia", "scotiabank"}:
         return parse_scotiabank_credit_csv_text(csv_text, card_label=card_label)
 
-    raise ValueError("Unsupported credit card provider. Use 'rogers' or 'scotiabank'.")
+    raise ValueError("Unsupported credit card bank. Use 'rogers' or 'scotiabank'.")
+
+
+def _normalize_credit_card_provider_name(value):
+    raw = str(value or "").strip().lower()
+    if raw in {"rogers", "rogers_bank"}:
+        return "rogers_bank"
+    if raw in {"scotia", "scotiabank"}:
+        return "scotiabank"
+    return ""
+
+
+def parse_chequing_courant_csv_text(csv_text, account_label=None):
+    normalized_account_label = str(account_label or "").strip()
+    if not normalized_account_label:
+        raise ValueError("account_label is required for chequing imports")
+
+    rows = []
+    reader = csv.DictReader(StringIO(csv_text))
+
+    for item in reader:
+        normalized_item = {
+            _normalize_csv_header(key): value for key, value in (item or {}).items() if key is not None
+        }
+
+        tx_date = _normalize_credit_card_date(_csv_get_value(normalized_item, "date", "transaction date"))
+        if not tx_date:
+            continue
+
+        transaction_code = _csv_get_value(normalized_item, "transaction", "transaction code")
+        description = _csv_get_value(normalized_item, "description", "details", "memo")
+        amount = _parse_number(_csv_get_value(normalized_item, "amount"), 0.0)
+        balance = _parse_number(_csv_get_value(normalized_item, "balance"), 0.0)
+        currency = _csv_get_value(normalized_item, "currency") or "CAD"
+        category = normalize_chequing_category(transaction_code, description, amount)
+
+        rows.append(
+            {
+                "account_label": normalized_account_label,
+                "transaction_date": tx_date,
+                "transaction_code": transaction_code,
+                "description": description,
+                "category": category,
+                "amount": amount,
+                "balance": balance,
+                "currency": currency,
+            }
+        )
+
+    return rows
 
 
 def parse_upload(import_type, filename, file_bytes):
@@ -650,13 +701,22 @@ def _import_holdings_rows(parsed_rows, source_filename, user_id):
 def _import_rogers_credit_rows(parsed_rows, source_filename, user_id):
     inserted = 0
     for row in parsed_rows:
+        provider = str(row.get("provider") or "").strip()
+        card_label = str(row.get("card_label") or provider).strip()
+        if card_label and provider:
+            CreditCardAccount.objects.get_or_create(
+                user_id=user_id,
+                label=card_label,
+                defaults={"provider": provider},
+            )
+
         amount = _to_decimal(row["amount"])
         merchant_name = row.get("merchant_name", "")
         posted_date = row.get("posted_date") or None
         merchant_filter = {"merchant_name": merchant_name} if merchant_name else {"merchant_name__in": ["", None]}
         existing = CreditCardTransaction.objects.filter(
             user_id=user_id,
-            provider=row["provider"],
+            provider=provider,
             transaction_date=row["transaction_date"],
             posted_date=posted_date,
             card_last4=row.get("card_last4", ""),
@@ -670,7 +730,7 @@ def _import_rogers_credit_rows(parsed_rows, source_filename, user_id):
 
         CreditCardTransaction.objects.create(
             user_id=user_id,
-            provider=row["provider"],
+            provider=provider,
             card_label=row.get("card_label") or None,
             transaction_date=row["transaction_date"],
             posted_date=posted_date,
@@ -688,6 +748,56 @@ def _import_rogers_credit_rows(parsed_rows, source_filename, user_id):
             rewards=_to_decimal(row.get("rewards", 0.0)),
             is_hidden=False,
             cardholder_name=row.get("cardholder_name", ""),
+            source_filename=source_filename,
+            imported_at=timezone.now(),
+        )
+        inserted += 1
+
+    return {"parsed": len(parsed_rows), "inserted": inserted}
+
+
+def _import_chequing_rows(parsed_rows, source_filename, user_id):
+    inserted = 0
+    for row in parsed_rows:
+        amount = _to_decimal(row["amount"])
+        balance = _to_decimal(row.get("balance", 0.0))
+        transaction_code = str(row.get("transaction_code") or "").strip()
+        description = str(row.get("description") or "").strip()
+        account_label = str(row.get("account_label") or "").strip()
+        if not account_label:
+            continue
+
+        description_filter = {"description": description} if description else {"description__in": ["", None]}
+        existing = ChequingTransaction.objects.filter(
+            user_id=user_id,
+            account_label=account_label,
+            transaction_date=row["transaction_date"],
+            transaction_code=transaction_code,
+            amount__gte=amount - EPSILON,
+            amount__lte=amount + EPSILON,
+            balance__gte=balance - EPSILON,
+            balance__lte=balance + EPSILON,
+            **description_filter,
+        ).exists()
+        if existing:
+            continue
+
+        ChequingAccount.objects.get_or_create(
+            user_id=user_id,
+            label=account_label,
+            defaults={"provider": CHEQUING_DEFAULT_PROVIDER},
+        )
+
+        ChequingTransaction.objects.create(
+            user_id=user_id,
+            account_label=account_label,
+            transaction_date=row["transaction_date"],
+            transaction_code=transaction_code,
+            description=description,
+            category=row.get("category") or normalize_chequing_category(transaction_code, description, amount),
+            amount=amount,
+            balance=balance,
+            currency=row.get("currency") or "CAD",
             source_filename=source_filename,
             imported_at=timezone.now(),
         )
@@ -829,7 +939,7 @@ def import_rogers_credit_csv(request):
     card_label = str(request.POST.get("card_label") or "").strip() or None
     provider = str(request.POST.get("provider") or "").strip().lower()
     if provider not in {"rogers", "scotiabank", "scotia"}:
-        return JsonResponse({"error": "Missing or invalid provider. Choose 'rogers' or 'scotiabank' in the import wizard."}, status=400)
+        return JsonResponse({"error": "Missing or invalid bank. Choose 'rogers' or 'scotiabank' in the import wizard."}, status=400)
 
     total_parsed = 0
     total_inserted = 0
@@ -859,6 +969,51 @@ def import_rogers_credit_csv(request):
 
     if total_parsed == 0:
         return JsonResponse({"error": "No credit card rows found in uploaded CSV file(s)"}, status=400)
+
+    if preview_only:
+        return JsonResponse({"parsed": total_parsed, "rows": preview_rows, "files": files_processed, "imported": 0})
+
+    return JsonResponse({"parsed": total_parsed, "inserted": total_inserted, "files": files_processed, "imported": total_inserted})
+
+
+@require_http_methods(["POST"])
+def import_chequing_courant_csv(request):
+    user_id = request.user.id
+    if "file" not in request.FILES:
+        return JsonResponse({"error": "Missing file upload field: file"}, status=400)
+
+    uploaded_files = [file for file in request.FILES.getlist("file") if file and file.name]
+    if not uploaded_files:
+        return JsonResponse({"error": "No selected file"}, status=400)
+
+    account_label = str(request.POST.get("account_label") or "").strip() or None
+    if not account_label:
+        return JsonResponse({"error": "account_label is required for chequing imports"}, status=400)
+    total_parsed = 0
+    total_inserted = 0
+    files_processed = 0
+    preview_rows = []
+    preview_only = _is_truthy(request.POST.get("preview_only"))
+
+    for uploaded_file in uploaded_files:
+        file_text = uploaded_file.read().decode("utf-8-sig")
+        parsed_rows = parse_chequing_courant_csv_text(file_text, account_label=account_label)
+        if not parsed_rows:
+            continue
+
+        if preview_only:
+            total_parsed += len(parsed_rows)
+            files_processed += 1
+            preview_rows.extend(parsed_rows)
+            continue
+
+        summary = _import_chequing_rows(parsed_rows, uploaded_file.name, user_id)
+        total_parsed += int(summary.get("parsed") or 0)
+        total_inserted += int(summary.get("inserted") or 0)
+        files_processed += 1
+
+    if total_parsed == 0:
+        return JsonResponse({"error": "No chequing rows found in uploaded CSV file(s)"}, status=400)
 
     if preview_only:
         return JsonResponse({"parsed": total_parsed, "rows": preview_rows, "files": files_processed, "imported": 0})
@@ -978,6 +1133,14 @@ VDY,12345678,My TFSA,TFSA,Tax Advantaged,50,35.00,CAD,1600.00,1750.00,CAD,150.00
 2024-01-20,2024-01-21,GAS STATION,-60.00,Gas
 2024-02-01,2024-02-02,RESTAURANT,-45.00,Dining
 2024-02-10,2024-02-11,ONLINE SHOPPING,-89.99,Shopping""",
+        },
+        "chequing": {
+            "filename": "chequing_template.csv",
+            "content": """date,transaction,description,amount,balance,currency
+2026-02-01,INT,Interest earned,4.69,2329.06,CAD
+2026-02-02,E_TRFOUT,Interac e-Transfer® Out,-200.00,2129.06,CAD
+2026-02-11,AFT_IN,Direct deposit from CANADA,2699.77,2842.86,CAD
+2026-02-20,AFT_OUT,Pre-authorized Debit to HONDA FINANCE,-285.97,2346.45,CAD""",
         },
     }
 
@@ -1173,6 +1336,43 @@ def export_credit_cards(request):
     csv_content = _export_to_csv(headers, rows)
     response = HttpResponse(csv_content, content_type="text/csv")
     response["Content-Disposition"] = f'attachment; filename="credit_cards_{datetime.now().strftime("%Y%m%d")}.csv"'
+    return response
+
+
+@require_GET
+def export_chequing(request):
+    """Export all chequing transactions to CSV."""
+    user_id = request.user.id
+    rows_query = ChequingTransaction.objects.filter(user_id=user_id).order_by("transaction_date", "id").values(
+        "account_label", "transaction_date", "transaction_code", "description", "category",
+        "amount", "balance", "currency", "is_hidden", "source_filename", "imported_at"
+    )
+
+    headers = [
+        "Account Label", "Transaction Date", "Transaction Code", "Description", "Category",
+        "Amount", "Balance", "Currency", "Is Hidden", "Source Filename", "Imported At"
+    ]
+
+    rows = [
+        [
+            row["account_label"] or "",
+            row["transaction_date"].strftime("%Y-%m-%d") if row["transaction_date"] else "",
+            row["transaction_code"] or "",
+            row["description"] or "",
+            row["category"] or "",
+            str(row["amount"]),
+            str(row["balance"]) if row["balance"] is not None else "",
+            row["currency"] or "",
+            str(row["is_hidden"]),
+            row["source_filename"] or "",
+            row["imported_at"].strftime("%Y-%m-%d %H:%M:%S") if row["imported_at"] else "",
+        ]
+        for row in rows_query
+    ]
+
+    csv_content = _export_to_csv(headers, rows)
+    response = HttpResponse(csv_content, content_type="text/csv")
+    response["Content-Disposition"] = f'attachment; filename="chequing_{datetime.now().strftime("%Y%m%d")}.csv"'
     return response
 
 
@@ -1388,7 +1588,7 @@ def export_all_data(request):
     import zipfile
     from io import BytesIO
     from core.models import (
-        NetWorthHistory, TfsaAccount, TfsaAnnualLimit, TfsaContribution,
+        ChequingAccount, ChequingTransaction, CreditCardAccount, NetWorthHistory, TfsaAccount, TfsaAnnualLimit, TfsaContribution,
         RrspAccount, RrspAnnualLimit, RrspContribution, FhsaAccount, FhsaContribution
     )
 
@@ -1475,8 +1675,65 @@ def export_all_data(request):
         ]
         zip_file.writestr(f"credit_cards_{timestamp}.csv", _export_to_csv(headers, rows))
 
-        # 5-7. TFSA, RRSP, FHSA (simplified - just basic data)
-        # TFSA
+        # 4b. Credit card accounts
+        cc_accounts = CreditCardAccount.objects.filter(user_id=user_id).order_by("label").values(
+            "provider", "label", "created_at"
+        )
+        headers = ["Provider", "Label", "Created At"]
+        rows = [
+            [
+                row["provider"] or "",
+                row["label"] or "",
+                row["created_at"].strftime("%Y-%m-%d %H:%M:%S") if row["created_at"] else "",
+            ]
+            for row in cc_accounts
+        ]
+        zip_file.writestr(f"credit_card_accounts_{timestamp}.csv", _export_to_csv(headers, rows))
+
+        # 5. Chequing accounts
+        chequing_accounts = ChequingAccount.objects.filter(user_id=user_id).order_by("label").values(
+            "provider", "label", "created_at"
+        )
+        headers = ["Provider", "Label", "Created At"]
+        rows = [
+            [
+                row["provider"] or CHEQUING_DEFAULT_PROVIDER,
+                row["label"] or "",
+                row["created_at"].strftime("%Y-%m-%d %H:%M:%S") if row["created_at"] else "",
+            ]
+            for row in chequing_accounts
+        ]
+        zip_file.writestr(f"chequing_accounts_{timestamp}.csv", _export_to_csv(headers, rows))
+
+        # 6. Chequing transactions
+        chequing_rows = ChequingTransaction.objects.filter(user_id=user_id).order_by("transaction_date", "id").values(
+            "account_label", "transaction_date", "transaction_code", "description", "category",
+            "amount", "balance", "currency", "is_hidden", "source_filename", "imported_at"
+        )
+        headers = [
+            "Account Label", "Transaction Date", "Transaction Code", "Description", "Category",
+            "Amount", "Balance", "Currency", "Is Hidden", "Source Filename", "Imported At"
+        ]
+        rows = [
+            [
+                row["account_label"] or "",
+                row["transaction_date"].strftime("%Y-%m-%d") if row["transaction_date"] else "",
+                row["transaction_code"] or "",
+                row["description"] or "",
+                row["category"] or "",
+                str(row["amount"]),
+                str(row["balance"]) if row["balance"] is not None else "",
+                row["currency"] or "",
+                str(row["is_hidden"]),
+                row["source_filename"] or "",
+                row["imported_at"].strftime("%Y-%m-%d %H:%M:%S") if row["imported_at"] else "",
+            ]
+            for row in chequing_rows
+        ]
+        zip_file.writestr(f"chequing_{timestamp}.csv", _export_to_csv(headers, rows))
+
+        # 7-9. TFSA, RRSP, FHSA (simplified - just basic data)
+        # 7. TFSA
         tfsa_contribs = TfsaContribution.objects.filter(user_id=user_id).select_related("tfsa_account").order_by("contribution_date").values(
             "tfsa_account__account_name", "contribution_date", "amount", "contribution_type", "memo"
         )
@@ -1488,7 +1745,7 @@ def export_all_data(request):
         ]
         zip_file.writestr(f"tfsa_contributions_{timestamp}.csv", _export_to_csv(headers, rows))
 
-        # RRSP
+        # 8. RRSP
         rrsp_contribs = RrspContribution.objects.filter(user_id=user_id).select_related("rrsp_account").order_by("contribution_date").values(
             "rrsp_account__account_name", "contribution_date", "amount", "contribution_type",
             "is_unused", "deducted_tax_year", "memo"
@@ -1502,7 +1759,7 @@ def export_all_data(request):
         ]
         zip_file.writestr(f"rrsp_contributions_{timestamp}.csv", _export_to_csv(headers, rows))
 
-        # FHSA
+        # 9. FHSA
         fhsa_contribs = FhsaContribution.objects.filter(user_id=user_id).select_related("fhsa_account").order_by("contribution_date").values(
             "fhsa_account__account_name", "contribution_date", "amount", "contribution_type",
             "is_qualifying_withdrawal", "memo"
@@ -1567,7 +1824,7 @@ def _import_csv_to_model(csv_content, model_class, field_mapping, user_id, uniqu
                     continue
                 elif model_field in ["amount", "shares", "commission", "quantity", "market_price",
                                      "book_value_cad", "market_value", "unrealized_return",
-                                     "amount_per_share", "rewards", "annual_limit", "opening_balance"]:
+                                     "amount_per_share", "rewards", "annual_limit", "opening_balance", "balance"]:
                     # Numeric fields
                     data[model_field] = _to_decimal(value) if value else 0
                 elif model_field == "is_hidden" or model_field == "is_unused" or model_field == "is_qualifying_withdrawal":
@@ -1618,7 +1875,7 @@ def import_full_backup(request):
     This is a complete restore operation.
     """
     from core.models import (
-        NetWorthHistory, TfsaAccount, TfsaAnnualLimit, TfsaContribution,
+        ChequingAccount, ChequingTransaction, CreditCardAccount, NetWorthHistory, TfsaAccount, TfsaAnnualLimit, TfsaContribution,
         RrspAccount, RrspAnnualLimit, RrspContribution, FhsaAccount, FhsaContribution
     )
 
@@ -1645,6 +1902,7 @@ def import_full_backup(request):
             "holdings": {"inserted": 0, "updated": 0, "errors": []},
             "net_worth": {"inserted": 0, "updated": 0, "errors": []},
             "credit_cards": {"inserted": 0, "updated": 0, "errors": []},
+            "chequing": {"inserted": 0, "updated": 0, "errors": []},
             "tfsa": {"inserted": 0, "updated": 0, "errors": []},
             "rrsp": {"inserted": 0, "updated": 0, "errors": []},
             "fhsa": {"inserted": 0, "updated": 0, "errors": []},
@@ -1656,6 +1914,9 @@ def import_full_backup(request):
             HoldingSnapshot.objects.filter(user_id=user_id).delete()
             NetWorthHistory.objects.filter(user_id=user_id).delete()
             CreditCardTransaction.objects.filter(user_id=user_id).delete()
+            CreditCardAccount.objects.filter(user_id=user_id).delete()
+            ChequingTransaction.objects.filter(user_id=user_id).delete()
+            ChequingAccount.objects.filter(user_id=user_id).delete()
             TfsaContribution.objects.filter(user_id=user_id).delete()
             TfsaAnnualLimit.objects.filter(user_id=user_id).delete()
             TfsaAccount.objects.filter(user_id=user_id).delete()
@@ -1731,6 +1992,39 @@ def import_full_backup(request):
                 )
 
             # 4. Import Credit Cards
+            credit_account_summary = None
+            cc_account_files = [f for f in file_list if f.startswith("credit_card_accounts_") and f.endswith(".csv")]
+            if cc_account_files:
+                csv_content = zip_file.read(cc_account_files[0]).decode("utf-8")
+                reader = csv.DictReader(StringIO(csv_content))
+                inserted = 0
+                updated = 0
+                errors = []
+                for row_num, row in enumerate(reader, start=2):
+                    label = str(row.get("Label") or "").strip()
+                    provider = _normalize_credit_card_provider_name(row.get("Provider"))
+                    if not label:
+                        continue
+                    if not provider:
+                        errors.append(f"Row {row_num}: Unsupported credit card bank '{row.get('Provider', '')}'. Supported banks: Rogers Bank, Scotiabank")
+                        if len(errors) > 10:
+                            errors.append("... (additional errors truncated)")
+                            break
+                        continue
+
+                    _, created = CreditCardAccount.objects.update_or_create(
+                        user_id=user_id,
+                        label=label,
+                        defaults={"provider": provider},
+                    )
+                    if created:
+                        inserted += 1
+                    else:
+                        updated += 1
+
+                credit_account_summary = {"inserted": inserted, "updated": updated, "errors": errors}
+
+            credit_tx_summary = None
             cc_files = [f for f in file_list if f.startswith("credit_cards_") and f.endswith(".csv")]
             if cc_files:
                 csv_content = zip_file.read(cc_files[0]).decode("utf-8")
@@ -1755,11 +2049,110 @@ def import_full_backup(request):
                     "Cardholder Name": "cardholder_name",
                     "Source Filename": "source_filename",
                 }
-                summary["credit_cards"] = _import_csv_to_model(
+                credit_tx_summary = _import_csv_to_model(
                     csv_content, CreditCardTransaction, field_mapping, user_id
                 )
 
-            # 5. Import TFSA (simplified for now - just contributions)
+                for row in CreditCardTransaction.objects.filter(user_id=user_id).values("card_label", "provider").distinct():
+                    provider = _normalize_credit_card_provider_name(row.get("provider")) or str(row.get("provider") or "").strip()
+                    label = str(row.get("card_label") or row.get("provider") or "").strip()
+                    if not label or not provider:
+                        continue
+                    CreditCardAccount.objects.get_or_create(
+                        user_id=user_id,
+                        label=label,
+                        defaults={"provider": provider},
+                    )
+
+            if credit_account_summary or credit_tx_summary:
+                summary["credit_cards"] = {
+                    "inserted": int((credit_account_summary or {}).get("inserted", 0)) + int((credit_tx_summary or {}).get("inserted", 0)),
+                    "updated": int((credit_account_summary or {}).get("updated", 0)) + int((credit_tx_summary or {}).get("updated", 0)),
+                    "errors": list((credit_account_summary or {}).get("errors", [])) + list((credit_tx_summary or {}).get("errors", [])),
+                }
+
+            # 5. Import Chequing accounts
+            chequing_account_summary = None
+            chequing_account_files = [f for f in file_list if f.startswith("chequing_accounts_") and f.endswith(".csv")]
+            if chequing_account_files:
+                csv_content = zip_file.read(chequing_account_files[0]).decode("utf-8")
+                reader = csv.DictReader(StringIO(csv_content))
+                inserted = 0
+                updated = 0
+                errors = []
+                for row_num, row in enumerate(reader, start=2):
+                    label = str(row.get("Label") or "").strip()
+                    if not label:
+                        continue
+
+                    raw_provider = str(row.get("Provider") or "").strip()
+                    if not raw_provider:
+                        provider = CHEQUING_DEFAULT_PROVIDER
+                    else:
+                        provider = CHEQUING_SUPPORTED_PROVIDERS.get(raw_provider.lower())
+                        if not provider:
+                            supported = ", ".join(CHEQUING_SUPPORTED_PROVIDERS.values())
+                            errors.append(f"Row {row_num}: Unsupported chequing bank '{raw_provider}'. Supported banks: {supported}")
+                            if len(errors) > 10:
+                                errors.append("... (additional errors truncated)")
+                                break
+                            continue
+
+                    _, created = ChequingAccount.objects.update_or_create(
+                        user_id=user_id,
+                        label=label,
+                        defaults={"provider": provider},
+                    )
+                    if created:
+                        inserted += 1
+                    else:
+                        updated += 1
+
+                chequing_account_summary = {"inserted": inserted, "updated": updated, "errors": errors}
+
+            # 6. Import chequing transactions
+            chequing_tx_summary = None
+            chequing_files = [f for f in file_list if f.startswith("chequing_") and f.endswith(".csv")]
+            if chequing_files:
+                csv_content = zip_file.read(chequing_files[0]).decode("utf-8")
+                field_mapping = {
+                    "Account Label": "account_label",
+                    "Transaction Date": "transaction_date",
+                    "Transaction Code": "transaction_code",
+                    "Description": "description",
+                    "Category": "category",
+                    "Amount": "amount",
+                    "Balance": "balance",
+                    "Currency": "currency",
+                    "Is Hidden": "is_hidden",
+                    "Source Filename": "source_filename",
+                }
+                chequing_tx_summary = _import_csv_to_model(
+                    csv_content, ChequingTransaction, field_mapping, user_id
+                )
+
+                for label in (
+                    ChequingTransaction.objects.filter(user_id=user_id)
+                    .values_list("account_label", flat=True)
+                    .distinct()
+                ):
+                    normalized = str(label or "").strip()
+                    if not normalized:
+                        continue
+                    ChequingAccount.objects.get_or_create(
+                        user_id=user_id,
+                        label=normalized,
+                        defaults={"provider": CHEQUING_DEFAULT_PROVIDER},
+                    )
+
+            if chequing_account_summary or chequing_tx_summary:
+                summary["chequing"] = {
+                    "inserted": int((chequing_account_summary or {}).get("inserted", 0)) + int((chequing_tx_summary or {}).get("inserted", 0)),
+                    "updated": int((chequing_account_summary or {}).get("updated", 0)) + int((chequing_tx_summary or {}).get("updated", 0)),
+                    "errors": list((chequing_account_summary or {}).get("errors", [])) + list((chequing_tx_summary or {}).get("errors", [])),
+                }
+
+            # 7. Import TFSA (simplified for now - just contributions)
             tfsa_files = [f for f in file_list if f.startswith("tfsa_contributions_") and f.endswith(".csv")]
             if tfsa_files:
                 csv_content = zip_file.read(tfsa_files[0]).decode("utf-8")
@@ -1795,7 +2188,7 @@ def import_full_backup(request):
                     account_mapping=account_mapping
                 )
 
-            # 6. Import RRSP
+            # 7. Import RRSP
             rrsp_files = [f for f in file_list if f.startswith("rrsp_contributions_") and f.endswith(".csv")]
             if rrsp_files:
                 csv_content = zip_file.read(rrsp_files[0]).decode("utf-8")
@@ -1832,7 +2225,7 @@ def import_full_backup(request):
                     account_mapping=account_mapping
                 )
 
-            # 7. Import FHSA
+            # 8. Import FHSA
             fhsa_files = [f for f in file_list if f.startswith("fhsa_contributions_") and f.endswith(".csv")]
             if fhsa_files:
                 csv_content = zip_file.read(fhsa_files[0]).decode("utf-8")
