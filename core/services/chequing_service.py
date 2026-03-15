@@ -2,7 +2,7 @@ from core.services.settings_service import parse_setting_bool
 
 
 OUTFLOW_CODES = {"E_TRFOUT", "AFT_OUT", "TRFOUT", "TRFOUTTF", "P2P_SENT", "OBP_OUT"}
-INFLOW_CODES = {"AFT_IN", "E_TRFIN", "P2P_RECEIVED", "INT", "TRFINTF"}
+INFLOW_CODES = {"AFT_IN", "E_TRFIN", "P2P_RECEIVED", "INT", "TRFINTF", "TRFIN"}
 
 
 def parse_bool_query(value):
@@ -13,6 +13,8 @@ def normalize_chequing_category(transaction_code, description, amount):
     code = str(transaction_code or "").strip().upper()
     numeric_amount = float(amount or 0)
 
+    if code == "SPEND":
+        return "Debit Card Purchase"
     if code == "INT":
         return "Interest Earned"
     if code == "AFT_IN":
@@ -27,7 +29,7 @@ def normalize_chequing_category(transaction_code, description, amount):
         return "Online Bill Payments"
     if code in {"TRFOUT", "TRFOUTTF"}:
         return "Internal Transfer Out (Savings/Expenses)"
-    if code == "TRFINTF":
+    if code in {"TRFINTF", "TRFIN"}:
         return "Internal Transfer In (Savings/Expenses)"
 
     if numeric_amount > 0:
