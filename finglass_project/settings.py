@@ -1,4 +1,5 @@
 import os
+import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -60,9 +61,21 @@ DATABASES = {
 }
 
 
+def _skip_sqlite_path_validation():
+    if os.getenv("SKIP_SQLITE_PATH_VALIDATION", "0") in {"1", "true", "True"}:
+        return True
+
+    # collectstatic is build-time safe without a writable runtime DB path.
+    command = (sys.argv[1] if len(sys.argv) > 1 else "").strip().lower()
+    return command == "collectstatic"
+
+
 def _validate_sqlite_database_path():
     db_config = DATABASES.get("default", {})
     if db_config.get("ENGINE") != "django.db.backends.sqlite3":
+        return
+
+    if _skip_sqlite_path_validation():
         return
 
     db_path = Path(db_config.get("NAME", "")).expanduser()
