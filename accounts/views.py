@@ -2,6 +2,7 @@ import json
 
 from django.contrib.auth import authenticate, login, logout
 from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from .models import AdminActionLog, User
@@ -15,6 +16,7 @@ def first_launch_check_view(request):
 
 
 @require_POST
+@csrf_exempt
 def first_launch_setup_view(request):
     """Create the first superadmin user"""
     # Only allow if no users exist

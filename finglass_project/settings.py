@@ -59,6 +59,38 @@ DATABASES = {
     }
 }
 
+
+def _validate_sqlite_database_path():
+    db_config = DATABASES.get("default", {})
+    if db_config.get("ENGINE") != "django.db.backends.sqlite3":
+        return
+
+    db_path = Path(db_config.get("NAME", "")).expanduser()
+    parent_dir = db_path.parent
+
+    if db_path.exists():
+        if not os.access(db_path, os.R_OK | os.W_OK):
+            raise RuntimeError(
+                f"SQLite database is not readable/writable: {db_path}. "
+                "Fix ownership/permissions for the runtime user."
+            )
+        return
+
+    if not parent_dir.exists():
+        raise RuntimeError(
+            f"SQLite directory does not exist: {parent_dir}. "
+            "Create it before starting the app."
+        )
+
+    if not os.access(parent_dir, os.R_OK | os.W_OK | os.X_OK):
+        raise RuntimeError(
+            f"SQLite directory is not accessible: {parent_dir}. "
+            "Grant read/write/execute permissions to the runtime user."
+        )
+
+
+_validate_sqlite_database_path()
+
 AUTH_PASSWORD_VALIDATORS = []
 
 LANGUAGE_CODE = "en-ca"
