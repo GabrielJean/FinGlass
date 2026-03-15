@@ -12,6 +12,8 @@ from core.services.chequing_service import parse_bool_query
 
 _INTERNAL_TRANSFER_OUT_CODES = {"TRFOUT", "TRFOUTTF"}
 _INTERNAL_TRANSFER_OUT_CATEGORY = "Internal Transfer Out (Savings/Expenses)"
+_INTERNAL_TRANSFER_IN_CODES = {"TRFINTF"}
+_INTERNAL_TRANSFER_IN_CATEGORY = "Internal Transfer In (Savings/Expenses)"
 _INTERNAL_TRANSFER_SAVINGS_INVESTING_HINTS = (
     "saving",
     "savings",
@@ -76,6 +78,21 @@ def _is_internal_transfer_to_savings_or_investing(row):
     return any(token in description for token in _INTERNAL_TRANSFER_SAVINGS_INVESTING_HINTS)
 
 
+def _is_internal_transfer_from_savings_or_investing(row):
+    code = str(row.get("transaction_code") or "").strip().upper()
+    if code in _INTERNAL_TRANSFER_IN_CODES:
+        return True
+
+    category = str(row.get("category") or "").strip()
+    if category == _INTERNAL_TRANSFER_IN_CATEGORY:
+        return True
+
+    description = str(row.get("description") or "").strip().lower()
+    if not description:
+        return False
+    return "transfer" in description and any(token in description for token in _INTERNAL_TRANSFER_SAVINGS_INVESTING_HINTS)
+
+
 @require_http_methods(["GET", "DELETE"])
 def chequing_transactions_collection(request):
     if request.method == "GET":
@@ -109,6 +126,11 @@ def chequing_dashboard(request):
     rows = [_tx_dict(row) for row in queryset]
 
     inflow_rows = [row for row in rows if float(row.get("amount") or 0) > 0]
+    external_inflow_rows = [
+        row
+        for row in inflow_rows
+        if not _is_internal_transfer_from_savings_or_investing(row)
+    ]
     outflow_rows = [row for row in rows if float(row.get("amount") or 0) < 0]
     spending_outflow_rows = [
         row
@@ -116,7 +138,7 @@ def chequing_dashboard(request):
         if not _is_internal_transfer_to_savings_or_investing(row)
     ]
 
-    total_in = round(sum(float(row.get("amount") or 0) for row in inflow_rows), 2)
+    total_in = round(sum(float(row.get("amount") or 0) for row in external_inflow_rows), 2)
     total_out = round(abs(sum(float(row.get("amount") or 0) for row in spending_outflow_rows)), 2)
     net_flow = round(total_in - total_out, 2)
 
@@ -125,7 +147,7 @@ def chequing_dashboard(request):
         "total_out": total_out,
         "net_flow": net_flow,
         "transactions": len(rows),
-        "inflow_transactions": len(inflow_rows),
+        "inflow_transactions": len(external_inflow_rows),
         "outflow_transactions": len(spending_outflow_rows),
     }
 
@@ -136,6 +158,8 @@ def chequing_dashboard(request):
         if not month:
             continue
         if amount >= 0:
+            if _is_internal_transfer_from_savings_or_investing(row):
+                continue
             monthly_totals[month]["in"] += amount
         else:
             if _is_internal_transfer_to_savings_or_investing(row):
@@ -152,6 +176,8 @@ def chequing_dashboard(request):
     for row in rows:
         amount = float(row.get("amount") or 0)
         if amount < 0 and _is_internal_transfer_to_savings_or_investing(row):
+            continue
+        if amount > 0 and _is_internal_transfer_from_savings_or_investing(row):
             continue
         name = str(row.get("category") or "Other").strip() or "Other"
         if amount >= 0:
