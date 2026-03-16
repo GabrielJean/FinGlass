@@ -40,6 +40,11 @@ const themeIcon = document.getElementById("themeIcon");
 const overviewInvestmentsBtn = document.getElementById("overviewInvestmentsBtn");
 const overviewExpensesBtn = document.getElementById("overviewExpensesBtn");
 const overviewModeDescriptionEl = document.getElementById("overviewModeDescription");
+const versionUpdateAlertEl = document.getElementById("versionUpdateAlert");
+const versionUpdateAlertTextEl = document.getElementById("versionUpdateAlertText");
+const versionUpdateAlertDismissBtn = document.getElementById("versionUpdateAlertDismissBtn");
+const versionUpdateAlertLinkEl = document.getElementById("versionUpdateAlertLink");
+const appVersionMetaEl = document.getElementById("appVersionMeta");
 
 const acbBySecurityCtx = document.getElementById("acbBySecurityChart");
 const marketValueByAccountCtx = document.getElementById("marketValueByAccountChart");
@@ -83,6 +88,7 @@ const DEFAULT_FEATURE_SETTINGS = {
 let featureSettings = { ...DEFAULT_FEATURE_SETTINGS };
 let syncingFeatureUi = false;
 const OVERVIEW_MODE_STORAGE_KEY = "fg.dashboard.overviewMode";
+const VERSION_ALERT_DISMISS_STORAGE_KEY = "fg.dashboard.versionAlert.dismissedCommit";
 let currentOverviewMode = "investments";
 
 const currencyFormatter = common.defaultCurrencyFormatter;
@@ -301,6 +307,102 @@ function collectFeatureSettingsFromUi() {
 
 function normalizeOverviewMode(mode) {
   return mode === "investments" ? "investments" : "expenses";
+}
+
+function getVersionRuntimeMeta() {
+  const repositoryRaw = String(appVersionMetaEl?.dataset?.githubRepository || "GabrielJean/FinGlass").trim();
+  const branch = String(appVersionMetaEl?.dataset?.githubBranch || "main").trim() || "main";
+  const [ownerRaw = "", repoRaw = ""] = repositoryRaw.split("/");
+  const owner = ownerRaw.trim();
+  const repo = repoRaw.trim();
+  const buildTimestampRaw = String(appVersionMetaEl?.dataset?.buildTimestamp || "").trim();
+  const buildTimestampMs = Date.parse(buildTimestampRaw);
+  return {
+    owner,
+    repo,
+    branch,
+    repository: owner && repo ? `${owner}/${repo}` : "",
+    buildTimestampRaw,
+    buildTimestampMs: Number.isFinite(buildTimestampMs) ? buildTimestampMs : NaN,
+  };
+}
+
+function markVersionAlertDismissed(latestCommitSha) {
+  if (!latestCommitSha) {
+    return;
+  }
+  try {
+    localStorage.setItem(VERSION_ALERT_DISMISS_STORAGE_KEY, latestCommitSha);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function isVersionAlertDismissed(latestCommitSha) {
+  if (!latestCommitSha) {
+    return false;
+  }
+  try {
+    return localStorage.getItem(VERSION_ALERT_DISMISS_STORAGE_KEY) === latestCommitSha;
+  } catch {
+    return false;
+  }
+}
+
+function showVersionUpdateAlert({ owner, repo, buildTimestampMs, latestCommitMs, latestCommitSha } = {}) {
+  if (!versionUpdateAlertEl || !versionUpdateAlertTextEl || !Number.isFinite(buildTimestampMs) || !Number.isFinite(latestCommitMs)) {
+    return;
+  }
+  const runningDate = new Date(buildTimestampMs).toISOString().slice(0, 10);
+  const latestDate = new Date(latestCommitMs).toISOString().slice(0, 10);
+  versionUpdateAlertTextEl.textContent = `Image built ${runningDate}; latest main update is ${latestDate}.`;
+
+  if (versionUpdateAlertLinkEl && owner && repo) {
+    versionUpdateAlertLinkEl.href = `https://github.com/${owner}/${repo}/pkgs/container/${repo.toLowerCase()}`;
+  }
+
+  versionUpdateAlertEl.classList.remove("hidden");
+  versionUpdateAlertDismissBtn?.addEventListener("click", () => {
+    markVersionAlertDismissed(latestCommitSha);
+    versionUpdateAlertEl.classList.add("hidden");
+  }, { once: true });
+}
+
+async function checkForVersionUpdate() {
+  const { owner, repo, repository, branch, buildTimestampMs } = getVersionRuntimeMeta();
+  if (!owner || !repo || !repository || !Number.isFinite(buildTimestampMs)) {
+    return;
+  }
+
+  try {
+    const branchRes = await fetch(
+      `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${encodeURIComponent(branch)}`,
+      { headers: { Accept: "application/vnd.github+json" } },
+    );
+    if (!branchRes.ok) {
+      return;
+    }
+
+    const branchData = await branchRes.json();
+    const latestCommitSha = String(branchData?.sha || "").trim();
+    if (!latestCommitSha || isVersionAlertDismissed(latestCommitSha)) {
+      return;
+    }
+
+    const latestCommitDateRaw = String(
+      branchData?.commit?.committer?.date
+      || branchData?.commit?.author?.date
+      || "",
+    ).trim();
+    const latestCommitMs = Date.parse(latestCommitDateRaw);
+    if (!Number.isFinite(latestCommitMs) || latestCommitMs <= buildTimestampMs) {
+      return;
+    }
+
+    showVersionUpdateAlert({ owner, repo, buildTimestampMs, latestCommitMs, latestCommitSha });
+  } catch {
+    // Non-critical: fail silently if GitHub API is unreachable or rate-limited.
+  }
 }
 
 function syncOverviewModeUi() {
@@ -1729,6 +1831,7 @@ if (exportFhsaBtn) {
     applyPageEnterMotion?.({ selector: ".page-header, .card:not(.export-wizard-modal-card)", maxItems: 14, staggerMs: 24 });
     setLoadingState?.(document.body, true, "Loading dashboard…");
     updateThemeIcon();
+    checkForVersionUpdate();
     await loadCurrentUser();
     await loadFeatureSettings();
     transactionTypes = await fetchJson("/api/transaction-types");

@@ -144,3 +144,16 @@ SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "0") in {"1", "true", "Tr
 X_FRAME_OPTIONS = "DENY"
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "strict-origin-when-cross-origin"
+
+
+def _read_image_build_timestamp_file():
+    path = BASE_DIR / ".app_build_timestamp"
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+APP_GITHUB_REPOSITORY = os.getenv("APP_GITHUB_REPOSITORY", "GabrielJean/FinGlass").strip()
+APP_GITHUB_DEFAULT_BRANCH = os.getenv("APP_GITHUB_DEFAULT_BRANCH", "main").strip()
+APP_BUILD_TIMESTAMP = _read_image_build_timestamp_file()

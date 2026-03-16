@@ -6,6 +6,12 @@ const ccTotalExpensesEl = document.getElementById("ccTotalExpenses");
 const ccTransactionsEl = document.getElementById("ccTransactions");
 const ccAvgTransactionEl = document.getElementById("ccAvgTransaction");
 const ccLargestTransactionEl = document.getElementById("ccLargestTransaction");
+const ccAvgMonthlySpendEl = document.getElementById("ccAvgMonthlySpend");
+const ccAvgDailySpendEl = document.getElementById("ccAvgDailySpend");
+const ccTopCategoryShareEl = document.getElementById("ccTopCategoryShare");
+const ccTopMerchantShareEl = document.getElementById("ccTopMerchantShare");
+const ccTotalRewardsEl = document.getElementById("ccTotalRewards");
+const ccRewardRateEl = document.getElementById("ccRewardRate");
 
 const filtersForm = document.getElementById("creditFiltersForm");
 const filterStartDateEl = document.getElementById("filterStartDate");
@@ -134,6 +140,17 @@ function setErrorStatus(message) {
 
 function fmtMoney(value) {
   return common.fmtMoney(value, currencyFormatter);
+}
+
+function setSummaryTone(element, tone) {
+  if (!element) {
+    return;
+  }
+  element.classList.remove("summary-value-positive", "summary-value-negative", "summary-value-neutral");
+  if (!tone) {
+    return;
+  }
+  element.classList.add(`summary-value-${tone}`);
 }
 
 const escapeHtml = common.escapeHtml;
@@ -441,15 +458,62 @@ if (filterCategoryOptionsEl) {
 
 function renderDashboard(data) {
   const summary = data.summary || {};
+  const insights = data.insights || {};
   const totalExpenses = Number(summary.total_expenses || 0);
   animateNumber?.(ccTotalExpensesEl, totalExpenses, {
     duration: 320,
     formatter: (value) => fmtMoney(value),
   });
+  setSummaryTone(ccTotalExpensesEl, "negative");
   animateNumber?.(ccTransactionsEl, Number(summary.transactions || 0), {
     duration: 220,
     formatter: (value) => Math.round(value).toString(),
   });
+  setSummaryTone(ccTransactionsEl, "neutral");
+  animateNumber?.(ccAvgTransactionEl, Number(insights.avg_transaction || 0), {
+    duration: 260,
+    formatter: (value) => fmtMoney(value),
+  });
+  setSummaryTone(ccAvgTransactionEl, "negative");
+  animateNumber?.(ccLargestTransactionEl, Number(insights.largest_transaction || 0), {
+    duration: 260,
+    formatter: (value) => fmtMoney(value),
+  });
+  setSummaryTone(ccLargestTransactionEl, "negative");
+  animateNumber?.(ccAvgMonthlySpendEl, Number(insights.avg_monthly_expenses || 0), {
+    duration: 240,
+    formatter: (value) => `${fmtMoney(value)}/mo`,
+  });
+  setSummaryTone(ccAvgMonthlySpendEl, "negative");
+  animateNumber?.(ccAvgDailySpendEl, Number(insights.avg_daily_spend || 0), {
+    duration: 220,
+    formatter: (value) => `${fmtMoney(value)}/day`,
+  });
+  setSummaryTone(ccAvgDailySpendEl, "negative");
+  animateNumber?.(ccTotalRewardsEl, Number(insights.total_rewards || 0), {
+    duration: 220,
+    formatter: (value) => fmtMoney(value),
+  });
+  setSummaryTone(ccTotalRewardsEl, "positive");
+  if (ccTopCategoryShareEl) {
+    const topCategory = insights.top_category || null;
+    ccTopCategoryShareEl.textContent = topCategory
+      ? `${String(topCategory.merchant_category || "Uncategorized")} · ${Number(topCategory.share_pct || 0).toFixed(1)}%`
+      : "0.0%";
+    setSummaryTone(ccTopCategoryShareEl, "neutral");
+  }
+  if (ccTopMerchantShareEl) {
+    const topMerchant = insights.top_merchant || null;
+    ccTopMerchantShareEl.textContent = topMerchant
+      ? `${String(topMerchant.merchant_name || "Unknown")} · ${Number(topMerchant.share_pct || 0).toFixed(1)}%`
+      : "0.0%";
+    setSummaryTone(ccTopMerchantShareEl, "neutral");
+  }
+  if (ccRewardRateEl) {
+    const rewardRate = Number(insights.rewards_rate_pct || 0);
+    ccRewardRateEl.textContent = `${rewardRate.toFixed(2)}% back`;
+    setSummaryTone(ccRewardRateEl, rewardRate >= 1.5 ? "positive" : rewardRate > 0 ? "neutral" : "negative");
+  }
 
   creditCardAsOfEl.textContent = data.latest_transaction_date
     ? `Imported through ${data.latest_transaction_date}.`
@@ -846,25 +910,10 @@ function showDeleteConfirmationMenu(payload) {
 }
 
 function updateSummaryFromTransactions(rows) {
-  const totalExpenses = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
   const count = rows.length;
-  const avgTransaction = count > 0 ? totalExpenses / count : 0;
-  const largestTransaction = count > 0 ? Math.max(...rows.map((row) => Number(row.amount || 0))) : 0;
-  animateNumber?.(ccTotalExpensesEl, totalExpenses, {
-    duration: 280,
-    formatter: (value) => fmtMoney(value),
-  });
   animateNumber?.(ccTransactionsEl, count, {
     duration: 180,
     formatter: (value) => Math.round(value).toString(),
-  });
-  animateNumber?.(ccAvgTransactionEl, avgTransaction, {
-    duration: 260,
-    formatter: (value) => fmtMoney(value),
-  });
-  animateNumber?.(ccLargestTransactionEl, largestTransaction, {
-    duration: 260,
-    formatter: (value) => fmtMoney(value),
   });
 }
 
