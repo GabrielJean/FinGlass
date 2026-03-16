@@ -146,43 +146,42 @@ function renderSummary(data) {
   summaryNetFlowEl.textContent = fmtMoney(netFlow);
   summaryTransactionsEl.textContent = Number(summary.transactions || 0).toString();
 
-  setSummaryTone(summaryMoneyInEl, "positive");
-  setSummaryTone(summaryMoneyOutEl, "negative");
+  setSummaryTone(summaryMoneyInEl, null);
+  setSummaryTone(summaryMoneyOutEl, null);
   setSummaryTone(summaryNetFlowEl, netFlow > 0 ? "positive" : netFlow < 0 ? "negative" : "neutral");
 
   if (summarySavingsRateEl) {
     const savingsRatePct = Number(insights.savings_rate_pct || 0);
     summarySavingsRateEl.textContent = `${savingsRatePct.toFixed(1)}% kept`;
-    setSummaryTone(summarySavingsRateEl, savingsRatePct >= 20 ? "positive" : savingsRatePct < 5 ? "negative" : "neutral");
+    setSummaryTone(summarySavingsRateEl, null);
   }
   if (summaryAvgMonthlyInEl) {
     summaryAvgMonthlyInEl.textContent = `${fmtMoney(Number(insights.avg_monthly_in || 0))}/mo`;
-    setSummaryTone(summaryAvgMonthlyInEl, "positive");
+    setSummaryTone(summaryAvgMonthlyInEl, null);
   }
   if (summaryAvgMonthlyOutEl) {
     summaryAvgMonthlyOutEl.textContent = `${fmtMoney(Number(insights.avg_monthly_out || 0))}/mo`;
-    setSummaryTone(summaryAvgMonthlyOutEl, "negative");
+    setSummaryTone(summaryAvgMonthlyOutEl, null);
   }
   if (summaryPositiveMonthsEl) {
     const positiveMonths = Number(insights.positive_months || 0);
     const monthsCount = Number(insights.months_count || 0);
-    const positiveRatio = monthsCount > 0 ? positiveMonths / monthsCount : 0;
     summaryPositiveMonthsEl.textContent = `${positiveMonths} of ${monthsCount} cash-positive`;
-    setSummaryTone(summaryPositiveMonthsEl, positiveRatio >= 0.6 ? "positive" : positiveRatio < 0.4 ? "negative" : "neutral");
+    setSummaryTone(summaryPositiveMonthsEl, null);
   }
   if (summaryTopSpendingCategoryEl) {
     const topCategory = insights.top_spending_category || null;
     summaryTopSpendingCategoryEl.textContent = topCategory
       ? `${String(topCategory.category || "Other")} · ${Number(topCategory.share_pct || 0).toFixed(1)}%`
       : "None";
-    setSummaryTone(summaryTopSpendingCategoryEl, "neutral");
+    setSummaryTone(summaryTopSpendingCategoryEl, null);
   }
   if (summaryLargestExpenseEl) {
     const largestExpense = insights.largest_outflow || null;
     summaryLargestExpenseEl.textContent = largestExpense
       ? `${fmtMoney(Number(largestExpense.amount || 0))} · ${String(largestExpense.category || "Other")}`
       : fmtMoney(0);
-    setSummaryTone(summaryLargestExpenseEl, "negative");
+    setSummaryTone(summaryLargestExpenseEl, null);
   }
 
   chequingAsOfEl.textContent = data.latest_transaction_date
