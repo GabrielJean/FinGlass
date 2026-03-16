@@ -156,6 +156,54 @@ def credit_card_dashboard(request):
         )
     merchants.sort(key=lambda row: row["amount"], reverse=True)
 
+    months_count = len(monthly)
+    avg_monthly_expenses = round(total_expenses / months_count, 2) if months_count else 0.0
+    avg_transaction = round(total_expenses / len(expense_rows), 2) if expense_rows else 0.0
+    largest_transaction = round(max((float(row.get("amount") or 0) for row in expense_rows), default=0.0), 2)
+    total_rewards = round(sum(float(row.get("rewards") or 0) for row in expense_rows), 2)
+    rewards_rate_pct = round((total_rewards / total_expenses) * 100, 2) if total_expenses > 0 else 0.0
+
+    unique_spend_days = {
+        str(row.get("transaction_date") or "")
+        for row in expense_rows
+        if str(row.get("transaction_date") or "")
+    }
+    avg_daily_spend = round(total_expenses / len(unique_spend_days), 2) if unique_spend_days else 0.0
+
+    top_category = categories[0] if categories else None
+    top_category_share_pct = 0.0
+    if top_category and total_expenses > 0:
+        top_category_share_pct = round((float(top_category.get("amount") or 0) / total_expenses) * 100, 1)
+
+    top_merchant = merchants[0] if merchants else None
+    top_merchant_share_pct = 0.0
+    if top_merchant and total_expenses > 0:
+        top_merchant_share_pct = round((float(top_merchant.get("amount") or 0) / total_expenses) * 100, 1)
+
+    insights = {
+        "months_count": months_count,
+        "avg_monthly_expenses": avg_monthly_expenses,
+        "avg_transaction": avg_transaction,
+        "largest_transaction": largest_transaction,
+        "avg_daily_spend": avg_daily_spend,
+        "total_rewards": total_rewards,
+        "rewards_rate_pct": rewards_rate_pct,
+        "top_category": {
+            "merchant_category": str(top_category.get("merchant_category") or "Uncategorized"),
+            "amount": round(float(top_category.get("amount") or 0), 2),
+            "share_pct": top_category_share_pct,
+        }
+        if top_category
+        else None,
+        "top_merchant": {
+            "merchant_name": str(top_merchant.get("merchant_name") or "Unknown Merchant"),
+            "amount": round(float(top_merchant.get("amount") or 0), 2),
+            "share_pct": top_merchant_share_pct,
+        }
+        if top_merchant
+        else None,
+    }
+
     recent_rows = sorted(
         expense_rows,
         key=lambda row: (row.get("transaction_date") or "", int(row.get("id") or 0)),
@@ -171,6 +219,7 @@ def credit_card_dashboard(request):
             "provider": provider,
             "latest_transaction_date": latest_transaction_date,
             "summary": summary,
+            "insights": insights,
             "monthly": monthly,
             "categories": categories,
             "top_merchants": merchants,

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -11,7 +12,15 @@ def login_page(request):
 
 
 def index_page(request):
-    return render(request, "index.html")
+    return render(
+        request,
+        "index.html",
+        {
+            "app_build_timestamp": getattr(settings, "APP_BUILD_TIMESTAMP", ""),
+            "app_github_repository": getattr(settings, "APP_GITHUB_REPOSITORY", "GabrielJean/FinGlass"),
+            "app_github_default_branch": getattr(settings, "APP_GITHUB_DEFAULT_BRANCH", "main"),
+        },
+    )
 
 
 def _feature_enabled(request, feature):

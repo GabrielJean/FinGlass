@@ -4,6 +4,12 @@ const summaryMoneyInEl = document.getElementById("summaryMoneyIn");
 const summaryMoneyOutEl = document.getElementById("summaryMoneyOut");
 const summaryNetFlowEl = document.getElementById("summaryNetFlow");
 const summaryTransactionsEl = document.getElementById("summaryTransactions");
+const summarySavingsRateEl = document.getElementById("summarySavingsRate");
+const summaryAvgMonthlyInEl = document.getElementById("summaryAvgMonthlyIn");
+const summaryAvgMonthlyOutEl = document.getElementById("summaryAvgMonthlyOut");
+const summaryPositiveMonthsEl = document.getElementById("summaryPositiveMonths");
+const summaryTopSpendingCategoryEl = document.getElementById("summaryTopSpendingCategory");
+const summaryLargestExpenseEl = document.getElementById("summaryLargestExpense");
 
 const filtersForm = document.getElementById("chequingFiltersForm");
 const filterStartDateEl = document.getElementById("filterStartDate");
@@ -82,6 +88,17 @@ function fmtMoney(value) {
   return common.fmtMoney(value, currencyFormatter);
 }
 
+function setSummaryTone(element, tone) {
+  if (!element) {
+    return;
+  }
+  element.classList.remove("summary-value-positive", "summary-value-negative", "summary-value-neutral");
+  if (!tone) {
+    return;
+  }
+  element.classList.add(`summary-value-${tone}`);
+}
+
 function moneyTickCallback(value) {
   return fmtMoney(value);
 }
@@ -119,10 +136,54 @@ function buildQueryFromFilters() {
 
 function renderSummary(data) {
   const summary = data.summary || {};
-  summaryMoneyInEl.textContent = fmtMoney(summary.total_in || 0);
-  summaryMoneyOutEl.textContent = fmtMoney(summary.total_out || 0);
-  summaryNetFlowEl.textContent = fmtMoney(summary.net_flow || 0);
+  const insights = data.insights || {};
+  const totalIn = Number(summary.total_in || 0);
+  const totalOut = Number(summary.total_out || 0);
+  const netFlow = Number(summary.net_flow || 0);
+
+  summaryMoneyInEl.textContent = fmtMoney(totalIn);
+  summaryMoneyOutEl.textContent = fmtMoney(totalOut);
+  summaryNetFlowEl.textContent = fmtMoney(netFlow);
   summaryTransactionsEl.textContent = Number(summary.transactions || 0).toString();
+
+  setSummaryTone(summaryMoneyInEl, "positive");
+  setSummaryTone(summaryMoneyOutEl, "negative");
+  setSummaryTone(summaryNetFlowEl, netFlow > 0 ? "positive" : netFlow < 0 ? "negative" : "neutral");
+
+  if (summarySavingsRateEl) {
+    const savingsRatePct = Number(insights.savings_rate_pct || 0);
+    summarySavingsRateEl.textContent = `${savingsRatePct.toFixed(1)}% kept`;
+    setSummaryTone(summarySavingsRateEl, savingsRatePct >= 20 ? "positive" : savingsRatePct < 5 ? "negative" : "neutral");
+  }
+  if (summaryAvgMonthlyInEl) {
+    summaryAvgMonthlyInEl.textContent = `${fmtMoney(Number(insights.avg_monthly_in || 0))}/mo`;
+    setSummaryTone(summaryAvgMonthlyInEl, "positive");
+  }
+  if (summaryAvgMonthlyOutEl) {
+    summaryAvgMonthlyOutEl.textContent = `${fmtMoney(Number(insights.avg_monthly_out || 0))}/mo`;
+    setSummaryTone(summaryAvgMonthlyOutEl, "negative");
+  }
+  if (summaryPositiveMonthsEl) {
+    const positiveMonths = Number(insights.positive_months || 0);
+    const monthsCount = Number(insights.months_count || 0);
+    const positiveRatio = monthsCount > 0 ? positiveMonths / monthsCount : 0;
+    summaryPositiveMonthsEl.textContent = `${positiveMonths} of ${monthsCount} cash-positive`;
+    setSummaryTone(summaryPositiveMonthsEl, positiveRatio >= 0.6 ? "positive" : positiveRatio < 0.4 ? "negative" : "neutral");
+  }
+  if (summaryTopSpendingCategoryEl) {
+    const topCategory = insights.top_spending_category || null;
+    summaryTopSpendingCategoryEl.textContent = topCategory
+      ? `${String(topCategory.category || "Other")} · ${Number(topCategory.share_pct || 0).toFixed(1)}%`
+      : "None";
+    setSummaryTone(summaryTopSpendingCategoryEl, "neutral");
+  }
+  if (summaryLargestExpenseEl) {
+    const largestExpense = insights.largest_outflow || null;
+    summaryLargestExpenseEl.textContent = largestExpense
+      ? `${fmtMoney(Number(largestExpense.amount || 0))} · ${String(largestExpense.category || "Other")}`
+      : fmtMoney(0);
+    setSummaryTone(summaryLargestExpenseEl, "negative");
+  }
 
   chequingAsOfEl.textContent = data.latest_transaction_date
     ? `Imported through ${data.latest_transaction_date}.`

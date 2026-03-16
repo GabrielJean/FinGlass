@@ -58,6 +58,9 @@ jobs:
         with:
           context: .
           push: true
+          build-args: |
+            APP_GITHUB_REPOSITORY=${{ github.repository }}
+            APP_GITHUB_DEFAULT_BRANCH=main
           tags: |
             gitea.docker-1.gwebs.ca/gabriel/finglass:latest
             gitea.docker-1.gwebs.ca/gabriel/finglass:${{ github.sha }}

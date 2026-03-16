@@ -92,6 +92,31 @@
         </div>
       </header>
 
+      <section id="versionUpdateAlert" class="version-update-alert hidden" aria-live="polite">
+        <div class="version-update-alert-copy">
+          <strong>Update available.</strong>
+          <span id="versionUpdateAlertText"></span>
+        </div>
+        <div class="version-update-alert-actions">
+          <a
+            id="versionUpdateAlertLink"
+            class="btn-link"
+            href="https://github.com/GabrielJean/FinGlass/pkgs/container/finglass"
+            target="_blank"
+            rel="noopener noreferrer"
+          >View image</a>
+          <button id="versionUpdateAlertDismissBtn" type="button" class="btn-secondary">Dismiss</button>
+        </div>
+      </section>
+
+      <div
+        id="appVersionMeta"
+        data-build-timestamp="{{ app_build_timestamp|default:'' }}"
+        data-github-repository="{{ app_github_repository|default:'GabrielJean/FinGlass' }}"
+        data-github-branch="{{ app_github_default_branch|default:'main' }}"
+        hidden
+      ></div>
+
       <div id="settingsBackdrop" class="settings-backdrop hidden" aria-hidden="true"></div>
 
       <!-- Export Wizard Modal -->
@@ -446,7 +471,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0"></script>
     <script src="/static/common.js?v=20260305-globalmotion"></script>
-    <script src="/static/overview.js?v=20260314-exportcenter2" defer></script>
+    <script src="/static/overview.js?v=20260316-version-alert" defer></script>
 
     <!-- Change Password Modal -->
     <div id="changePasswordModal" class="settings-backdrop change-password-backdrop hidden" aria-hidden="true">

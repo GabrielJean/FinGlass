@@ -209,9 +209,63 @@ def chequing_dashboard(request):
 
     categories.sort(key=lambda item: item.get("total_out", 0), reverse=True)
 
+    months_count = len(monthly)
+    avg_monthly_in = round(total_in / months_count, 2) if months_count else 0.0
+    avg_monthly_out = round(total_out / months_count, 2) if months_count else 0.0
+    positive_months = sum(1 for row in monthly if float(row.get("net") or 0) > 0)
+    savings_rate_pct = round((net_flow / total_in) * 100, 1) if total_in > 0 else 0.0
+
+    largest_outflow_row = None
+    largest_inflow_row = None
+    for row in rows:
+        amount = float(row.get("amount") or 0)
+        if amount < 0 and not _is_internal_transfer_to_savings_or_investing(row):
+            if largest_outflow_row is None or abs(amount) > abs(float(largest_outflow_row.get("amount") or 0)):
+                largest_outflow_row = row
+        if amount > 0 and not _is_internal_transfer_from_savings_or_investing(row):
+            if largest_inflow_row is None or amount > float(largest_inflow_row.get("amount") or 0):
+                largest_inflow_row = row
+
+    top_spending_category = categories[0] if categories else None
+    top_spending_share_pct = 0.0
+    if top_spending_category and total_out > 0:
+        top_spending_share_pct = round((float(top_spending_category.get("total_out") or 0) / total_out) * 100, 1)
+
+    insights = {
+        "months_count": months_count,
+        "positive_months": positive_months,
+        "avg_monthly_in": avg_monthly_in,
+        "avg_monthly_out": avg_monthly_out,
+        "savings_rate_pct": savings_rate_pct,
+        "largest_outflow": {
+            "amount": round(abs(float(largest_outflow_row.get("amount") or 0)), 2),
+            "description": str(largest_outflow_row.get("description") or "").strip(),
+            "category": str(largest_outflow_row.get("category") or "Other").strip() or "Other",
+            "transaction_date": str(largest_outflow_row.get("transaction_date") or ""),
+        }
+        if largest_outflow_row
+        else None,
+        "largest_inflow": {
+            "amount": round(float(largest_inflow_row.get("amount") or 0), 2),
+            "description": str(largest_inflow_row.get("description") or "").strip(),
+            "category": str(largest_inflow_row.get("category") or "Other").strip() or "Other",
+            "transaction_date": str(largest_inflow_row.get("transaction_date") or ""),
+        }
+        if largest_inflow_row
+        else None,
+        "top_spending_category": {
+            "category": str(top_spending_category.get("category") or "Other").strip() or "Other",
+            "total_out": round(float(top_spending_category.get("total_out") or 0), 2),
+            "share_pct": top_spending_share_pct,
+        }
+        if top_spending_category
+        else None,
+    }
+
     return JsonResponse(
         {
             "summary": summary,
+            "insights": insights,
             "monthly": monthly,
             "categories": categories,
             "latest_transaction_date": latest_transaction_date.isoformat() if latest_transaction_date else "",
