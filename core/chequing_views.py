@@ -11,9 +11,9 @@ from core.services.chequing_service import normalize_chequing_category, parse_bo
 
 
 _INTERNAL_TRANSFER_OUT_CODES = {"TRFOUT", "TRFOUTTF"}
-_INTERNAL_TRANSFER_OUT_CATEGORY = "Savings Out (to Savings/Investments)"
+_INTERNAL_TRANSFER_OUT_CATEGORY = "Money Into Savings (to Savings/Investments)"
 _INTERNAL_TRANSFER_IN_CODES = {"TRFINTF"}
-_INTERNAL_TRANSFER_IN_CATEGORY = "Savings In (from Savings/Investments)"
+_INTERNAL_TRANSFER_IN_CATEGORY = "Money Out of Savings (from Savings/Investments)"
 _INTERNAL_TRANSFER_SAVINGS_INVESTING_HINTS = (
     "saving",
     "savings",
