@@ -158,7 +158,7 @@ def chequing_dashboard(request):
         "outflow_transactions": len(spending_outflow_rows),
     }
 
-    monthly_totals = defaultdict(lambda: {"in": 0.0, "out": 0.0})
+    monthly_totals = defaultdict(lambda: {"in": 0.0, "out": 0.0, "internal_out": 0.0})
     for row in rows:
         month = str(row.get("transaction_date") or "")[:7]
         amount = float(row.get("amount") or 0)
@@ -170,6 +170,7 @@ def chequing_dashboard(request):
             monthly_totals[month]["in"] += amount
         else:
             if _is_internal_transfer_to_savings_or_investing(row):
+                monthly_totals[month]["internal_out"] += abs(amount)
                 continue
             monthly_totals[month]["out"] += abs(amount)
 
@@ -177,7 +178,16 @@ def chequing_dashboard(request):
     for month in sorted(monthly_totals.keys()):
         month_in = round(monthly_totals[month]["in"], 2)
         month_out = round(monthly_totals[month]["out"], 2)
-        monthly.append({"month": month, "in": month_in, "out": month_out, "net": round(month_in - month_out, 2)})
+        month_internal_out = round(monthly_totals[month]["internal_out"], 2)
+        monthly.append(
+            {
+                "month": month,
+                "in": month_in,
+                "out": month_out,
+                "internal_out": month_internal_out,
+                "net": round(month_in - month_out, 2),
+            }
+        )
 
     category_totals = defaultdict(lambda: {"in": 0.0, "out": 0.0, "count": 0})
     for row in rows:

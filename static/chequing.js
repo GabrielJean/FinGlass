@@ -209,6 +209,15 @@ function renderMonthlyChart(monthlyRows) {
           backgroundColor: "rgba(239, 68, 68, 0.5)",
           borderColor: "#ef4444",
           borderWidth: 1,
+          stack: "outflow",
+        },
+        {
+          label: "Internal Transfer Out",
+          data: rows.map((row) => Number(row.internal_out || 0)),
+          backgroundColor: "rgba(59, 130, 246, 0.55)",
+          borderColor: "#3b82f6",
+          borderWidth: 1,
+          stack: "outflow",
         },
         {
           label: "Net",
