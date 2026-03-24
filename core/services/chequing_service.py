@@ -10,6 +10,9 @@ def parse_bool_query(value):
 
 
 def normalize_chequing_category(transaction_code, description, amount):
+    # Categories are always from the chequing account point of view:
+    # - TRFOUT/TRFOUTTF: money leaves chequing and goes to savings/investing.
+    # - TRFIN/TRFINTF: money enters chequing and comes from savings/investing.
     code = str(transaction_code or "").strip().upper()
     numeric_amount = float(amount or 0)
 
@@ -28,9 +31,9 @@ def normalize_chequing_category(transaction_code, description, amount):
     if code == "OBP_OUT":
         return "Online Bill Payments"
     if code in {"TRFOUT", "TRFOUTTF"}:
-        return "Money Into Savings (to Savings/Investments)"
+        return "Transfer To Savings/Investments"
     if code in {"TRFINTF", "TRFIN"}:
-        return "Money Out of Savings (from Savings/Investments)"
+        return "Transfer From Savings/Investments"
 
     if numeric_amount > 0:
         return "Other Inflow"
