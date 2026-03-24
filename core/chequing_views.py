@@ -15,12 +15,18 @@ _INTERNAL_TRANSFER_OUT_CATEGORIES = {
     "Savings Out (to Savings/Investments)",
     "Money Into Savings (to Savings/Investments)",
     "Transfer To Savings/Investments",
+    "Internal Transfer Out (Savings/Expenses)",
+    "Saving Money",
 }
 _INTERNAL_TRANSFER_IN_CODES = {"TRFINTF", "TRFIN"}
 _INTERNAL_TRANSFER_IN_CATEGORIES = {
     "Savings In (from Savings/Investments)",
     "Money Out of Savings (from Savings/Investments)",
     "Transfer From Savings/Investments",
+    "Internal Transfer In (Savings/Expenses)",
+    "Not Saving Money",
+    "Using Savings",
+    "Drawing from Savings",
 }
 _INTERNAL_TRANSFER_SAVINGS_INVESTING_HINTS = (
     "saving",
@@ -33,11 +39,17 @@ _INTERNAL_TRANSFER_SAVINGS_INVESTING_HINTS = (
 )
 
 _CATEGORY_DISPLAY_MAP = {
-    # Legacy labels are normalized to one naming scheme from chequing POV.
-    "Savings Out (to Savings/Investments)": "Transfer To Savings/Investments",
-    "Money Into Savings (to Savings/Investments)": "Transfer To Savings/Investments",
-    "Savings In (from Savings/Investments)": "Transfer From Savings/Investments",
-    "Money Out of Savings (from Savings/Investments)": "Transfer From Savings/Investments",
+    # Legacy labels are normalized to plain language naming.
+    "Savings Out (to Savings/Investments)": "Saving Money",
+    "Money Into Savings (to Savings/Investments)": "Saving Money",
+    "Transfer To Savings/Investments": "Saving Money",
+    "Internal Transfer Out (Savings/Expenses)": "Saving Money",
+    "Savings In (from Savings/Investments)": "Drawing from Savings",
+    "Money Out of Savings (from Savings/Investments)": "Drawing from Savings",
+    "Transfer From Savings/Investments": "Drawing from Savings",
+    "Internal Transfer In (Savings/Expenses)": "Drawing from Savings",
+    "Not Saving Money": "Drawing from Savings",
+    "Using Savings": "Drawing from Savings",
 }
 
 
@@ -50,9 +62,9 @@ def _db_categories_for_filter(value):
     category = str(value or "").strip()
     if not category:
         return []
-    if category == "Transfer To Savings/Investments":
+    if category == "Saving Money":
         return sorted(_INTERNAL_TRANSFER_OUT_CATEGORIES)
-    if category == "Transfer From Savings/Investments":
+    if category in {"Not Saving Money", "Using Savings", "Drawing from Savings"}:
         return sorted(_INTERNAL_TRANSFER_IN_CATEGORIES)
     return [category]
 
