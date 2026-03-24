@@ -11,9 +11,9 @@ from core.services.chequing_service import normalize_chequing_category, parse_bo
 
 
 _INTERNAL_TRANSFER_OUT_CODES = {"TRFOUT", "TRFOUTTF"}
-_INTERNAL_TRANSFER_OUT_CATEGORY = "Internal Transfer Out (Savings/Expenses)"
+_INTERNAL_TRANSFER_OUT_CATEGORY = "Savings Out (to Savings/Investments)"
 _INTERNAL_TRANSFER_IN_CODES = {"TRFINTF"}
-_INTERNAL_TRANSFER_IN_CATEGORY = "Internal Transfer In (Savings/Expenses)"
+_INTERNAL_TRANSFER_IN_CATEGORY = "Savings In (from Savings/Investments)"
 _INTERNAL_TRANSFER_SAVINGS_INVESTING_HINTS = (
     "saving",
     "savings",
@@ -192,10 +192,6 @@ def chequing_dashboard(request):
     category_totals = defaultdict(lambda: {"in": 0.0, "out": 0.0, "count": 0})
     for row in rows:
         amount = float(row.get("amount") or 0)
-        if amount < 0 and _is_internal_transfer_to_savings_or_investing(row):
-            continue
-        if amount > 0 and _is_internal_transfer_from_savings_or_investing(row):
-            continue
         name = str(row.get("category") or "Other").strip() or "Other"
         if amount >= 0:
             category_totals[name]["in"] += amount
