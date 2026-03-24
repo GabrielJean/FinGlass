@@ -223,6 +223,7 @@ function renderMonthlyChart(monthlyRows) {
           label: "Net",
           type: "line",
           data: rows.map((row) => Number(row.net || 0)),
+          yAxisID: "yNet",
           borderColor: "#f59e0b",
           backgroundColor: "rgba(245, 158, 11, 0.2)",
           tension: 0.25,
@@ -233,7 +234,15 @@ function renderMonthlyChart(monthlyRows) {
       responsive: true,
       maintainAspectRatio: false,
       scales: {
-        y: { ticks: { callback: moneyTickCallback } },
+        y: {
+          beginAtZero: true,
+          ticks: { callback: moneyTickCallback },
+        },
+        yNet: {
+          position: "right",
+          grid: { drawOnChartArea: false },
+          ticks: { callback: moneyTickCallback },
+        },
       },
     },
   });
