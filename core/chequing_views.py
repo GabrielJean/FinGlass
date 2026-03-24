@@ -14,11 +14,13 @@ _INTERNAL_TRANSFER_OUT_CODES = {"TRFOUT", "TRFOUTTF"}
 _INTERNAL_TRANSFER_OUT_CATEGORIES = {
     "Savings Out (to Savings/Investments)",
     "Money Into Savings (to Savings/Investments)",
+    "Transfer To Savings/Investments",
 }
 _INTERNAL_TRANSFER_IN_CODES = {"TRFINTF", "TRFIN"}
 _INTERNAL_TRANSFER_IN_CATEGORIES = {
     "Savings In (from Savings/Investments)",
     "Money Out of Savings (from Savings/Investments)",
+    "Transfer From Savings/Investments",
 }
 _INTERNAL_TRANSFER_SAVINGS_INVESTING_HINTS = (
     "saving",
@@ -29,6 +31,30 @@ _INTERNAL_TRANSFER_SAVINGS_INVESTING_HINTS = (
     "tfsa",
     "fhsa",
 )
+
+_CATEGORY_DISPLAY_MAP = {
+    # Legacy labels are normalized to one naming scheme from chequing POV.
+    "Savings Out (to Savings/Investments)": "Transfer To Savings/Investments",
+    "Money Into Savings (to Savings/Investments)": "Transfer To Savings/Investments",
+    "Savings In (from Savings/Investments)": "Transfer From Savings/Investments",
+    "Money Out of Savings (from Savings/Investments)": "Transfer From Savings/Investments",
+}
+
+
+def _display_chequing_category(value):
+    category = str(value or "Other").strip() or "Other"
+    return _CATEGORY_DISPLAY_MAP.get(category, category)
+
+
+def _db_categories_for_filter(value):
+    category = str(value or "").strip()
+    if not category:
+        return []
+    if category == "Transfer To Savings/Investments":
+        return sorted(_INTERNAL_TRANSFER_OUT_CATEGORIES)
+    if category == "Transfer From Savings/Investments":
+        return sorted(_INTERNAL_TRANSFER_IN_CATEGORIES)
+    return [category]
 
 
 def _read_json(request):
@@ -48,7 +74,7 @@ def _tx_dict(row):
         "transaction_date": row.transaction_date.isoformat() if row.transaction_date else "",
         "transaction_code": row.transaction_code or "",
         "description": row.description or "",
-        "category": row.category or "Other",
+        "category": _display_chequing_category(row.category),
         "amount": amount,
         "balance": float(row.balance) if row.balance is not None else None,
         "currency": row.currency or "CAD",
@@ -70,6 +96,7 @@ def _normalize_chequing_provider(value):
 
 
 def _is_internal_transfer_to_savings_or_investing(row):
+    # Chequing POV: money leaves chequing and goes to savings/investing.
     code = str(row.get("transaction_code") or "").strip().upper()
     if code in _INTERNAL_TRANSFER_OUT_CODES:
         return True
@@ -85,6 +112,7 @@ def _is_internal_transfer_to_savings_or_investing(row):
 
 
 def _is_internal_transfer_from_savings_or_investing(row):
+    # Chequing POV: money enters chequing and comes from savings/investing.
     code = str(row.get("transaction_code") or "").strip().upper()
     if code in _INTERNAL_TRANSFER_IN_CODES:
         return True
@@ -128,7 +156,7 @@ def chequing_dashboard(request):
     if end_date:
         queryset = queryset.filter(transaction_date__lte=end_date)
     if category:
-        queryset = queryset.filter(category=category)
+        queryset = queryset.filter(category__in=_db_categories_for_filter(category))
     if account_label:
         queryset = queryset.filter(account_label=account_label)
     if search:
@@ -198,7 +226,7 @@ def chequing_dashboard(request):
     category_totals = defaultdict(lambda: {"in": 0.0, "out": 0.0, "count": 0})
     for row in rows:
         amount = float(row.get("amount") or 0)
-        name = str(row.get("category") or "Other").strip() or "Other"
+        name = _display_chequing_category(row.get("category"))
         if amount >= 0:
             category_totals[name]["in"] += amount
         else:
@@ -293,7 +321,7 @@ def chequing_categories(request):
         queryset = queryset.filter(is_hidden=False)
 
     rows = queryset.values_list("category", flat=True).distinct().order_by("category")
-    categories = sorted({str(value or "Other").strip() or "Other" for value in rows})
+    categories = sorted({_display_chequing_category(value) for value in rows})
     return JsonResponse(categories, safe=False)
 
 
