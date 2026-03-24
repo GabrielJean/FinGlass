@@ -949,7 +949,7 @@ function renderChequingDashboard(data) {
           stack: "outflow",
         },
         {
-          label: "Savings Out",
+          label: "Money Into Savings",
           data: monthly.map((row) => Number(row.internal_out || 0)),
           backgroundColor: "rgba(59, 130, 246, 0.55)",
           borderColor: "#3b82f6",
