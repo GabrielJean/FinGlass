@@ -31,9 +31,9 @@ def normalize_chequing_category(transaction_code, description, amount):
     if code == "OBP_OUT":
         return "Online Bill Payments"
     if code in {"TRFOUT", "TRFOUTTF"}:
-        return "Transfer To Savings/Investments"
+        return "Saving Money"
     if code in {"TRFINTF", "TRFIN"}:
-        return "Transfer From Savings/Investments"
+        return "Drawing from Savings"
 
     if numeric_amount > 0:
         return "Other Inflow"

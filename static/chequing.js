@@ -212,7 +212,7 @@ function renderMonthlyChart(monthlyRows) {
           stack: "outflow",
         },
         {
-          label: "Money Into Savings",
+          label: "Saving Money",
           data: rows.map((row) => Number(row.internal_out || 0)),
           backgroundColor: "rgba(59, 130, 246, 0.55)",
           borderColor: "#3b82f6",
