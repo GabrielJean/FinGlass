@@ -1,8 +1,10 @@
 from django.conf import settings
+from django.db.models import Max
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import ensure_csrf_cookie
 
+from core.models import ChequingTransaction, CreditCardTransaction, HoldingSnapshot, ImportBatch
 from core.services.settings_service import get_feature_settings
 
 
@@ -78,7 +80,23 @@ def fhsa_page(request):
 
 
 def import_page(request):
-    return render(request, "import_wizard.html")
+    user_id = request.user.id
+    last_import_used = {
+        "transactions": ImportBatch.objects.filter(
+            user_id=user_id,
+            source_type="activities_csv",
+            status="committed",
+        ).aggregate(last_used=Max("committed_at"))["last_used"],
+        "holdings": HoldingSnapshot.objects.filter(user_id=user_id).aggregate(last_used=Max("imported_at"))["last_used"],
+        "credit_card": CreditCardTransaction.objects.filter(user_id=user_id).aggregate(last_used=Max("imported_at"))["last_used"],
+        "chequing": ChequingTransaction.objects.filter(user_id=user_id).aggregate(last_used=Max("imported_at"))["last_used"],
+        "tax_pdf": ImportBatch.objects.filter(
+            user_id=user_id,
+            source_type="tax_pdf",
+            status="committed",
+        ).aggregate(last_used=Max("committed_at"))["last_used"],
+    }
+    return render(request, "import_wizard.html", {"last_import_used": last_import_used})
 
 
 def holdings_page(request):
