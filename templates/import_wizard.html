@@ -135,6 +135,18 @@
         line-height: 1.5;
       }
 
+      .import-type-last-used {
+        margin-top: 0.875rem;
+        font-size: 0.8rem;
+        color: #cbd5e1;
+        line-height: 1.4;
+      }
+
+      .import-type-last-used strong {
+        color: #e2e8f0;
+        font-weight: 600;
+      }
+
       .dropzone {
         border: 2px dashed rgba(148, 163, 184, 0.3);
         border-radius: 0.75rem;
@@ -465,6 +477,9 @@
               <div class="import-type-description">
                 Import buy, sell, and dividend transactions from your broker's activity report for ACB tracking
               </div>
+              <div class="import-type-last-used">
+                <strong>Last used:</strong> {{ last_import_used.transactions|date:"M j, Y g:i A"|default:"Never" }}
+              </div>
             </div>
 
             <div class="import-type-card" data-type="holdings">
@@ -472,6 +487,9 @@
               <div class="import-type-title">Holdings Snapshot</div>
               <div class="import-type-description">
                 Import your current account holdings and positions from your broker's portfolio snapshot
+              </div>
+              <div class="import-type-last-used">
+                <strong>Last used:</strong> {{ last_import_used.holdings|date:"M j, Y g:i A"|default:"Never" }}
               </div>
             </div>
 
@@ -481,6 +499,9 @@
               <div class="import-type-description">
                 Import credit card transactions from your bank's statement for expense tracking
               </div>
+              <div class="import-type-last-used">
+                <strong>Last used:</strong> {{ last_import_used.credit_card|date:"M j, Y g:i A"|default:"Never" }}
+              </div>
             </div>
 
             <div class="import-type-card" data-type="chequing">
@@ -489,6 +510,9 @@
               <div class="import-type-description">
                 Import chequing account transactions to track money in/out and simple spending categories
               </div>
+              <div class="import-type-last-used">
+                <strong>Last used:</strong> {{ last_import_used.chequing|date:"M j, Y g:i A"|default:"Never" }}
+              </div>
             </div>
 
             <div class="import-type-card" data-type="tax-pdf">
@@ -496,6 +520,9 @@
               <div class="import-type-title">Tax Documents</div>
               <div class="import-type-description">
                 Import Return of Capital and reinvested capital gains from tax slips (PDF)
+              </div>
+              <div class="import-type-last-used">
+                <strong>Last used:</strong> {{ last_import_used.tax_pdf|date:"M j, Y g:i A"|default:"Never" }}
               </div>
             </div>
           </div>
