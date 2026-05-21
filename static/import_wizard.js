@@ -748,13 +748,33 @@ async function parseFiles(files) {
     rows: result.rows || [],
     parsed: result.parsed || (result.rows ? result.rows.length : 0),
     imported: 0,
+    duplicateGroups: Number(result.duplicate_groups || 0),
+    duplicateRows: Number(result.duplicate_rows || 0),
+    warnings: Array.isArray(result.warnings) ? result.warnings : [],
   };
+}
+
+function renderPreviewWarnings(warnings) {
+  const normalizedWarnings = Array.isArray(warnings) ? warnings.filter(Boolean) : [];
+  if (!previewWarnings) {
+    return;
+  }
+
+  if (normalizedWarnings.length === 0) {
+    previewWarnings.innerHTML = '';
+    return;
+  }
+
+  previewWarnings.innerHTML = normalizedWarnings.map((warning) => `
+    <div class="warning-message">${escapeHtml(String(warning))}</div>
+  `).join('');
 }
 
 function renderPreview() {
   if (!parsedData) return;
 
   const config = importTypeConfig[selectedImportType];
+  renderPreviewWarnings(parsedData.warnings || []);
 
   // For direct imports, show summary
   if (config.direct) {
@@ -764,8 +784,6 @@ function renderPreview() {
         <strong>Found ${rowCount} record(s)</strong> • Review before importing
       </div>
     `;
-
-    previewWarnings.innerHTML = '';
 
     if (parsedData.rows && parsedData.rows.length > 0) {
       renderDirectPreviewTable(parsedData.rows);
@@ -783,10 +801,13 @@ function renderPreview() {
   } else {
     // Transactions/Tax preview
     const rows = parsedData.rows || [];
+    const duplicateSummary = parsedData.duplicateGroups > 0
+      ? ` • ${parsedData.duplicateRows} row(s) across ${parsedData.duplicateGroups} identical group(s) were flagged for review`
+      : '';
 
     previewStats.innerHTML = `
       <div class="warning-message">
-        <strong>Found ${rows.length} transaction(s)</strong> • Review and edit before importing
+        <strong>Found ${rows.length} transaction(s)</strong> • Review and edit before importing${duplicateSummary}
       </div>
     `;
 
@@ -840,6 +861,7 @@ function renderDirectPreviewTable(rows) {
 function renderStagedPreviewTable(rows) {
   previewTableHead.innerHTML = `
     <tr>
+      <th>Source Row</th>
       <th>Date</th>
       <th>Security</th>
       <th>Type</th>
@@ -847,20 +869,33 @@ function renderStagedPreviewTable(rows) {
       <th>Shares</th>
       <th>Price/Share</th>
       <th>Commission</th>
+      <th>Import Note</th>
     </tr>
   `;
 
-  previewTableBody.innerHTML = rows.map((row, index) => `
-    <tr>
-      <td>${escapeHtml(row.trade_date || '')}</td>
-      <td>${escapeHtml(row.security || '')}</td>
-      <td>${escapeHtml(row.transaction_type || '')}</td>
-      <td>${formatMoney(row.amount || 0)}</td>
-      <td>${formatNumber(row.shares || 0, 6)}</td>
-      <td>${formatMoney(row.amount_per_share || 0)}</td>
-      <td>${formatMoney(row.commission || 0)}</td>
-    </tr>
-  `).join('');
+  previewTableBody.innerHTML = rows.map((row) => {
+    const isDuplicate = Boolean(row.duplicate_in_import);
+    const duplicateNote = isDuplicate
+      ? `Identical row in this upload (${Number(row.duplicate_group_index || 0)} of ${Number(row.duplicate_group_size || 0)}). It will still be kept if it is new.`
+      : '';
+    const rowStyle = isDuplicate
+      ? ' style="background: rgba(245, 158, 11, 0.08); outline: 1px solid rgba(245, 158, 11, 0.35);"'
+      : '';
+
+    return `
+      <tr${rowStyle}>
+        <td>${escapeHtml(row.source_row_number || '')}</td>
+        <td>${escapeHtml(row.trade_date || '')}</td>
+        <td>${escapeHtml(row.security || '')}</td>
+        <td>${escapeHtml(row.transaction_type || '')}</td>
+        <td>${formatMoney(row.amount || 0)}</td>
+        <td>${formatNumber(row.shares || 0, 6)}</td>
+        <td>${formatMoney(row.amount_per_share || 0)}</td>
+        <td>${formatMoney(row.commission || 0)}</td>
+        <td>${escapeHtml(duplicateNote)}</td>
+      </tr>
+    `;
+  }).join('');
 
   markTableBodyRefreshed?.(previewTableBody);
 }
@@ -883,7 +918,10 @@ async function submitImport() {
         credentials: 'include'
       });
 
-      showCompletion(`Successfully imported ${importResult.imported || importResult.inserted || 0} record(s)`);
+      showCompletion(
+        `Successfully imported ${importResult.imported || importResult.inserted || 0} record(s)`,
+        importResult.warnings || []
+      );
       goToStep(4);
     } else {
       if (uploadedFiles.length === 0) {
@@ -905,7 +943,16 @@ async function submitImport() {
         method: 'POST'
       });
 
-      showCompletion(`Successfully imported ${result.imported || 0} transaction(s)`);
+      const importedCount = Number(result.imported || 0);
+      const skippedExistingCount = Number(result.skipped_existing || result.skipped || 0);
+      const completionMessage = skippedExistingCount > 0
+        ? `Successfully imported ${importedCount} transaction(s) • skipped ${skippedExistingCount} already in your ledger`
+        : `Successfully imported ${importedCount} transaction(s)`;
+
+      showCompletion(
+        completionMessage,
+        result.warnings || []
+      );
       goToStep(4);
     }
   } catch (error) {
@@ -984,8 +1031,17 @@ function getSelectedChequingAccountLabel() {
   return '';
 }
 
-function showCompletion(message) {
-  completionMessage.textContent = message;
+function showCompletion(message, warnings = []) {
+  const normalizedWarnings = Array.isArray(warnings) ? warnings.filter(Boolean) : [];
+  if (normalizedWarnings.length === 0) {
+    completionMessage.textContent = message;
+    return;
+  }
+
+  completionMessage.innerHTML = `
+    <div>${escapeHtml(String(message))}</div>
+    ${normalizedWarnings.map((warning) => `<div class="warning-message" style="text-align: left; margin-top: 1rem;">${escapeHtml(String(warning))}</div>`).join('')}
+  `;
 }
 
 function showError(message) {
@@ -999,6 +1055,9 @@ function clearFile() {
   updateStep2FileCountBadge();
   parsedData = null;
   batchId = null;
+  if (previewWarnings) {
+    previewWarnings.innerHTML = '';
+  }
   fileInput.value = '';
   setAnimatedVisibility(dropzone, true, 'block');
   setAnimatedVisibility(fileInfo, false, 'block');
