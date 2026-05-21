@@ -6,6 +6,7 @@ from datetime import datetime
 from io import BytesIO, StringIO
 from pathlib import Path
 
+from django.db import transaction
 from django.http import HttpResponse, JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods
@@ -68,7 +69,7 @@ def parse_activities_csv_text(csv_text):
     reader = csv.DictReader(StringIO(csv_text))
     rows = []
 
-    for item in reader:
+    for source_row_number, item in enumerate(reader, start=2):
         activity_type = (item.get("activity_type") or "").strip()
         symbol = (item.get("symbol") or "").strip().upper()
         if not activity_type:
@@ -119,6 +120,7 @@ def parse_activities_csv_text(csv_text):
                 "amount_per_share": amount_per_share,
                 "commission": commission,
                 "source": "activities_csv",
+                "source_row_number": source_row_number,
             }
         )
 
@@ -612,46 +614,133 @@ def _to_decimal(value):
     return Decimal(str(value or 0))
 
 
+def _build_memo_filter(memo):
+    normalized = str(memo or "")
+    return {"memo": normalized} if normalized else {"memo__in": ["", None]}
+
+
+def _transaction_signature_key(tx):
+    amount = _to_decimal(tx.get("amount", 0)).quantize(Decimal("0.000001"))
+    shares = _to_decimal(tx.get("shares", 0)).quantize(Decimal("0.00000001"))
+    commission = _to_decimal(tx.get("commission", 0)).quantize(Decimal("0.000001"))
+    memo = str(tx.get("memo") or "")
+    return (
+        str(tx.get("security") or "").strip().upper(),
+        str(tx.get("trade_date") or ""),
+        str(tx.get("transaction_type") or "").strip(),
+        str(amount),
+        str(shares),
+        str(commission),
+        memo,
+    )
+
+
+def _annotate_transaction_import_duplicates(rows):
+    signature_counts = Counter(_transaction_signature_key(row) for row in rows)
+    seen_counts = Counter()
+    duplicate_groups = sum(1 for count in signature_counts.values() if count > 1)
+    duplicate_rows = sum(count for count in signature_counts.values() if count > 1)
+    annotated_rows = []
+
+    for row in rows:
+        key = _transaction_signature_key(row)
+        group_size = signature_counts[key]
+        annotated_row = dict(row)
+        if group_size > 1:
+            seen_counts[key] += 1
+            annotated_row["duplicate_in_import"] = True
+            annotated_row["duplicate_group_size"] = group_size
+            annotated_row["duplicate_group_index"] = seen_counts[key]
+        annotated_rows.append(annotated_row)
+
+    return annotated_rows, duplicate_groups, duplicate_rows
+
+
+def _build_transaction_duplicate_warnings(duplicate_groups, duplicate_rows, skipped_existing=0):
+    warnings = []
+
+    if duplicate_groups > 0 and duplicate_rows > 0:
+        group_label = "group" if duplicate_groups == 1 else "groups"
+        row_label = "row" if duplicate_rows == 1 else "rows"
+        warnings.append(
+            f"This upload contains {duplicate_groups} identical transaction {group_label} spanning "
+            f"{duplicate_rows} {row_label}. They will still be imported together if they are new."
+        )
+
+    if skipped_existing > 0:
+        row_label = "row" if skipped_existing == 1 else "rows"
+        warnings.append(
+            f"Skipped {skipped_existing} {row_label} because matching transaction(s) are already in your ledger."
+        )
+
+    return warnings
+
+
 def _import_transactions_rows(parsed_rows, user_id):
     inserted = 0
-    for tx in parsed_rows:
-        amount = _to_decimal(tx["amount"])
-        shares = _to_decimal(tx["shares"])
-        commission = _to_decimal(tx["commission"])
-        memo = tx.get("memo", "")
+    skipped_existing = 0
+    annotated_rows, duplicate_groups, duplicate_rows = _annotate_transaction_import_duplicates(parsed_rows)
+    grouped_rows = {}
+    signature_order = []
 
-        memo_filter = {"memo": memo} if memo else {"memo__in": ["", None]}
-        exists = Transaction.objects.filter(
-            user_id=user_id,
-            security=tx["security"],
-            trade_date=tx["trade_date"],
-            transaction_type=tx["transaction_type"],
-            amount__gte=amount - EPSILON,
-            amount__lte=amount + EPSILON,
-            shares__gte=shares - EPSILON,
-            shares__lte=shares + EPSILON,
-            commission__gte=commission - EPSILON,
-            commission__lte=commission + EPSILON,
-            **memo_filter,
-        ).exists()
-        if exists:
-            continue
+    for tx in annotated_rows:
+        key = _transaction_signature_key(tx)
+        if key not in grouped_rows:
+            grouped_rows[key] = []
+            signature_order.append(key)
+        grouped_rows[key].append(tx)
 
-        Transaction.objects.create(
-            user_id=user_id,
-            security=tx["security"],
-            trade_date=tx["trade_date"],
-            transaction_type=tx["transaction_type"],
-            amount=amount,
-            shares=shares,
-            amount_per_share=_to_decimal(tx["amount_per_share"]),
-            commission=commission,
-            memo=memo,
-            source=tx["source"],
-        )
-        inserted += 1
+    with transaction.atomic():
+        for key in signature_order:
+            group_rows = grouped_rows[key]
+            exemplar = group_rows[0]
+            amount = _to_decimal(exemplar["amount"])
+            shares = _to_decimal(exemplar["shares"])
+            commission = _to_decimal(exemplar["commission"])
+            memo_filter = _build_memo_filter(exemplar.get("memo", ""))
+            existing_count = Transaction.objects.filter(
+                user_id=user_id,
+                security=exemplar["security"],
+                trade_date=exemplar["trade_date"],
+                transaction_type=exemplar["transaction_type"],
+                amount__gte=amount - EPSILON,
+                amount__lte=amount + EPSILON,
+                shares__gte=shares - EPSILON,
+                shares__lte=shares + EPSILON,
+                commission__gte=commission - EPSILON,
+                commission__lte=commission + EPSILON,
+                **memo_filter,
+            ).count()
 
-    return {"parsed": len(parsed_rows), "inserted": inserted}
+            rows_to_insert = max(0, len(group_rows) - existing_count)
+            skipped_existing += len(group_rows) - rows_to_insert
+            for tx in group_rows[:rows_to_insert]:
+                memo = str(tx.get("memo") or "")
+                Transaction.objects.create(
+                    user_id=user_id,
+                    security=tx["security"],
+                    trade_date=tx["trade_date"],
+                    transaction_type=tx["transaction_type"],
+                    amount=amount,
+                    shares=shares,
+                    amount_per_share=_to_decimal(tx["amount_per_share"]),
+                    commission=commission,
+                    memo=memo,
+                    source=tx["source"],
+                )
+                inserted += 1
+
+    warnings = _build_transaction_duplicate_warnings(duplicate_groups, duplicate_rows, skipped_existing)
+    return {
+        "parsed": len(parsed_rows),
+        "inserted": inserted,
+        "imported": inserted,
+        "skipped": skipped_existing,
+        "skipped_existing": skipped_existing,
+        "duplicate_groups": duplicate_groups,
+        "duplicate_rows": duplicate_rows,
+        "warnings": warnings,
+    }
 
 
 def _import_holdings_rows(parsed_rows, source_filename, user_id):
@@ -1044,11 +1133,25 @@ def create_import_review(request):
     if not rows:
         return JsonResponse({"error": "No importable transactions found in file"}, status=400)
 
+    rows, duplicate_groups, duplicate_rows = _annotate_transaction_import_duplicates(rows)
+    warnings = _build_transaction_duplicate_warnings(duplicate_groups, duplicate_rows)
+
     if _is_truthy(request.POST.get("preview_only")):
-        return JsonResponse({"rows": rows, "parsed": len(rows)})
+        return JsonResponse(
+            {
+                "rows": rows,
+                "parsed": len(rows),
+                "duplicate_groups": duplicate_groups,
+                "duplicate_rows": duplicate_rows,
+                "warnings": warnings,
+            }
+        )
 
     batch_id = _create_import_batch(import_type, uploaded_file.name, rows, user_id)
     batch_data = _get_batch(batch_id, user_id)
+    batch_data["duplicate_groups"] = duplicate_groups
+    batch_data["duplicate_rows"] = duplicate_rows
+    batch_data["warnings"] = warnings
     return JsonResponse(batch_data, status=201)
 
 

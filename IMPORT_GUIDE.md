@@ -123,6 +123,7 @@ This guide explains how to import your financial data into FinGlass using the ne
 ### Review Step
 - Always review the preview before importing
 - Check for duplicate transactions
+- For investment transaction imports, identical rows within the same upload are flagged in the preview and kept together if they are new
 - Verify symbols are uppercase and correct
 - Confirm dates and amounts match your records
 
