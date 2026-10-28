@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, re_path
 
 from .credit_card_views import (
     credit_card_cards,
@@ -148,6 +148,7 @@ urlpatterns = [
     path("api/securities", list_securities, name="securities"),
     path("api/transaction-types", list_transaction_types, name="transaction-types"),
     path("api/accounts/dashboard", accounts_dashboard, name="accounts-dashboard"),
+    path("api/accounts-dashboard", accounts_dashboard, name="accounts-dashboard-alias"),
     path("api/accounts/cash", upsert_cash_account, name="accounts-cash"),
     path("api/holdings", holdings_collection, name="holdings-collection"),
     path("api/holdings/<int:holding_id>", holdings_item, name="holdings-item"),
@@ -236,4 +237,5 @@ urlpatterns = [
     path("api/fhsa/transfers", fhsa_transfers, name="fhsa-transfers"),
     path("api/fhsa/reset", fhsa_reset, name="fhsa-reset"),
     path("api/fhsa/import-csv", fhsa_import_csv, name="fhsa-import-csv"),
+    re_path(r"^(?!api/|admin/|__django__/|static/).*$", index_page, name="spa"),
 ]

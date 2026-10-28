@@ -5,14 +5,14 @@ Simple web app to track securities transactions over time, with Adjusted Cost Ba
 ## Stack
 - Python API: Django
 - Database: SQLite
-- Frontend: server-rendered HTML + vanilla JS
-- Containerization: Docker + docker compose
+- Frontend: Vite + React (SPA with StockBot dark aesthetics, Manrope & DM Mono typography, Lucide icons)
+- Containerization: Docker (multi-stage Node + Python) + Docker Compose
 
 ## Architecture
 - Django project: `finglass_project/` (settings, urls, WSGI/ASGI).
-- Django apps: `accounts/` (custom user + auth endpoints) and `core/` (core models, middleware, page routes).
+- Django apps: `accounts/` (custom user + auth endpoints) and `core/` (core models, middleware, API routes).
 - Data/persistence: Django ORM models + versioned migrations in `accounts/migrations` and `core/migrations`.
-- Frontend: templates in `templates/`, static assets (CSS/JS) in `static/`, with shared helpers in `static/common.js`.
+- Frontend: Modern Single Page App in `frontend/` powered by Vite & React, building directly to `static/app.js` and `static/app.css`, served via Django's `templates/index.html`.
 
 
 
@@ -38,10 +38,17 @@ Simple web app to track securities transactions over time, with Adjusted Cost Ba
 
 ## Run locally (without Docker)
 ```bash
+# 1. Setup Python backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
+
+# 2. Build or run frontend
+npm run build     # compiles Vite React frontend into static/
+# or: npm run dev # runs Vite hot module reload
+
+# 3. Start server
 python manage.py runserver
 ```
 

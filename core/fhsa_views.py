@@ -67,15 +67,22 @@ def fhsa_summary(request):
     return JsonResponse(summary)
 
 
-@require_http_methods(["POST"])
+@require_http_methods(["GET", "POST"])
 def fhsa_accounts(request):
     user_id = request.user.id
-    data = _read_json(request)
+    if request.method == "GET":
+        accounts = list(
+            FhsaAccount.objects.filter(user_id=user_id)
+            .order_by("-created_at")
+            .values("id", "account_name")
+        )
+        return JsonResponse(accounts, safe=False)
 
     setup_error = _require_opening_balance_configured(user_id)
     if setup_error is not None:
         return setup_error
 
+    data = _read_json(request)
     account_name = (data.get("account_name") or "").strip()
     if not account_name:
         return JsonResponse({"error": "account_name required"}, status=400)
