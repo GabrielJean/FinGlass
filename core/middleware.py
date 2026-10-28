@@ -6,6 +6,7 @@ from django.conf import settings
 
 class LoginRequiredMiddleware:
     PUBLIC_PATHS = {
+        "/",
         "/login",
         "/api/auth/login",
         "/api/auth/register",
@@ -28,7 +29,8 @@ class LoginRequiredMiddleware:
         if path.startswith("/api/"):
             return JsonResponse({"error": "Authentication required"}, status=401)
 
-        return redirect("/login")
+        # Allow SPA routes to load index.html so React can render AuthView
+        return self.get_response(request)
 
     def _is_public(self, path):
         return (
@@ -55,9 +57,9 @@ class SecurityHeadersMiddleware:
             "Content-Security-Policy",
             "default-src 'self'; "
             "script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; "
-            "style-src 'self' 'unsafe-inline'; "
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
             "img-src 'self' data:; "
-            "font-src 'self' data:; "
+            "font-src 'self' data: https://fonts.gstatic.com; "
             "connect-src 'self' https://cdn.jsdelivr.net https://api.github.com; "
             "frame-ancestors 'none'; "
             "base-uri 'self'; "

@@ -43,23 +43,28 @@ def _require_opening_balance_configured(user_id):
 @require_http_methods(["GET", "POST"])
 def tfsa_accounts(request):
     user_id = request.user.id
-    if request.method == "POST":
-        setup_error = _require_opening_balance_configured(user_id)
-        if setup_error is not None:
-            return setup_error
+    if request.method == "GET":
+        accounts = list(
+            TfsaAccount.objects.filter(user_id=user_id)
+            .order_by("-created_at")
+            .values("id", "account_name")
+        )
+        return JsonResponse(accounts, safe=False)
 
-        data = _read_json(request)
-        account_name = (data.get("account_name") or "").strip()
-        if not account_name:
-            return JsonResponse({"error": "account_name required"}, status=400)
+    setup_error = _require_opening_balance_configured(user_id)
+    if setup_error is not None:
+        return setup_error
 
-        try:
-            account = TfsaAccount.objects.create(user_id=user_id, account_name=account_name, opening_balance=0)
-            return JsonResponse({"id": account.id}, status=201)
-        except Exception as exc:
-            return JsonResponse({"error": str(exc)}, status=400)
+    data = _read_json(request)
+    account_name = (data.get("account_name") or "").strip()
+    if not account_name:
+        return JsonResponse({"error": "account_name required"}, status=400)
 
-    return JsonResponse({"error": "Method not allowed"}, status=405)
+    try:
+        account = TfsaAccount.objects.create(user_id=user_id, account_name=account_name, opening_balance=0)
+        return JsonResponse({"id": account.id}, status=201)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
 
 
 @require_http_methods(["GET"])

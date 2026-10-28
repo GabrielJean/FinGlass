@@ -154,6 +154,18 @@ def _read_image_build_timestamp_file():
         return ""
 
 
+def _read_app_version():
+    env_ver = os.getenv("APP_VERSION", "").strip()
+    if env_ver:
+        return env_ver
+    path = BASE_DIR / "VERSION"
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "1.0.0"
+
+
 APP_GITHUB_REPOSITORY = os.getenv("APP_GITHUB_REPOSITORY", "GabrielJean/FinGlass").strip()
 APP_GITHUB_DEFAULT_BRANCH = os.getenv("APP_GITHUB_DEFAULT_BRANCH", "main").strip()
 APP_BUILD_TIMESTAMP = _read_image_build_timestamp_file()
+APP_VERSION = _read_app_version()

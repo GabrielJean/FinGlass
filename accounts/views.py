@@ -159,7 +159,7 @@ def admin_user_set_password_view(request, user_id):
         return JsonResponse({"error": "User not found"}, status=404)
 
     payload = _read_json(request)
-    new_password = str(payload.get("new_password", "")).strip()
+    new_password = str(payload.get("new_password") or payload.get("password") or "").strip()
     if len(new_password) < 8:
         return JsonResponse({"error": "password must be at least 8 characters"}, status=400)
 
