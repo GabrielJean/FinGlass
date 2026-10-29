@@ -2,6 +2,7 @@ from django.urls import path
 
 from .views import (
     admin_audit_logs_view,
+    admin_database_view,
     admin_user_delete_view,
     admin_user_set_active_view,
     admin_user_set_password_view,
@@ -30,4 +31,5 @@ urlpatterns = [
     path("admin/users/<int:user_id>/active", admin_user_set_active_view, name="admin-user-set-active"),
     path("admin/users/<int:user_id>", admin_user_delete_view, name="admin-user-delete"),
     path("admin/audit-logs", admin_audit_logs_view, name="admin-audit-logs"),
+    path("admin/database", admin_database_view, name="admin-database"),
 ]

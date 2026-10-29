@@ -111,6 +111,38 @@ export const api = {
         body: { confirm_username },
       }),
     getAuditLogs: (limit = 100) => request(`/api/auth/admin/audit-logs?limit=${limit}`),
+    exportDatabase: async () => {
+      const response = await fetch("/api/auth/admin/database", {
+        credentials: "same-origin",
+      });
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.error || `Export failed with status ${response.status}`);
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition");
+      let filename = "finglass-backup.sqlite3";
+      if (disposition && disposition.includes("filename=")) {
+        const match = disposition.match(/filename=["']?([^"';]+)["']?/);
+        if (match && match[1]) filename = match[1].trim();
+      }
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    },
+    importDatabase: (file) => {
+      const formData = new FormData();
+      formData.append("file", file);
+      return request("/api/auth/admin/database", {
+        method: "POST",
+        body: formData,
+      });
+    },
   },
 
   settings: {

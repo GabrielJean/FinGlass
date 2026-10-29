@@ -1,7 +1,14 @@
 import json
+import os
+import sqlite3
+import tempfile
 
+from django.conf import settings
 from django.contrib.auth import authenticate, login, logout
-from django.http import JsonResponse
+from django.core.management import call_command
+from django.db import connection, connections
+from django.http import FileResponse, JsonResponse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -316,3 +323,122 @@ def change_password_view(request):
     request.user.set_password(new_password)
     request.user.save()
     return JsonResponse({"ok": True})
+
+
+@require_http_methods(["GET", "POST", "HEAD"])
+def admin_database_view(request):
+    """
+    Superuser-only full SQLite database backup and restore endpoint.
+    GET:  Exports and downloads the complete SQLite database snapshot.
+    POST: Uploads a database file and overwrites the entire active database.
+    """
+    err = _ensure_superuser(request)
+    if err:
+        return err
+
+    db_config = settings.DATABASES.get("default", {})
+    if db_config.get("ENGINE") != "django.db.backends.sqlite3":
+        return JsonResponse({"error": "Full database operations are only supported for SQLite databases."}, status=400)
+
+    if request.method == "GET":
+        connection.ensure_connection()
+        tmp = tempfile.NamedTemporaryFile(suffix=".sqlite3")
+        dest = sqlite3.connect(tmp.name)
+        connection.connection.backup(dest)
+        dest.close()
+        tmp.seek(0)
+
+        timestamp = timezone.now().strftime("%Y%m%d-%H%M%S")
+        _log_admin_action(
+            actor=request.user,
+            action_type="DATABASE_EXPORT",
+            details={"timestamp": timestamp},
+        )
+        return FileResponse(
+            tmp,
+            as_attachment=True,
+            content_type="application/vnd.sqlite3",
+            filename=f"finglass-backup-{timestamp}.sqlite3",
+        )
+
+    # POST: Restore and overwrite database
+    uploaded = request.FILES.get("file") or request.FILES.get("database")
+    tmp_in = tempfile.NamedTemporaryFile(suffix=".sqlite3", delete=False)
+    tmp_in_path = tmp_in.name
+    try:
+        if uploaded:
+            for chunk in uploaded.chunks():
+                tmp_in.write(chunk)
+        elif request.body:
+            tmp_in.write(request.body)
+        else:
+            tmp_in.close()
+            return JsonResponse({"error": "No database file provided. Please upload a valid FinGlass SQLite file."}, status=400)
+        tmp_in.close()
+
+        file_size = os.path.getsize(tmp_in_path)
+        if file_size == 0:
+            return JsonResponse({"error": "Uploaded database file is empty."}, status=400)
+        if file_size > 500 * 1024 * 1024:
+            return JsonResponse({"error": "Uploaded database exceeds the 500 MB limit."}, status=400)
+
+        # Validate SQLite integrity
+        try:
+            test_conn = sqlite3.connect(tmp_in_path)
+            cursor = test_conn.cursor()
+            cursor.execute("PRAGMA integrity_check;")
+            integrity = cursor.fetchone()
+            if not integrity or integrity[0] != "ok":
+                test_conn.close()
+                return JsonResponse({"error": "Database integrity check failed. The file may be corrupt."}, status=400)
+
+            # Check that required core tables exist
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = {row[0] for row in cursor.fetchall()}
+            required_tables = {"accounts_user", "django_migrations"}
+            if not required_tables.issubset(tables):
+                test_conn.close()
+                return JsonResponse({
+                    "error": "Uploaded file is not a valid FinGlass database (missing required tables)."
+                }, status=400)
+            test_conn.close()
+        except sqlite3.DatabaseError as db_err:
+            return JsonResponse({"error": f"Uploaded file is not a valid SQLite database: {db_err}"}, status=400)
+
+        # Close existing connections and perform SQLite online backup to overwrite active database
+        connections.close_all()
+        connection.connect()
+        src_conn = sqlite3.connect(tmp_in_path)
+        src_conn.backup(connection.connection)
+        src_conn.close()
+
+        # Run migrations to bring imported database up to date if needed
+        call_command("migrate", interactive=False)
+        connections.close_all()
+
+        try:
+            actor = User.objects.filter(username=request.user.username).first()
+            _log_admin_action(
+                actor=actor,
+                action_type="DATABASE_RESTORE",
+                details={
+                    "file_name": getattr(uploaded, "name", "database.sqlite3"),
+                    "size_bytes": file_size,
+                },
+            )
+        except Exception:
+            pass
+
+        return JsonResponse({
+            "ok": True,
+            "message": "Database imported and overwritten successfully. The application will now reload.",
+        })
+    except Exception as exc:
+        return JsonResponse({"error": f"Database restore failed: {exc}"}, status=500)
+    finally:
+        if os.path.exists(tmp_in_path):
+            try:
+                os.unlink(tmp_in_path)
+            except OSError:
+                pass
+
