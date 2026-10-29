@@ -52,13 +52,40 @@
   box-sizing: border-box;
 }
 
-body {
+html, body {
   margin: 0;
+  padding: 0;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
   font-family: var(--font-sans);
   color: var(--text-main);
   background: radial-gradient(circle at 20% 0, #18315a 0, transparent 34rem), #09111f;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Sleek subtle scrollbars */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-track {
+  background: #09111f;
+}
+::-webkit-scrollbar-thumb {
+  background: #233a59;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #365580;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #233a59 #09111f;
 }
 
 button, input, select, textarea {
@@ -444,8 +471,12 @@ input[type="checkbox"], input[type="radio"] {
 /* App Shell Layout */
 .app-shell {
   display: grid;
-  grid-template-columns: 260px 1fr;
+  grid-template-columns: 260px minmax(0, 1fr);
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: clip;
 }
 
 aside {
@@ -567,9 +598,12 @@ nav button.selected svg {
 
 /* Content Area */
 .content {
-  padding: clamp(1.5rem, 4vw, 3.5rem);
+  padding: clamp(1.25rem, 3vw, 2.75rem);
   max-width: 1450px;
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  overflow-x: hidden;
 }
 
 .content header {
@@ -596,6 +630,9 @@ nav button.selected svg {
   flex-wrap: wrap;
   gap: 1rem;
   margin-bottom: 1.75rem;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .panel {
@@ -605,6 +642,10 @@ nav button.selected svg {
   padding: 1.5rem;
   margin-bottom: 1.5rem;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .panel-header {
@@ -710,9 +751,12 @@ nav button.selected svg {
 /* Clean Data Tables */
 .table-wrap {
   width: 100%;
+  max-width: 100%;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: 8px;
   border: 1px solid var(--border-dim);
+  box-sizing: border-box;
 }
 
 table {
@@ -908,7 +952,7 @@ td.text-negative {
 /* Responsive adjustments */
 @media (max-width: 900px) {
   .app-shell {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   aside {

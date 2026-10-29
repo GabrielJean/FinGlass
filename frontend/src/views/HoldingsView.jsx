@@ -182,7 +182,7 @@ export function HoldingsView({ onNavigate }) {
   const accountTypes = Array.from(new Set(rawHoldings.map((h) => h.account_type || h.account_name).filter(Boolean)));
 
   return (
-    <div>
+    <div style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
       <div className="top-bar">
         <div>
           <p className="eyebrow">PORTFOLIO POSITIONS</p>
@@ -340,7 +340,7 @@ export function HoldingsView({ onNavigate }) {
           </div>
         ) : (
           <div className="table-wrap" style={{ border: "none" }}>
-            <table>
+            <table style={{ minWidth: 840 }}>
               <thead>
                 <tr>
                   <th>Symbol</th>
@@ -378,7 +378,20 @@ export function HoldingsView({ onNavigate }) {
                         {h.security_name || "-"}
                       </td>
                       <td>
-                        <span className="status info">{h.account_name || h.account_type}</span>
+                        <span
+                          className="status info"
+                          style={{
+                            maxWidth: 190,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                            display: "inline-block",
+                            verticalAlign: "middle",
+                          }}
+                          title={h.account_name || h.account_type}
+                        >
+                          {h.account_name || h.account_type}
+                        </span>
                       </td>
                       <td className="num">{Number(h.quantity).toFixed(4)}</td>
                       <td className="num">${price.toFixed(2)}</td>
