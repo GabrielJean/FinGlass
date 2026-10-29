@@ -246,3 +246,4 @@ class TaxConstantsIndexed:
     @property
     def will_verification_fee_non_notarized(self) -> float:
         return self.scale(self.raw["estate"]["will_verification_fee_non_notarized"])
+

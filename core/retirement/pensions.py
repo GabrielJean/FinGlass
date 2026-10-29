@@ -135,3 +135,4 @@ def calculate_db_pension_annual(
         bridge_part = profile.db_bridge_annual * index_factor
 
     return lifetime_part + bridge_part
+

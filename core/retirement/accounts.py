@@ -100,3 +100,4 @@ def process_real_estate_year(
         new_mortgage = max(0.0, mortgage_balance - principal_paid)
 
     return new_res_value, new_mortgage, new_sec_value
+

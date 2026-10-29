@@ -357,3 +357,4 @@ def optimize_pension_income_splitting(
             best_res_sp = res_s
 
     return best_s, best_res_prim, best_res_sp
+

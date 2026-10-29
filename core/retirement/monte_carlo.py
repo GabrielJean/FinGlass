@@ -191,3 +191,4 @@ def run_monte_carlo_simulation(
         crash_replay_ending_balance=round(bal_crash, 2),
         cash_wedge_ending_balance=round(wedge_final, 2),
     )
+
