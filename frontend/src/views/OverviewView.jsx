@@ -87,10 +87,6 @@ export function OverviewView({ onNavigate }) {
     }
   };
 
-  if (loading) {
-    return <div className="loading">Loading portfolio overview...</div>;
-  }
-
   const summary = dashboard?.summary || {};
   const totalMarket = Number(summary.market_value || 0);
   const totalBook = Number(summary.book_value_cad || 0);
@@ -436,6 +432,10 @@ export function OverviewView({ onNavigate }) {
   }, []);
 
   const totalChartCount = 4 + (netWorthChronological.length > 1 ? 1 : 0);
+
+  if (loading) {
+    return <div className="loading">Loading portfolio overview...</div>;
+  }
 
   return (
     <div>
