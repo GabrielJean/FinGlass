@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../api";
 import { formatMoney, formatPercent, formatDate } from "../utils/formatters";
 import {
@@ -10,7 +10,18 @@ import {
   ArrowLeft,
   Calendar,
   Layers,
+  BarChart3,
 } from "lucide-react";
+import { Bar, Line } from "react-chartjs-2";
+import "../components/charts/chartSetup";
+import {
+  CHART_PALETTE,
+  formatCompactMoney,
+  commonTooltipOptions,
+  commonScaleOptions,
+} from "../components/charts/chartSetup";
+import { CollapsibleChartSection } from "../components/charts/CollapsibleChartSection";
+import { ChartCard } from "../components/charts/ChartCard";
 
 export function AcbView({ initialSymbol = null }) {
   const [loading, setLoading] = useState(true);
@@ -150,6 +161,142 @@ export function AcbView({ initialSymbol = null }) {
     setIsTxModalOpen(true);
   };
 
+  // Chart 1: Securities ACB Distribution
+  const securitiesChartData = useMemo(() => {
+    if (!securities.length) return null;
+    const sorted = [...securities].sort(
+      (a, b) => Number(b.acb || b.total_acb || 0) - Number(a.acb || a.total_acb || 0)
+    );
+    return {
+      labels: sorted.map((s) => s.security),
+      datasets: [
+        {
+          label: "Adjusted Cost Base",
+          data: sorted.map((s) => Number(s.acb || s.total_acb || 0)),
+          backgroundColor: "rgba(56, 189, 248, 0.55)",
+          borderColor: "#38bdf8",
+          borderWidth: 1.5,
+          borderRadius: 6,
+        },
+      ],
+    };
+  }, [securities]);
+
+  const securitiesChartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => `ACB: ${formatMoney(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ...commonScaleOptions,
+          grid: { display: false },
+        },
+        y: {
+          ...commonScaleOptions,
+          ticks: {
+            ...commonScaleOptions.ticks,
+            callback: (val) => formatCompactMoney(val),
+          },
+        },
+      },
+    };
+  }, []);
+
+  // Chart 2: Detailed Security Ledger Progression
+  const ledgerChartData = useMemo(() => {
+    if (!ledgerRows.length) return null;
+    return {
+      labels: ledgerRows.map((r) => formatDate(r.trade_date)),
+      datasets: [
+        {
+          label: "Running ACB ($)",
+          data: ledgerRows.map((r) => Number(r.running_acb || 0)),
+          borderColor: "#38bdf8",
+          backgroundColor: "rgba(56, 189, 248, 0.1)",
+          fill: true,
+          tension: 0.25,
+          yAxisID: "y",
+          pointRadius: 4,
+          pointBackgroundColor: "#38bdf8",
+        },
+        {
+          label: "Shares",
+          data: ledgerRows.map((r) => Number(r.running_shares || 0)),
+          borderColor: "#a78bfa",
+          backgroundColor: "transparent",
+          borderDash: [5, 5],
+          tension: 0.25,
+          yAxisID: "y1",
+          pointRadius: 3,
+          pointBackgroundColor: "#a78bfa",
+        },
+      ],
+    };
+  }, [ledgerRows]);
+
+  const ledgerChartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: "top",
+          align: "end",
+          labels: {
+            boxWidth: 10,
+            boxHeight: 10,
+            usePointStyle: true,
+            color: "#9bb2d1",
+            font: { size: 11 },
+          },
+        },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => {
+              if (ctx.datasetIndex === 0) {
+                return `Running ACB: ${formatMoney(ctx.raw)}`;
+              }
+              return `Shares: ${Number(ctx.raw).toFixed(4)}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          ...commonScaleOptions,
+          grid: { display: false },
+        },
+        y: {
+          ...commonScaleOptions,
+          position: "left",
+          ticks: {
+            ...commonScaleOptions.ticks,
+            callback: (val) => formatCompactMoney(val),
+          },
+        },
+        y1: {
+          ...commonScaleOptions,
+          position: "right",
+          grid: { display: false },
+          ticks: {
+            ...commonScaleOptions.ticks,
+            color: "#a78bfa",
+          },
+        },
+      },
+    };
+  }, []);
+
   return (
     <div>
       <div className="top-bar">
@@ -193,6 +340,27 @@ export function AcbView({ initialSymbol = null }) {
       {/* Main View: Security List vs Security Ledger Drill-down */}
       {!selectedSecurity ? (
         <>
+          {/* Collapsible Securities ACB Chart */}
+          <CollapsibleChartSection
+            title="Cost Basis Distribution"
+            subtitle="Capital invested across non-registered securities"
+            storageKey="finglass_collapse_acb_securities_chart"
+            chartCount={1}
+            icon={TrendingUp}
+          >
+            <ChartCard
+              title="Securities by Adjusted Cost Base"
+              subtitle="Total capital cost invested per security"
+              height={260}
+              empty={!securitiesChartData}
+              emptyMessage="No securities recorded with ACB history."
+            >
+              {securitiesChartData && (
+                <Bar data={securitiesChartData} options={securitiesChartOptions} />
+              )}
+            </ChartCard>
+          </CollapsibleChartSection>
+
           <section className="panel" style={{ padding: 0, overflow: "hidden" }}>
             <div className="panel-header" style={{ padding: "1.25rem 1.5rem 0.75rem" }}>
               <h3>Tracked Securities</h3>
@@ -293,6 +461,27 @@ export function AcbView({ initialSymbol = null }) {
               </div>
             </section>
           )}
+
+          {/* Collapsible Ledger Progression Chart */}
+          <CollapsibleChartSection
+            title={`${selectedSecurity} Cost Basis & Share History`}
+            subtitle="Chronological progression of running ACB and position size"
+            storageKey={`finglass_collapse_acb_ledger_${selectedSecurity}`}
+            chartCount={1}
+            icon={TrendingUp}
+          >
+            <ChartCard
+              title="Running ACB vs Share Position"
+              subtitle="Dual-axis trajectory tracking cumulative cost and units"
+              height={260}
+              empty={!ledgerChartData}
+              emptyMessage="No ledger rows available."
+            >
+              {ledgerChartData && (
+                <Line data={ledgerChartData} options={ledgerChartOptions} />
+              )}
+            </ChartCard>
+          </CollapsibleChartSection>
 
           <section className="panel" style={{ padding: 0, overflow: "hidden" }}>
             <div className="table-wrap" style={{ border: "none" }}>

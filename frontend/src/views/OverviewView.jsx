@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../api";
 import { formatMoney, formatPercent, formatDate } from "../utils/formatters";
 import {
@@ -12,7 +12,18 @@ import {
   ShieldCheck,
   RefreshCw,
   PlusCircle,
+  BarChart3,
 } from "lucide-react";
+import { Bar, Doughnut, Line } from "react-chartjs-2";
+import "../components/charts/chartSetup";
+import {
+  CHART_PALETTE,
+  formatCompactMoney,
+  commonTooltipOptions,
+  commonScaleOptions,
+} from "../components/charts/chartSetup";
+import { CollapsibleChartSection } from "../components/charts/CollapsibleChartSection";
+import { ChartCard } from "../components/charts/ChartCard";
 
 export function OverviewView({ onNavigate }) {
   const [loading, setLoading] = useState(true);
@@ -23,6 +34,7 @@ export function OverviewView({ onNavigate }) {
   const [fhsaSummary, setFhsaSummary] = useState(null);
   const [ccDashboard, setCcDashboard] = useState(null);
   const [cheqDashboard, setCheqDashboard] = useState(null);
+  const [netWorthHistory, setNetWorthHistory] = useState([]);
   const [refreshingQuotes, setRefreshingQuotes] = useState(false);
   const [refreshNotice, setRefreshNotice] = useState("");
 
@@ -30,13 +42,14 @@ export function OverviewView({ onNavigate }) {
     setLoading(true);
     setError("");
     try {
-      const [dash, tfsa, rrsp, fhsa, cc, cheq] = await Promise.allSettled([
+      const [dash, tfsa, rrsp, fhsa, cc, cheq, nw] = await Promise.allSettled([
         api.holdings.getDashboard(),
         api.tfsa.getSummary(),
         api.rrsp.getSummary(),
         api.fhsa.getSummary(),
         api.creditCard.getDashboard(),
         api.chequing.getDashboard(),
+        api.netWorth.getHistory(),
       ]);
 
       if (dash.status === "fulfilled") setDashboard(dash.value);
@@ -45,6 +58,10 @@ export function OverviewView({ onNavigate }) {
       if (fhsa.status === "fulfilled") setFhsaSummary(fhsa.value);
       if (cc.status === "fulfilled") setCcDashboard(cc.value);
       if (cheq.status === "fulfilled") setCheqDashboard(cheq.value);
+      if (nw.status === "fulfilled") {
+        const rows = Array.isArray(nw.value) ? nw.value : (nw.value?.history || nw.value?.rows || []);
+        setNetWorthHistory(rows);
+      }
     } catch (err) {
       setError(err.message || "Failed to load portfolio overview.");
     } finally {
@@ -107,6 +124,318 @@ export function OverviewView({ onNavigate }) {
   const fhsaUsed = Number(fhsaSummary?.room_used ?? fhsaSummary?.total_deposits ?? 0);
   const fhsaUsedPct = fhsaLifetimeLimit > 0 ? Math.min(100, Math.max(0, (fhsaUsed / fhsaLifetimeLimit) * 100)) : 0;
   const fhsaStatusBarColor = fhsaSummary?.room_status === "over-limit" ? "#ef4444" : fhsaSummary?.room_status === "full" ? "#10b981" : "#ffd391";
+
+  // Chart 1: Allocation by Symbol
+  const allocationChartData = useMemo(() => {
+    const symbolAllocations = dashboard?.symbol_allocations || [];
+    const topHoldings = dashboard?.top_holdings || [];
+
+    let items = [];
+    if (symbolAllocations.length > 0) {
+      items = symbolAllocations.map((item) => ({
+        label: item.symbol,
+        value: Number(item.market_value || 0),
+        pct: Number(item.percentage || 0),
+      }));
+    } else if (topHoldings.length > 0) {
+      const total = topHoldings.reduce((sum, h) => sum + Number(h.market_value || 0), 0);
+      items = topHoldings.map((h) => ({
+        label: h.symbol,
+        value: Number(h.market_value || 0),
+        pct: total > 0 ? (Number(h.market_value || 0) / total) * 100 : 0,
+      }));
+    }
+
+    if (!items.length) return null;
+
+    const sorted = [...items].sort((a, b) => b.value - a.value);
+    const top = sorted.slice(0, 7);
+    const otherVal = sorted.slice(7).reduce((sum, item) => sum + item.value, 0);
+
+    const labels = top.map((item) => item.label);
+    const data = top.map((item) => item.value);
+
+    if (otherVal > 0) {
+      labels.push("Other Holdings");
+      data.push(otherVal);
+    }
+
+    return {
+      labels,
+      datasets: [
+        {
+          data,
+          backgroundColor: CHART_PALETTE.slice(0, labels.length),
+          borderColor: "transparent",
+          borderWidth: 0,
+          spacing: 3,
+        },
+      ],
+    };
+  }, [dashboard?.symbol_allocations, dashboard?.top_holdings]);
+
+  const allocationChartOptions = useMemo(() => {
+    const total = Number(dashboard?.summary?.market_value || 0);
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "68%",
+      plugins: {
+        legend: {
+          position: "right",
+          labels: {
+            boxWidth: 10,
+            boxHeight: 10,
+            usePointStyle: true,
+            color: "#9bb2d1",
+            font: { size: 11 },
+            padding: 8,
+          },
+        },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => {
+              const val = Number(ctx.raw || 0);
+              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
+              return `${ctx.label}: ${formatMoney(val)} (${pct}%)`;
+            },
+          },
+        },
+      },
+    };
+  }, [dashboard?.summary?.market_value]);
+
+  // Chart 2: Accounts Breakdown
+  const accountsChartData = useMemo(() => {
+    const accounts = dashboard?.accounts || [];
+    if (!accounts.length) return null;
+    return {
+      labels: accounts.map((a) => a.account_name),
+      datasets: [
+        {
+          label: "Market Value",
+          data: accounts.map((a) => Number(a.market_value || 0)),
+          backgroundColor: "rgba(56, 189, 248, 0.55)",
+          borderColor: "#38bdf8",
+          borderWidth: 1.5,
+          borderRadius: 6,
+        },
+      ],
+    };
+  }, [dashboard?.accounts]);
+
+  const accountsChartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => `Market Value: ${formatMoney(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ...commonScaleOptions,
+          grid: { display: false },
+        },
+        y: {
+          ...commonScaleOptions,
+          ticks: {
+            ...commonScaleOptions.ticks,
+            callback: (val) => formatCompactMoney(val),
+          },
+        },
+      },
+    };
+  }, []);
+
+  // Chart 3: Chequing Cash Flow
+  const cheqFlowChartData = useMemo(() => {
+    const monthly = cheqDashboard?.monthly || [];
+    if (!monthly.length) return null;
+    return {
+      labels: monthly.map((m) => m.month),
+      datasets: [
+        {
+          label: "Money In",
+          data: monthly.map((m) => Number(m.in || 0)),
+          backgroundColor: "rgba(52, 211, 153, 0.65)",
+          borderColor: "#34d399",
+          borderWidth: 1.2,
+          borderRadius: 5,
+        },
+        {
+          label: "Money Out",
+          data: monthly.map((m) => Number(m.out || 0)),
+          backgroundColor: "rgba(248, 113, 113, 0.65)",
+          borderColor: "#f87171",
+          borderWidth: 1.2,
+          borderRadius: 5,
+        },
+        {
+          label: "Saving Money",
+          data: monthly.map((m) => Number(m.internal_out || 0)),
+          backgroundColor: "rgba(56, 189, 248, 0.65)",
+          borderColor: "#38bdf8",
+          borderWidth: 1.2,
+          borderRadius: 5,
+        },
+      ],
+    };
+  }, [cheqDashboard?.monthly]);
+
+  const cheqFlowChartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: "top",
+          align: "end",
+          labels: {
+            boxWidth: 9,
+            boxHeight: 9,
+            usePointStyle: true,
+            color: "#9bb2d1",
+            font: { size: 10 },
+            padding: 8,
+          },
+        },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ...commonScaleOptions,
+          grid: { display: false },
+        },
+        y: {
+          ...commonScaleOptions,
+          ticks: {
+            ...commonScaleOptions.ticks,
+            callback: (val) => formatCompactMoney(val),
+          },
+        },
+      },
+    };
+  }, []);
+
+  // Chart 4: Credit Card Monthly Expenses
+  const ccMonthlyChartData = useMemo(() => {
+    const monthly = ccDashboard?.monthly || [];
+    if (!monthly.length) return null;
+    return {
+      labels: monthly.map((m) => m.month),
+      datasets: [
+        {
+          label: "Spend",
+          data: monthly.map((m) => Number(m.expenses || 0)),
+          backgroundColor: "rgba(248, 113, 113, 0.45)",
+          borderColor: "#f87171",
+          borderWidth: 1.5,
+          borderRadius: 6,
+        },
+      ],
+    };
+  }, [ccDashboard?.monthly]);
+
+  const ccMonthlyChartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => `Card Spend: ${formatMoney(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ...commonScaleOptions,
+          grid: { display: false },
+        },
+        y: {
+          ...commonScaleOptions,
+          ticks: {
+            ...commonScaleOptions.ticks,
+            callback: (val) => formatCompactMoney(val),
+          },
+        },
+      },
+    };
+  }, []);
+
+  // Chart 5: Net Worth Growth (if history recorded)
+  const netWorthChronological = useMemo(() => {
+    return [...(Array.isArray(netWorthHistory) ? netWorthHistory : [])].sort(
+      (a, b) => a.entry_date.localeCompare(b.entry_date)
+    );
+  }, [netWorthHistory]);
+
+  const netWorthChartData = useMemo(() => {
+    if (!netWorthChronological.length) return null;
+    return {
+      labels: netWorthChronological.map((item) => formatDate(item.entry_date)),
+      datasets: [
+        {
+          label: "Net Worth",
+          data: netWorthChronological.map((item) => Number(item.amount || 0)),
+          borderColor: "#34d399",
+          backgroundColor: "rgba(52, 211, 153, 0.12)",
+          fill: true,
+          tension: 0.3,
+          pointRadius: netWorthChronological.length > 25 ? 2 : 4,
+          pointHoverRadius: 6,
+          pointBackgroundColor: "#34d399",
+          pointBorderColor: "#09111f",
+          pointBorderWidth: 2,
+        },
+      ],
+    };
+  }, [netWorthChronological]);
+
+  const netWorthChartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => `Net Worth: ${formatMoney(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ...commonScaleOptions,
+          grid: { display: false },
+        },
+        y: {
+          ...commonScaleOptions,
+          ticks: {
+            ...commonScaleOptions.ticks,
+            callback: (val) => formatCompactMoney(val),
+          },
+        },
+      },
+    };
+  }, []);
+
+  const totalChartCount = 4 + (netWorthChronological.length > 1 ? 1 : 0);
 
   return (
     <div>
@@ -264,6 +593,78 @@ export function OverviewView({ onNavigate }) {
           </div>
         </div>
       </section>
+
+      {/* Collapsible Portfolio & Wealth Analytics Section */}
+      <CollapsibleChartSection
+        title="Portfolio & Wealth Analytics"
+        subtitle="Interactive asset allocation, account balances, cash flow, and spending velocity"
+        storageKey="finglass_collapse_overview_charts"
+        chartCount={totalChartCount}
+        icon={TrendingUp}
+        style={{ marginTop: "2rem", marginBottom: "2rem" }}
+      >
+        <div className="chart-grid">
+          <ChartCard
+            title="Portfolio Allocation"
+            subtitle="Market value distribution by symbol"
+            height={260}
+            empty={!allocationChartData}
+            emptyMessage="No holdings available to compute allocation."
+          >
+            {allocationChartData && (
+              <Doughnut data={allocationChartData} options={allocationChartOptions} />
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Market Value by Account"
+            subtitle="Current asset valuation across brokerages"
+            height={260}
+            empty={!accountsChartData}
+            emptyMessage="No investment accounts configured."
+          >
+            {accountsChartData && (
+              <Bar data={accountsChartData} options={accountsChartOptions} />
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Monthly Cash Flow"
+            subtitle="WealthSimple chequing flow (in vs out vs savings)"
+            height={260}
+            empty={!cheqFlowChartData}
+            emptyMessage="No chequing transaction data imported yet."
+          >
+            {cheqFlowChartData && (
+              <Bar data={cheqFlowChartData} options={cheqFlowChartOptions} />
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Credit Card Spend Trend"
+            subtitle="Total monthly expenses across credit cards"
+            height={260}
+            empty={!ccMonthlyChartData}
+            emptyMessage="No credit card statement data imported yet."
+          >
+            {ccMonthlyChartData && (
+              <Bar data={ccMonthlyChartData} options={ccMonthlyChartOptions} />
+            )}
+          </ChartCard>
+
+          {netWorthChronological.length > 1 && (
+            <ChartCard
+              title="Net Worth Growth Curve"
+              subtitle="Milestones timeline over recorded snapshots"
+              badge={`${netWorthChronological.length} snapshots`}
+              height={260}
+              style={{ gridColumn: "1 / -1" }}
+            >
+              <Line data={netWorthChartData} options={netWorthChartOptions} />
+            </ChartCard>
+          )}
+        </div>
+      </CollapsibleChartSection>
 
       {/* Top Holdings & Accounts Grid */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(450px, 1fr))", gap: "1.5rem", marginTop: "2rem" }}>

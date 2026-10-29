@@ -1,7 +1,17 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../api";
 import { formatMoney, formatPercent, formatDate } from "../utils/formatters";
-import { RefreshCw, Plus, Search, Trash2, Edit2, DollarSign, ExternalLink } from "lucide-react";
+import { RefreshCw, Plus, Search, Trash2, Edit2, DollarSign, ExternalLink, PieChart } from "lucide-react";
+import { Bar, Doughnut } from "react-chartjs-2";
+import "../components/charts/chartSetup";
+import {
+  CHART_PALETTE,
+  formatCompactMoney,
+  commonTooltipOptions,
+  commonScaleOptions,
+} from "../components/charts/chartSetup";
+import { CollapsibleChartSection } from "../components/charts/CollapsibleChartSection";
+import { ChartCard } from "../components/charts/ChartCard";
 
 export function HoldingsView({ onNavigate }) {
   const [loading, setLoading] = useState(true);
@@ -181,6 +191,132 @@ export function HoldingsView({ onNavigate }) {
   // Account types list for filter
   const accountTypes = Array.from(new Set(rawHoldings.map((h) => h.account_type || h.account_name).filter(Boolean)));
 
+  // Chart 1: Symbol Allocation
+  const symbolAllocationData = useMemo(() => {
+    if (!rawHoldings.length) return null;
+    const symbolMap = {};
+    rawHoldings.forEach((h) => {
+      const sym = h.symbol || "Unknown";
+      symbolMap[sym] = (symbolMap[sym] || 0) + Number(h.market_value || 0);
+    });
+
+    const sorted = Object.entries(symbolMap)
+      .map(([symbol, val]) => ({ symbol, val }))
+      .sort((a, b) => b.val - a.val);
+
+    const top = sorted.slice(0, 7);
+    const otherVal = sorted.slice(7).reduce((sum, item) => sum + item.val, 0);
+
+    const labels = top.map((item) => item.symbol);
+    const data = top.map((item) => item.val);
+    if (otherVal > 0) {
+      labels.push("Other Holdings");
+      data.push(otherVal);
+    }
+
+    return {
+      labels,
+      datasets: [
+        {
+          data,
+          backgroundColor: CHART_PALETTE.slice(0, labels.length),
+          borderColor: "transparent",
+          borderWidth: 0,
+          spacing: 3,
+        },
+      ],
+    };
+  }, [rawHoldings]);
+
+  const symbolAllocationOptions = useMemo(() => {
+    const total = rawHoldings.reduce((sum, h) => sum + Number(h.market_value || 0), 0);
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "68%",
+      plugins: {
+        legend: {
+          position: "right",
+          labels: {
+            boxWidth: 10,
+            boxHeight: 10,
+            usePointStyle: true,
+            color: "#9bb2d1",
+            font: { size: 11 },
+            padding: 8,
+          },
+        },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => {
+              const val = Number(ctx.raw || 0);
+              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
+              return `${ctx.label}: ${formatMoney(val)} (${pct}%)`;
+            },
+          },
+        },
+      },
+    };
+  }, [rawHoldings]);
+
+  // Chart 2: Account Breakdown
+  const accountBreakdownData = useMemo(() => {
+    if (!rawHoldings.length) return null;
+    const accMap = {};
+    rawHoldings.forEach((h) => {
+      const name = h.account_name || h.account_type || "Standard";
+      accMap[name] = (accMap[name] || 0) + Number(h.market_value || 0);
+    });
+
+    const entries = Object.entries(accMap)
+      .map(([name, val]) => ({ name, val }))
+      .sort((a, b) => b.val - a.val);
+
+    return {
+      labels: entries.map((e) => e.name),
+      datasets: [
+        {
+          label: "Market Value",
+          data: entries.map((e) => e.val),
+          backgroundColor: "rgba(56, 189, 248, 0.5)",
+          borderColor: "#38bdf8",
+          borderWidth: 1.5,
+          borderRadius: 6,
+        },
+      ],
+    };
+  }, [rawHoldings]);
+
+  const accountBreakdownOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => `Market Value: ${formatMoney(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ...commonScaleOptions,
+          grid: { display: false },
+        },
+        y: {
+          ...commonScaleOptions,
+          ticks: {
+            ...commonScaleOptions.ticks,
+            callback: (val) => formatCompactMoney(val),
+          },
+        },
+      },
+    };
+  }, []);
+
   return (
     <div style={{ width: "100%", maxWidth: "100%", minWidth: 0 }}>
       <div className="top-bar">
@@ -303,6 +439,41 @@ export function HoldingsView({ onNavigate }) {
           )}
         </form>
       </section>
+
+      {/* Collapsible Portfolio Allocation Section */}
+      <CollapsibleChartSection
+        title="Portfolio Allocation & Distribution"
+        subtitle="Visual breakdown of assets and account holdings"
+        storageKey="finglass_collapse_holdings_charts"
+        chartCount={2}
+        icon={PieChart}
+      >
+        <div className="chart-grid">
+          <ChartCard
+            title="Asset Allocation by Symbol"
+            subtitle="Market value distribution by stock/ETF symbol"
+            height={260}
+            empty={!symbolAllocationData}
+            emptyMessage="No positions recorded to display allocation."
+          >
+            {symbolAllocationData && (
+              <Doughnut data={symbolAllocationData} options={symbolAllocationOptions} />
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Market Value by Account"
+            subtitle="Total value held across investment accounts"
+            height={260}
+            empty={!accountBreakdownData}
+            emptyMessage="No accounts recorded to display breakdown."
+          >
+            {accountBreakdownData && (
+              <Bar data={accountBreakdownData} options={accountBreakdownOptions} />
+            )}
+          </ChartCard>
+        </div>
+      </CollapsibleChartSection>
 
       {/* Filter and Search Bar */}
       <div className="filter-bar">

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { api } from "../api";
 import { formatMoney, formatDate } from "../utils/formatters";
 import { QUICK_DATE_RANGES, computeQuickDateRange } from "../utils/dateFilters";
@@ -10,7 +10,19 @@ import {
   Trash2,
   Plus,
   RotateCcw,
+  BarChart3,
+  PieChart,
 } from "lucide-react";
+import { Bar, Doughnut } from "react-chartjs-2";
+import "../components/charts/chartSetup";
+import {
+  CHART_PALETTE,
+  formatCompactMoney,
+  commonTooltipOptions,
+  commonScaleOptions,
+} from "../components/charts/chartSetup";
+import { CollapsibleChartSection } from "../components/charts/CollapsibleChartSection";
+import { ChartCard } from "../components/charts/ChartCard";
 
 export function CreditCardView() {
   const [loading, setLoading] = useState(true);
@@ -263,6 +275,170 @@ export function CreditCardView() {
   const totalRewards = Number(insights.total_rewards ?? dashboard?.total_rewards ?? 0);
   const totalTxCount = summary.transactions ?? summary.transaction_count ?? dashboard?.transaction_count ?? transactions.length;
 
+  // Chart 1: Monthly expenses
+  const monthlyChartData = useMemo(() => {
+    const list = dashboard?.monthly || [];
+    return {
+      labels: list.map((m) => m.month),
+      datasets: [
+        {
+          label: "Expenses",
+          data: list.map((m) => Number(m.expenses || 0)),
+          backgroundColor: "rgba(248, 113, 113, 0.45)",
+          borderColor: "#f87171",
+          borderWidth: 1.5,
+          borderRadius: 6,
+        },
+      ],
+    };
+  }, [dashboard?.monthly]);
+
+  const monthlyChartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => `Expenses: ${formatMoney(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ...commonScaleOptions,
+          grid: { display: false },
+        },
+        y: {
+          ...commonScaleOptions,
+          ticks: {
+            ...commonScaleOptions.ticks,
+            callback: (val) => formatCompactMoney(val),
+          },
+        },
+      },
+    };
+  }, []);
+
+  // Chart 2: Category breakdown
+  const categoryChartData = useMemo(() => {
+    const rawCategories = dashboard?.categories || [];
+    if (!rawCategories.length) return null;
+
+    const sortedCats = [...rawCategories].sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0));
+    const topCats = sortedCats.slice(0, 7);
+    const otherAmount = sortedCats.slice(7).reduce((sum, c) => sum + Number(c.amount || 0), 0);
+
+    const labels = topCats.map((c) => c.merchant_category || "Uncategorized");
+    const data = topCats.map((c) => Number(c.amount || 0));
+
+    if (otherAmount > 0) {
+      labels.push("Other Categories");
+      data.push(otherAmount);
+    }
+
+    return {
+      labels,
+      datasets: [
+        {
+          data,
+          backgroundColor: CHART_PALETTE.slice(0, labels.length),
+          borderColor: "transparent",
+          borderWidth: 0,
+          spacing: 3,
+        },
+      ],
+    };
+  }, [dashboard?.categories]);
+
+  const categoryChartOptions = useMemo(() => {
+    const total = (dashboard?.categories || []).reduce((sum, c) => sum + Number(c.amount || 0), 0);
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "68%",
+      plugins: {
+        legend: {
+          position: "right",
+          labels: {
+            boxWidth: 10,
+            boxHeight: 10,
+            usePointStyle: true,
+            color: "#9bb2d1",
+            font: { size: 11 },
+            padding: 8,
+          },
+        },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => {
+              const val = Number(ctx.raw || 0);
+              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
+              return `${ctx.label}: ${formatMoney(val)} (${pct}%)`;
+            },
+          },
+        },
+      },
+    };
+  }, [dashboard?.categories]);
+
+  // Chart 3: Top Merchants
+  const merchantChartData = useMemo(() => {
+    const rawMerchants = dashboard?.top_merchants || dashboard?.merchants || [];
+    if (!rawMerchants.length) return null;
+
+    const topMerchants = [...rawMerchants]
+      .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))
+      .slice(0, 7);
+
+    return {
+      labels: topMerchants.map((m) => m.merchant_name || "Unknown"),
+      datasets: [
+        {
+          label: "Spend",
+          data: topMerchants.map((m) => Number(m.amount || 0)),
+          backgroundColor: "rgba(56, 189, 248, 0.45)",
+          borderColor: "#38bdf8",
+          borderWidth: 1.5,
+          borderRadius: 5,
+        },
+      ],
+    };
+  }, [dashboard?.top_merchants, dashboard?.merchants]);
+
+  const merchantChartOptions = useMemo(() => {
+    return {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => `Spend: ${formatMoney(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        y: {
+          ...commonScaleOptions,
+          grid: { display: false },
+        },
+        x: {
+          ...commonScaleOptions,
+          ticks: {
+            ...commonScaleOptions.ticks,
+            callback: (val) => formatCompactMoney(val),
+          },
+        },
+      },
+    };
+  }, []);
+
   return (
     <div>
       <div className="top-bar">
@@ -471,6 +647,53 @@ export function CreditCardView() {
           </div>
         )}
       </section>
+
+      {/* Collapsible Spending Analytics Section */}
+      <CollapsibleChartSection
+        title="Spending Analytics & Trends"
+        subtitle="Monthly outflow velocity, category breakdown, and top merchants"
+        storageKey="finglass_collapse_creditcard_charts"
+        chartCount={3}
+        icon={PieChart}
+      >
+        <div className="chart-grid">
+          <ChartCard
+            title="Monthly Spending Trend"
+            subtitle="Posted expenses per billing month"
+            height={260}
+            empty={!monthlyChartData.labels.length}
+            emptyMessage="No monthly spend data available for the active filters."
+          >
+            {monthlyChartData.labels.length > 0 && (
+              <Bar data={monthlyChartData} options={monthlyChartOptions} />
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Top Spending Categories"
+            subtitle="Outflow distributed by merchant classification"
+            height={260}
+            empty={!categoryChartData}
+            emptyMessage="No categorized transactions available."
+          >
+            {categoryChartData && (
+              <Doughnut data={categoryChartData} options={categoryChartOptions} />
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Top Merchants by Outflow"
+            subtitle="Largest spend destinations"
+            height={260}
+            empty={!merchantChartData}
+            emptyMessage="No merchant spend data available."
+          >
+            {merchantChartData && (
+              <Bar data={merchantChartData} options={merchantChartOptions} />
+            )}
+          </ChartCard>
+        </div>
+      </CollapsibleChartSection>
 
       {/* Transactions Table */}
       <section className="panel" style={{ padding: 0, overflow: "hidden" }}>
