@@ -302,13 +302,13 @@ export function AcbView({ initialSymbol = null }) {
                     <th>Date</th>
                     <th>Type</th>
                     <th className="num">Shares</th>
-                    <th className="num">Price/Share</th>
-                    <th className="num">Commission</th>
-                    <th className="num">Total Amount</th>
-                    <th className="num">Running Shares</th>
-                    <th className="num">Running ACB</th>
-                    <th className="num">Realized Gain</th>
-                    <th style={{ textAlign: "center" }}>Actions</th>
+                    <th className="num">Price</th>
+                    <th className="num">Fee</th>
+                    <th className="num">Amount</th>
+                    <th className="num">Run Shares</th>
+                    <th className="num">Run ACB</th>
+                    <th className="num">Gain/Loss</th>
+                    <th style={{ textAlign: "center", width: "65px" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>

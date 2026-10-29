@@ -611,7 +611,7 @@ nav button.selected svg {
   max-height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: clamp(1.25rem, 3vw, 2.75rem);
+  padding: clamp(1rem, 2vw, 2rem);
   max-width: 1450px;
   width: 100%;
   min-width: 0;
@@ -774,19 +774,29 @@ nav button.selected svg {
 table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   text-align: left;
 }
 
 thead th {
   background: #0d1727;
   color: #8fa7ca;
-  font: 11px var(--font-mono);
-  letter-spacing: 0.08em;
+  font: 10px var(--font-mono);
+  letter-spacing: 0.06em;
   text-transform: uppercase;
-  padding: 0.85rem 1rem;
+  padding: 0.65rem 0.65rem;
   border-bottom: 1px solid var(--border-dim);
   white-space: nowrap;
+}
+
+thead th:first-child,
+tbody td:first-child {
+  padding-left: 0.9rem;
+}
+
+thead th:last-child,
+tbody td:last-child {
+  padding-right: 0.9rem;
 }
 
 tbody tr {
@@ -803,13 +813,14 @@ tbody tr:hover {
 }
 
 tbody td {
-  padding: 0.85rem 1rem;
+  padding: 0.62rem 0.65rem;
   color: #dbe7f7;
   vertical-align: middle;
 }
 
 td.num, th.num {
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 td.text-positive {
