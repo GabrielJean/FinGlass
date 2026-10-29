@@ -45,3 +45,4 @@ export function computeQuickDateRange(rangeId) {
 
   return { startDate, endDate };
 }
+

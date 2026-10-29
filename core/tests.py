@@ -206,6 +206,18 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(commit_res.status_code, 200)
         self.assertEqual(commit_res.json()["committed_rows"], 2)
 
+    def test_market_data_quote_endpoint(self):
+        res = self.client.get("/api/market-data/quote")
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("error", res.json())
+
+        res = self.client.get("/api/market-data/quote?symbol=AAPL")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["symbol"], "AAPL")
+        self.assertGreater(data["price"], 0)
+        self.assertIn("currency", data)
+
 
 class DatabaseBackupTests(TransactionTestCase):
     def test_admin_database_export_and_restore(self):

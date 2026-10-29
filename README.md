@@ -61,11 +61,9 @@ Security env vars:
 - Optional: set `DJANGO_DEBUG=1` for local debugging only.
 
 Market data setup:
-- Holdings symbol search and quote-based market value refresh use Alpha Vantage.
-- API key is read from `config/market_data.json` (`alpha_vantage_api_key`).
-- Optional override: set `ALPHA_VANTAGE_API_KEY` in the environment.
-- Optional custom config path: set `MARKET_DATA_CONFIG_PATH`.
-- Free-tier rate limits can still apply during heavy usage.
+- Real-time quote search and holdings market value refresh use a free, zero-authentication market data service out of the box with automatic resolution for Canadian (.TO) and US tickers.
+- No API key or config file is required.
+- Optional fallback: set `ALPHA_VANTAGE_API_KEY` in the environment if desired.
 
 ## Using the Import Wizard
 
