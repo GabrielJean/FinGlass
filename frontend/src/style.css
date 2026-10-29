@@ -436,6 +436,76 @@ input[type="checkbox"], input[type="radio"] {
   color: #6a88af;
 }
 
+/* Quick Date & Pill Filter styles */
+.quick-date-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.pill-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-dim);
+  color: var(--text-muted);
+  border-radius: 9999px;
+  padding: 0.32rem 0.8rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.pill-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-main);
+  border-color: var(--border-panel);
+}
+
+.pill-btn.active {
+  background: var(--accent);
+  color: #06111e;
+  border-color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+.date-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.date-filter-group input[type="date"] {
+  padding: 0.42rem 0.65rem !important;
+  font-size: 0.82rem !important;
+  min-width: 130px !important;
+  width: auto !important;
+}
+
+.btn-reset-filters {
+  background: transparent;
+  border: 1px solid var(--border-dim);
+  color: var(--text-muted);
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  transition: all 0.15s ease;
+}
+
+.btn-reset-filters:hover {
+  border-color: var(--border-panel);
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.04);
+}
+
 .notice, .warning {
   color: var(--warning-text);
   font-size: 0.85rem;
