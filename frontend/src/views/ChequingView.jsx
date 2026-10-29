@@ -1,17 +1,15 @@
 import React, { useEffect, useState, useRef } from "react";
 import { api } from "../api";
 import { formatMoney, formatDate } from "../utils/formatters";
+import { QUICK_DATE_RANGES, computeQuickDateRange } from "../utils/dateFilters";
 import {
   Upload,
   Search,
   Eye,
   EyeOff,
   Trash2,
-  FolderEdit,
   Plus,
-  ArrowUpRight,
-  ArrowDownRight,
-  Filter,
+  RotateCcw,
 } from "lucide-react";
 
 export function ChequingView() {
@@ -24,11 +22,16 @@ export function ChequingView() {
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
 
-  // Filters
+  // Date & Filter state
+  const [quickDateRange, setQuickDateRange] = useState("all");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
   const [selectedAccount, setSelectedAccount] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
+  const [direction, setDirection] = useState("");
   const [includeHidden, setIncludeHidden] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
 
   // Multi-select
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -40,19 +43,58 @@ export function ChequingView() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
-  const loadData = async () => {
-    setLoading(true);
-    setError("");
+  // Debounce search query
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Load account and category metadata once on mount
+  const loadMetadata = async () => {
     try {
-      const [dashRes, accRes, catRes] = await Promise.all([
-        api.chequing.getDashboard(selectedAccount ? `account=${encodeURIComponent(selectedAccount)}` : ""),
+      const [accRes, catRes] = await Promise.all([
         api.chequing.getAccounts(),
         api.chequing.getCategories(),
       ]);
-      setDashboard(dashRes);
       setAccounts(Array.isArray(accRes) ? accRes : (accRes?.accounts || []));
       setCategories(Array.isArray(catRes) ? catRes : (catRes?.categories || []));
-      await loadTransactions();
+    } catch (err) {
+      console.error("Failed to load metadata:", err);
+    }
+  };
+
+  useEffect(() => {
+    loadMetadata();
+  }, []);
+
+  // Build query string for dashboard & transactions
+  const buildQueryParams = () => {
+    const params = new URLSearchParams();
+    if (startDate) params.set("start_date", startDate);
+    if (endDate) params.set("end_date", endDate);
+    if (selectedAccount) params.set("account_label", selectedAccount);
+    if (selectedCategory) params.set("category", selectedCategory);
+    if (direction) params.set("direction", direction);
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+    if (includeHidden) params.set("include_hidden", "1");
+    return params.toString();
+  };
+
+  // Main data fetching effect synchronized on all filter changes
+  const fetchData = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const q = buildQueryParams();
+      const [dashRes, txRes] = await Promise.all([
+        api.chequing.getDashboard(q),
+        api.chequing.getTransactions(q),
+      ]);
+      setDashboard(dashRes);
+      setTransactions(Array.isArray(txRes) ? txRes : (txRes?.transactions || txRes?.rows || []));
+      setSelectedIds(new Set());
     } catch (err) {
       setError(err.message || "Failed to load chequing data.");
     } finally {
@@ -60,29 +102,38 @@ export function ChequingView() {
     }
   };
 
-  const loadTransactions = async () => {
-    try {
-      const params = new URLSearchParams();
-      if (selectedAccount) params.set("account", selectedAccount);
-      if (selectedCategory) params.set("category", selectedCategory);
-      if (includeHidden) params.set("include_hidden", "1");
-      if (searchQuery.trim()) params.set("search", searchQuery.trim());
+  useEffect(() => {
+    fetchData();
+  }, [startDate, endDate, selectedAccount, selectedCategory, direction, includeHidden, debouncedSearch]);
 
-      const res = await api.chequing.getTransactions(params.toString());
-      setTransactions(Array.isArray(res) ? res : (res?.transactions || res?.rows || []));
-      setSelectedIds(new Set());
-    } catch (err) {
-      setError(err.message || "Failed to load transactions.");
-    }
+  const handleQuickDateSelect = (rangeId) => {
+    setQuickDateRange(rangeId);
+    const { startDate: s, endDate: e } = computeQuickDateRange(rangeId);
+    setStartDate(s);
+    setEndDate(e);
   };
 
-  useEffect(() => {
-    loadData();
-  }, [selectedAccount]);
+  const handleCustomStartDateChange = (e) => {
+    setStartDate(e.target.value);
+    setQuickDateRange("");
+  };
 
-  useEffect(() => {
-    loadTransactions();
-  }, [selectedCategory, includeHidden, searchQuery]);
+  const handleCustomEndDateChange = (e) => {
+    setEndDate(e.target.value);
+    setQuickDateRange("");
+  };
+
+  const handleResetFilters = () => {
+    setQuickDateRange("all");
+    setStartDate("");
+    setEndDate("");
+    setSelectedAccount("");
+    setSelectedCategory("");
+    setDirection("");
+    setSearchQuery("");
+    setDebouncedSearch("");
+    setIncludeHidden(false);
+  };
 
   const handleSelectAll = (e) => {
     if (e.target.checked) {
@@ -106,6 +157,7 @@ export function ChequingView() {
       setTransactions((prev) =>
         (Array.isArray(prev) ? prev : []).map((t) => (t.id === id ? { ...t, is_hidden: !currentHidden } : t))
       );
+      fetchData();
     } catch (err) {
       setError(err.message || "Failed to update visibility.");
     }
@@ -116,7 +168,7 @@ export function ChequingView() {
     try {
       await api.chequing.hideMany(Array.from(selectedIds), hideState);
       setNotice(`${hideState ? "Hidden" : "Unhidden"} ${selectedIds.size} transactions.`);
-      loadTransactions();
+      fetchData();
     } catch (err) {
       setError(err.message || "Bulk hide failed.");
     }
@@ -128,7 +180,8 @@ export function ChequingView() {
       await api.chequing.recategorize(Array.from(selectedIds), bulkCategory);
       setNotice(`Recategorized ${selectedIds.size} transactions to "${bulkCategory}".`);
       setBulkCategory("");
-      loadData();
+      fetchData();
+      loadMetadata();
     } catch (err) {
       setError(err.message || "Bulk recategorize failed.");
     }
@@ -140,7 +193,8 @@ export function ChequingView() {
     try {
       await api.chequing.deleteMany(Array.from(selectedIds));
       setNotice(`Deleted ${selectedIds.size} transactions.`);
-      loadData();
+      fetchData();
+      loadMetadata();
     } catch (err) {
       setError(err.message || "Bulk delete failed.");
     }
@@ -150,8 +204,10 @@ export function ChequingView() {
     if (!window.confirm("Delete this transaction?")) return;
     try {
       await api.chequing.deleteTransaction(id);
-      setTransactions(transactions.filter((t) => t.id !== id));
+      setTransactions((prev) => (Array.isArray(prev) ? prev : []).filter((t) => t.id !== id));
       setNotice("Transaction deleted.");
+      fetchData();
+      loadMetadata();
     } catch (err) {
       setError(err.message || "Failed to delete transaction.");
     }
@@ -165,7 +221,8 @@ export function ChequingView() {
       setNotice(`Created account "${newAccountLabel}".`);
       setNewAccountLabel("");
       setIsAddAccountOpen(false);
-      loadData();
+      loadMetadata();
+      fetchData();
     } catch (err) {
       setError(err.message || "Failed to create account.");
     }
@@ -183,7 +240,8 @@ export function ChequingView() {
     try {
       const res = await api.chequing.importCsv(formData);
       setNotice(`Successfully imported ${res.imported_count || res.count || "transactions"}.`);
-      loadData();
+      loadMetadata();
+      fetchData();
     } catch (err) {
       setError(err.message || "CSV Import failed.");
     } finally {
@@ -193,6 +251,10 @@ export function ChequingView() {
   };
 
   const summary = dashboard?.summary || {};
+  const moneyIn = Number(summary.total_in ?? summary.money_in ?? 0);
+  const moneyOut = Number(summary.total_out ?? summary.money_out ?? 0);
+  const netFlow = Number(summary.net_flow ?? (moneyIn - moneyOut));
+  const txCount = summary.transactions ?? summary.transaction_count ?? transactions.length;
 
   return (
     <div>
@@ -243,7 +305,7 @@ export function ChequingView() {
         <div className="kpi-card">
           <span className="kpi-label">Money In</span>
           <span className="kpi-val text-positive">
-            {formatMoney(summary.money_in || 0)}
+            {formatMoney(moneyIn)}
           </span>
           <span className="kpi-sub">Total credits/income</span>
         </div>
@@ -251,68 +313,123 @@ export function ChequingView() {
         <div className="kpi-card">
           <span className="kpi-label">Money Out</span>
           <span className="kpi-val text-negative">
-            {formatMoney(summary.money_out || 0)}
+            {formatMoney(moneyOut)}
           </span>
           <span className="kpi-sub">Total debits/spending</span>
         </div>
 
         <div className="kpi-card">
           <span className="kpi-label">Net Flow</span>
-          <span className={`kpi-val ${(summary.net_flow || 0) >= 0 ? "text-positive" : "text-negative"}`}>
-            {formatMoney(summary.net_flow || 0)}
+          <span className={`kpi-val ${netFlow >= 0 ? "text-positive" : "text-negative"}`}>
+            {formatMoney(netFlow)}
           </span>
           <span className="kpi-sub">Period cash movement</span>
         </div>
 
         <div className="kpi-card">
           <span className="kpi-label">Transactions</span>
-          <span className="kpi-val">{summary.transaction_count || transactions.length}</span>
-          <span className="kpi-sub">Across all categories</span>
+          <span className="kpi-val">{txCount}</span>
+          <span className="kpi-sub">In selected filter</span>
         </div>
       </section>
 
       {/* Filter and Bulk Bar */}
-      <section className="panel" style={{ padding: "1rem 1.25rem", marginBottom: "1.25rem" }}>
-        <div className="filter-bar" style={{ marginBottom: 0 }}>
-          <div className="filter-group">
-            <select
-              value={selectedAccount}
-              onChange={(e) => setSelectedAccount(e.target.value)}
-            >
-              <option value="">All Chequing Accounts</option>
-              {(Array.isArray(accounts) ? accounts : []).map((a, idx) => (
-                <option key={a.id || a.label || idx} value={a.label}>{a.label}</option>
+      <section className="panel" style={{ padding: "1.1rem 1.25rem", marginBottom: "1.25rem" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "0.85rem" }}>
+          {/* Quick Date Presets & Reset Button */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
+            <div className="quick-date-row">
+              <span style={{ fontSize: "0.82rem", color: "var(--text-muted)", marginRight: "0.25rem", fontWeight: 600 }}>Period:</span>
+              {QUICK_DATE_RANGES.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  className={`pill-btn ${quickDateRange === r.id ? "active" : ""}`}
+                  onClick={() => handleQuickDateSelect(r.id)}
+                >
+                  {r.label}
+                </button>
               ))}
-            </select>
+            </div>
 
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
+            <button
+              type="button"
+              className="btn-reset-filters"
+              onClick={handleResetFilters}
+              title="Reset all filters"
             >
-              <option value="">All Categories</option>
-              {(Array.isArray(categories) ? categories : []).map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-
-            <label className="checkbox-label">
-              <input
-                type="checkbox"
-                checked={includeHidden}
-                onChange={(e) => setIncludeHidden(e.target.checked)}
-              />
-              Show Hidden
-            </label>
+              <RotateCcw size={13} /> Reset Filters
+            </button>
           </div>
 
-          <div className="search-input-wrap">
-            <Search size={15} />
-            <input
-              type="text"
-              placeholder="Search description..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          {/* Date Pickers, Selects, Search, and Show Hidden */}
+          <div className="filter-bar" style={{ marginBottom: 0, gap: "0.65rem" }}>
+            <div className="filter-group">
+              <div className="date-filter-group">
+                <span>From</span>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={handleCustomStartDateChange}
+                  aria-label="From date"
+                />
+                <span>To</span>
+                <input
+                  type="date"
+                  value={endDate}
+                  onChange={handleCustomEndDateChange}
+                  aria-label="To date"
+                />
+              </div>
+
+              <select
+                value={selectedAccount}
+                onChange={(e) => setSelectedAccount(e.target.value)}
+              >
+                <option value="">All Chequing Accounts</option>
+                {(Array.isArray(accounts) ? accounts : []).map((a, idx) => (
+                  <option key={a.id || a.label || idx} value={a.label}>{a.label}</option>
+                ))}
+              </select>
+
+              <select
+                value={selectedCategory}
+                onChange={(e) => setSelectedCategory(e.target.value)}
+              >
+                <option value="">All Categories</option>
+                {(Array.isArray(categories) ? categories : []).map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+
+              <select
+                value={direction}
+                onChange={(e) => setDirection(e.target.value)}
+              >
+                <option value="">All Directions</option>
+                <option value="inflow">Inflow (Money In)</option>
+                <option value="outflow">Outflow (Money Out)</option>
+              </select>
+
+              <label className="checkbox-label" style={{ margin: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={includeHidden}
+                  onChange={(e) => setIncludeHidden(e.target.checked)}
+                />
+                Show Hidden
+              </label>
+            </div>
+
+            <div className="search-input-wrap">
+              <Search size={15} />
+              <input
+                type="text"
+                placeholder="Search description..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
           </div>
         </div>
 
@@ -366,7 +483,7 @@ export function ChequingView() {
         ) : transactions.length === 0 ? (
           <div className="empty">
             <h3>No chequing transactions</h3>
-            <p>Upload your WealthSimple CSV statement to populate this view.</p>
+            <p>No transactions match the selected filters or statement has not been uploaded yet.</p>
           </div>
         ) : (
           <div className="table-wrap" style={{ border: "none" }}>
@@ -473,4 +590,3 @@ export function ChequingView() {
     </div>
   );
 }
-

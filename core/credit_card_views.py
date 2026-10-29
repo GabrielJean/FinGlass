@@ -66,10 +66,10 @@ def credit_card_transactions_collection(request):
 @require_GET
 def credit_card_dashboard(request):
     provider = str(request.GET.get("provider") or "").strip()
-    card_label = str(request.GET.get("card_label") or "").strip()
+    card_label = str(request.GET.get("card_label") or request.GET.get("card") or "").strip()
     start_date = str(request.GET.get("start_date") or "").strip()
     end_date = str(request.GET.get("end_date") or "").strip()
-    merchant = str(request.GET.get("merchant") or "").strip()
+    merchant = str(request.GET.get("merchant") or request.GET.get("search") or "").strip()
     include_hidden = parse_bool_query(request.GET.get("include_hidden"))
     selected_categories = {
         normalize_credit_card_category(category)
@@ -105,7 +105,9 @@ def credit_card_dashboard(request):
     total_expenses = round(sum(float(row.get("amount") or 0) for row in expense_rows), 2)
     summary = {
         "total_expenses": total_expenses,
+        "total_spending": total_expenses,
         "transactions": len(expense_rows),
+        "transaction_count": len(expense_rows),
     }
 
     monthly_totals = defaultdict(float)
@@ -220,6 +222,9 @@ def credit_card_dashboard(request):
             "latest_transaction_date": latest_transaction_date,
             "summary": summary,
             "insights": insights,
+            "total_spending": total_expenses,
+            "total_rewards": total_rewards,
+            "transaction_count": len(expense_rows),
             "monthly": monthly,
             "categories": categories,
             "top_merchants": merchants,
@@ -251,14 +256,14 @@ def credit_card_categories(request):
 @require_GET
 def credit_card_transactions(request):
     provider = str(request.GET.get("provider") or "").strip()
-    card_label = str(request.GET.get("card_label") or "").strip()
+    card_label = str(request.GET.get("card_label") or request.GET.get("card") or "").strip()
     start_date = str(request.GET.get("start_date") or "").strip()
     end_date = str(request.GET.get("end_date") or "").strip()
     selected_categories = {
         normalize_credit_card_category(category)
         for category in parse_credit_card_category_filters(request.GET)
     }
-    merchant = str(request.GET.get("merchant") or "").strip()
+    merchant = str(request.GET.get("merchant") or request.GET.get("search") or "").strip()
     include_payments = parse_bool_query(request.GET.get("include_payments"))
     include_hidden = parse_bool_query(request.GET.get("include_hidden"))
     limit_raw = str(request.GET.get("limit") or "").strip().lower()

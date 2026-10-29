@@ -152,7 +152,7 @@ def chequing_dashboard(request):
     end_date = str(request.GET.get("end_date") or "").strip()
     category = str(request.GET.get("category") or "").strip()
     search = str(request.GET.get("search") or "").strip()
-    account_label = str(request.GET.get("account_label") or "").strip()
+    account_label = str(request.GET.get("account_label") or request.GET.get("account") or "").strip()
     include_hidden = parse_bool_query(request.GET.get("include_hidden"))
 
     latest_transaction_date = (
@@ -198,6 +198,8 @@ def chequing_dashboard(request):
     summary = {
         "total_in": total_in,
         "total_out": total_out,
+        "money_in": total_in,
+        "money_out": total_out,
         "net_flow": net_flow,
         "transactions": len(rows),
         "inflow_transactions": len(external_inflow_rows),
@@ -453,7 +455,7 @@ def chequing_transactions(request):
     end_date = str(request.GET.get("end_date") or "").strip()
     category = str(request.GET.get("category") or "").strip()
     search = str(request.GET.get("search") or "").strip()
-    account_label = str(request.GET.get("account_label") or "").strip()
+    account_label = str(request.GET.get("account_label") or request.GET.get("account") or "").strip()
     direction = str(request.GET.get("direction") or "").strip().lower()
     include_zero = parse_bool_query(request.GET.get("include_zero"))
     include_hidden = parse_bool_query(request.GET.get("include_hidden"))
@@ -596,7 +598,7 @@ def recategorize_chequing_transactions(request):
 
 @require_http_methods(["DELETE"])
 def delete_all_chequing_transactions(request):
-    account_label = str(request.GET.get("account_label") or "").strip()
+    account_label = str(request.GET.get("account_label") or request.GET.get("account") or "").strip()
     queryset = ChequingTransaction.objects.filter(user=request.user)
     if account_label:
         queryset = queryset.filter(account_label=account_label)
