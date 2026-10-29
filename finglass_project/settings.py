@@ -66,9 +66,9 @@ def _skip_sqlite_path_validation():
     if os.getenv("SKIP_SQLITE_PATH_VALIDATION", "0") in {"1", "true", "True"}:
         return True
 
-    # collectstatic is build-time safe without a writable runtime DB path.
+    # collectstatic and test are build/test-time safe without a runtime DB path.
     command = (sys.argv[1] if len(sys.argv) > 1 else "").strip().lower()
-    return command == "collectstatic"
+    return command in {"collectstatic", "test"}
 
 
 def _validate_sqlite_database_path():
@@ -81,6 +81,11 @@ def _validate_sqlite_database_path():
 
     db_path = Path(db_config.get("NAME", "")).expanduser()
     parent_dir = db_path.parent
+
+    try:
+        parent_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        pass
 
     if db_path.exists():
         if not os.access(db_path, os.R_OK | os.W_OK):
