@@ -260,3 +260,15 @@ class FhsaContribution(models.Model):
 
     class Meta:
         indexes = [models.Index(fields=["contribution_date", "id"], name="idx_fhsa_contributions_date")]
+
+
+class RetirementPlan(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="retirement_plans")
+    name = models.CharField(max_length=128, default="My Quebec Retirement Plan")
+    plan_data = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["user", "id"], name="idx_retirement_plan_user")]
+

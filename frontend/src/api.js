@@ -337,4 +337,34 @@ export const api = {
     importBackup: (formData) =>
       request("/api/import/backup", { method: "POST", body: formData }),
   },
+
+  retirement: {
+    getPlan: () => request("/api/retirement/plan"),
+    savePlan: (data) => request("/api/retirement/plan", { method: "PUT", body: data }),
+    simulate: (data) => request("/api/retirement/simulate", { method: "POST", body: data }),
+    getConfig: () => request("/api/retirement/config"),
+    exportCsv: async (planData) => {
+      const response = await fetch("/api/retirement/export-csv", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRFToken": getCsrfToken(),
+        },
+        credentials: "same-origin",
+        body: JSON.stringify(planData),
+      });
+      if (!response.ok) {
+        throw new Error("Failed to export retirement audit CSV");
+      }
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = "quebec_retirement_audit_2026.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    },
+  },
 };

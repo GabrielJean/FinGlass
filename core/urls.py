@@ -59,6 +59,12 @@ from .import_views import (
     import_chequing_courant_csv,
 )
 from .net_worth_views import net_worth_collection, net_worth_item
+from .retirement_views import (
+    retirement_plan_endpoint,
+    retirement_simulate_endpoint,
+    retirement_export_csv_endpoint,
+    retirement_config_endpoint,
+)
 from .rrsp_views import (
     rrsp_account_item,
     rrsp_accounts,
@@ -121,6 +127,7 @@ from .views import (
     index_page,
     login_page,
     net_worth_page,
+    retirement_page,
     rrsp_page,
     security_page,
     tfsa_page,
@@ -138,6 +145,7 @@ urlpatterns = [
     path("rrsp", rrsp_page, name="rrsp"),
     path("fhsa", fhsa_page, name="fhsa"),
     path("import", import_page, name="import"),
+    path("retirement", retirement_page, name="retirement"),
     path("holdings", holdings_page, name="holdings"),
     path("app-admin", admin_users_page, name="app-admin-users"),
     path("__django__/health/", health_view, name="django-health"),
@@ -177,6 +185,10 @@ urlpatterns = [
     path("api/import/full-backup", import_full_backup, name="import-full-backup"),
     path("api/net-worth", net_worth_collection, name="net-worth-collection"),
     path("api/net-worth/<int:entry_id>", net_worth_item, name="net-worth-item"),
+    path("api/retirement/plan", retirement_plan_endpoint, name="retirement-plan"),
+    path("api/retirement/simulate", retirement_simulate_endpoint, name="retirement-simulate"),
+    path("api/retirement/export-csv", retirement_export_csv_endpoint, name="retirement-export-csv"),
+    path("api/retirement/config", retirement_config_endpoint, name="retirement-config"),
     path("api/settings/features", settings_features, name="settings-features"),
     path("api/credit-card/dashboard", credit_card_dashboard, name="credit-card-dashboard"),
     path("api/credit-card/cards", credit_card_cards, name="credit-card-cards"),
