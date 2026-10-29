@@ -412,3 +412,4 @@ def solve_annual_cash_flow(
         "non_reg_interest": non_reg_interest,
         "non_reg_dividends": non_reg_dividends,
     }
+

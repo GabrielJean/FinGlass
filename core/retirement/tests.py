@@ -227,3 +227,4 @@ class RetirementEngineTests(TestCase):
         csv_str = export_audit_csv_string(res["audit_table"])
         self.assertTrue(len(csv_str) > 0)
         self.assertIn("year,age_primary", csv_str)
+

@@ -155,3 +155,4 @@ def execute_spousal_rollover_first_death(
         state.lif_balance = 0.0
         state.tfsa_balance = 0.0
         state.tfsa_room = 0.0
+

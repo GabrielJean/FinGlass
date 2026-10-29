@@ -260,3 +260,4 @@ class SimulationResult:
     scorecard: ExecutiveScorecard
     yearly_rows: List[YearlyAuditRow]
     comparison: Optional[StrategyComparison] = None
+

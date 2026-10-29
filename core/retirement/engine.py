@@ -476,3 +476,4 @@ def export_audit_csv_string(audit_table: List[dict]) -> str:
         writer.writerow(row)
 
     return output.getvalue()
+

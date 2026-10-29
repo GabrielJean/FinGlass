@@ -347,65 +347,68 @@ export function RetirementView() {
 
   return (
     <div>
-      {/* Header */}
-      <header>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }}>
-          <div>
-            <p className="eyebrow">QUEBEC STATUTORY RETIREMENT ENGINE · 2026</p>
-            <h1>Retirement & Estate Optimizer</h1>
-            <p>Comprehensive QPP, OAS, CRA/RQ Dual Tax, RRSP Meltdown, and Estate Simulation.</p>
-          </div>
-
-          <div style={{ display: "flex", gap: "0.5rem" }}>
-            <button
-              type="button"
-              className="secondary"
-              onClick={() => runSimulation(plan)}
-              disabled={simulating}
-            >
-              <RefreshCw size={15} className={simulating ? "spin" : ""} /> Recalculate
-            </button>
-            <button type="button" className="secondary" onClick={handleExportCsv}>
-              <Download size={15} /> Export CSV
-            </button>
-            <button type="button" className="primary" onClick={handleSavePlan}>
-              Save Plan
-            </button>
-          </div>
+      {/* Top Bar */}
+      <div className="top-bar">
+        <div>
+          <p className="eyebrow">QUEBEC STATUTORY RETIREMENT ENGINE · 2026</p>
+          <h1>Retirement & Estate Optimizer</h1>
+          <p>Comprehensive QPP, OAS, CRA/RQ Dual Tax, RRSP Meltdown, and Estate Simulation.</p>
         </div>
 
-        {/* View Switcher Tabs */}
-        <div className="tab-group" style={{ marginTop: "1.25rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
           <button
             type="button"
-            className={activeTab === "dashboard" ? "active" : ""}
-            onClick={() => setActiveTab("dashboard")}
+            className="secondary"
+            onClick={() => runSimulation(plan)}
+            disabled={simulating}
           >
-            <Activity size={16} /> Scorecard & Inflows
+            <RefreshCw size={14} className={simulating ? "spin" : ""} />
+            {simulating ? "Calculating..." : "Recalculate"}
           </button>
-          <button
-            type="button"
-            className={activeTab === "monte_carlo" ? "active" : ""}
-            onClick={() => setActiveTab("monte_carlo")}
-          >
-            <TrendingUp size={16} /> Monte Carlo & Sequence Stress
+          <button type="button" className="secondary" onClick={handleExportCsv}>
+            <Download size={14} /> Export CSV
           </button>
-          <button
-            type="button"
-            className={activeTab === "audit" ? "active" : ""}
-            onClick={() => setActiveTab("audit")}
-          >
-            <FileSpreadsheet size={16} /> Year-by-Year Audit
-          </button>
-          <button
-            type="button"
-            className={activeTab === "inputs" ? "active" : ""}
-            onClick={() => setActiveTab("inputs")}
-          >
-            <Sliders size={16} /> Household & Assumptions
+          <button type="button" onClick={handleSavePlan}>
+            Save Plan
           </button>
         </div>
-      </header>
+      </div>
+
+      {/* Tabs */}
+      <div className="tabs" style={{ marginTop: "1.25rem", marginBottom: "1.5rem" }}>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === "dashboard" ? "active" : ""}`}
+          onClick={() => setActiveTab("dashboard")}
+        >
+          <Activity size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
+          Scorecard & Inflows
+        </button>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === "monte_carlo" ? "active" : ""}`}
+          onClick={() => setActiveTab("monte_carlo")}
+        >
+          <TrendingUp size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
+          Monte Carlo & Sequence Stress
+        </button>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === "audit" ? "active" : ""}`}
+          onClick={() => setActiveTab("audit")}
+        >
+          <FileSpreadsheet size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
+          Year-by-Year Audit
+        </button>
+        <button
+          type="button"
+          className={`tab-btn ${activeTab === "inputs" ? "active" : ""}`}
+          onClick={() => setActiveTab("inputs")}
+        >
+          <Sliders size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
+          Household & Assumptions
+        </button>
+      </div>
 
       {error && <div className="error-banner" style={{ marginBottom: "1rem" }}>{error}</div>}
       {notice && (
@@ -1077,9 +1080,25 @@ export function RetirementView() {
                 </select>
               </label>
             </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.75rem", marginTop: "1.5rem" }}>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => runSimulation(plan)}
+                disabled={simulating}
+              >
+                <RefreshCw size={14} className={simulating ? "spin" : ""} />
+                {simulating ? "Calculating..." : "Recalculate Plan"}
+              </button>
+              <button type="button" onClick={handleSavePlan}>
+                Save Plan Changes
+              </button>
+            </div>
           </div>
         </section>
       )}
     </div>
   );
 }
+

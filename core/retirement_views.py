@@ -247,3 +247,4 @@ def retirement_config_endpoint(request):
         return JsonResponse(constants)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
+
