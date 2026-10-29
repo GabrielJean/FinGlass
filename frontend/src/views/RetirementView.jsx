@@ -420,60 +420,52 @@ export function RetirementView() {
 
       {/* MODULE 7.1: EXECUTIVE SCORECARD HEADER */}
       {scorecard && (
-        <section className="grid" style={{ marginBottom: "1.5rem" }}>
-          <div className="card">
-            <span className="fine">Plan Solvency Status</span>
+        <section className="kpi-grid">
+          <div className="kpi-card">
+            <span className="kpi-label">Plan Solvency Status</span>
             {scorecard.plan_success ? (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#34d399", marginTop: "0.25rem" }}>
-                <CheckCircle2 size={24} />
-                <strong style={{ fontSize: "1.3rem" }}>Funded to Age {plan.household.primary.life_expectancy_age}</strong>
-              </div>
+              <span className="kpi-val text-positive" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <CheckCircle2 size={20} /> Funded to {plan.household.primary.life_expectancy_age}
+              </span>
             ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "#f87171", marginTop: "0.25rem" }}>
-                <AlertTriangle size={24} />
-                <strong style={{ fontSize: "1.3rem" }}>Shortfall at Age {scorecard.shortfall_age}</strong>
-              </div>
+              <span className="kpi-val text-negative" style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <AlertTriangle size={20} /> Shortfall at Age {scorecard.shortfall_age}
+              </span>
             )}
-            <p className="fine" style={{ marginTop: "0.35rem" }}>
+            <span className="kpi-sub">
               {scorecard.plan_success
                 ? "Portfolio safely sustains target real spending."
                 : "Deficit occurs before life expectancy; adjustments recommended."}
-            </p>
+            </span>
           </div>
 
-          <div className="card">
-            <span className="fine">Avg Monthly After-Tax Income</span>
-            <div style={{ fontSize: "1.6rem", fontWeight: "700", color: "#38bdf8", marginTop: "0.25rem" }}>
-              {formatMoney(scorecard.average_monthly_after_tax_income)}
-            </div>
-            <p className="fine" style={{ marginTop: "0.35rem" }}>
-              Annual: {formatMoney(scorecard.average_monthly_after_tax_income * 12)} / yr
-            </p>
+          <div className="kpi-card">
+            <span className="kpi-label">Avg Monthly After-Tax Income</span>
+            <span className="kpi-val">{formatMoney(scorecard.average_monthly_after_tax_income)}</span>
+            <span className="kpi-sub">
+              Annual: <strong className="num">{formatMoney(scorecard.average_monthly_after_tax_income * 12)}</strong>
+            </span>
           </div>
 
-          <div className="card">
-            <span className="fine">Lifetime Taxes & Clawbacks</span>
-            <div style={{ fontSize: "1.6rem", fontWeight: "700", color: "#fbbf24", marginTop: "0.25rem" }}>
-              {formatMoney(scorecard.total_lifetime_taxes_paid)}
-            </div>
-            <p className="fine" style={{ marginTop: "0.35rem" }}>
+          <div className="kpi-card">
+            <span className="kpi-label">Lifetime Taxes & Clawbacks</span>
+            <span className="kpi-val" style={{ color: "#fbbf24" }}>{formatMoney(scorecard.total_lifetime_taxes_paid)}</span>
+            <span className="kpi-sub">
               Fed: {formatMoney(scorecard.total_federal_tax_paid)} · QC: {formatMoney(scorecard.total_quebec_tax_paid)}
-            </p>
+            </span>
           </div>
 
-          <div className="card">
-            <span className="fine">Net After-Tax Estate (Age {plan.household.primary.life_expectancy_age})</span>
-            <div style={{ fontSize: "1.6rem", fontWeight: "700", color: "#a78bfa", marginTop: "0.25rem" }}>
-              {formatMoney(scorecard.net_after_tax_estate)}
-            </div>
+          <div className="kpi-card">
+            <span className="kpi-label">Net After-Tax Estate (Age {plan.household.primary.life_expectancy_age})</span>
+            <span className="kpi-val" style={{ color: "#a78bfa" }}>{formatMoney(scorecard.net_after_tax_estate)}</span>
             {scorecard.estate_liquidity_warning ? (
-              <span className="badge negative" style={{ marginTop: "0.35rem", display: "inline-block" }}>
+              <span className="badge negative" style={{ alignSelf: "flex-start", marginTop: "0.2rem" }}>
                 Warning: Liquid Estate Shortfall
               </span>
             ) : (
-              <p className="fine" style={{ marginTop: "0.35rem" }}>
+              <span className="kpi-sub">
                 Terminal Tax Bill: {formatMoney(scorecard.terminal_tax_bill)}
-              </p>
+              </span>
             )}
           </div>
         </section>
@@ -488,37 +480,33 @@ export function RetirementView() {
           <p className="fine" style={{ marginBottom: "1rem" }}>
             Direct financial delta comparing standard ad-hoc withdrawals against systematic RRSP Meltdown targeting lower combined brackets and OAS clawback shielding:
           </p>
-          <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "1rem" }}>
-            <div style={{ padding: "1rem", borderRadius: "8px", background: "rgba(10, 20, 36, 0.7)", border: "1px solid var(--border-panel)" }}>
-              <span className="fine">Lifetime Tax Savings</span>
-              <div style={{ fontSize: "1.45rem", fontWeight: "700", color: comparison.taxes_saved >= 0 ? "#34d399" : "#f87171", marginTop: "0.25rem" }}>
+          <div className="kpi-grid">
+            <div className="kpi-card">
+              <span className="kpi-label">Lifetime Tax Savings</span>
+              <span className={`kpi-val ${comparison.taxes_saved >= 0 ? "text-positive" : "text-negative"}`}>
                 {comparison.taxes_saved >= 0 ? `+${formatMoney(comparison.taxes_saved)}` : formatMoney(comparison.taxes_saved)}
-              </div>
-              <p className="fine" style={{ marginTop: "0.25rem" }}>Saved across retirement lifecycle</p>
+              </span>
+              <span className="kpi-sub">Saved across retirement lifecycle</span>
             </div>
 
-            <div style={{ padding: "1rem", borderRadius: "8px", background: "rgba(10, 20, 36, 0.7)", border: "1px solid var(--border-panel)" }}>
-              <span className="fine">Net Estate Preservation Delta</span>
-              <div style={{ fontSize: "1.45rem", fontWeight: "700", color: comparison.final_estate_delta >= 0 ? "#34d399" : "#f87171", marginTop: "0.25rem" }}>
+            <div className="kpi-card">
+              <span className="kpi-label">Net Estate Preservation Delta</span>
+              <span className={`kpi-val ${comparison.final_estate_delta >= 0 ? "text-positive" : "text-negative"}`}>
                 {comparison.final_estate_delta >= 0 ? `+${formatMoney(comparison.final_estate_delta)}` : formatMoney(comparison.final_estate_delta)}
-              </div>
-              <p className="fine" style={{ marginTop: "0.25rem" }}>Additional wealth transferred to heirs</p>
+              </span>
+              <span className="kpi-sub">Additional wealth transferred to heirs</span>
             </div>
 
-            <div style={{ padding: "1rem", borderRadius: "8px", background: "rgba(10, 20, 36, 0.7)", border: "1px solid var(--border-panel)" }}>
-              <span className="fine">Baseline Taxes</span>
-              <div style={{ fontSize: "1.2rem", fontWeight: "600", color: "#9cb2ce", marginTop: "0.25rem" }}>
-                {formatMoney(comparison.baseline_lifetime_taxes)}
-              </div>
-              <p className="fine" style={{ marginTop: "0.25rem" }}>Without meltdown strategy</p>
+            <div className="kpi-card">
+              <span className="kpi-label">Baseline Taxes</span>
+              <span className="kpi-val" style={{ color: "#9cb2ce" }}>{formatMoney(comparison.baseline_lifetime_taxes)}</span>
+              <span className="kpi-sub">Without meltdown strategy</span>
             </div>
 
-            <div style={{ padding: "1rem", borderRadius: "8px", background: "rgba(10, 20, 36, 0.7)", border: "1px solid var(--border-panel)" }}>
-              <span className="fine">Optimized Taxes</span>
-              <div style={{ fontSize: "1.2rem", fontWeight: "600", color: "#38bdf8", marginTop: "0.25rem" }}>
-                {formatMoney(comparison.optimized_lifetime_taxes)}
-              </div>
-              <p className="fine" style={{ marginTop: "0.25rem" }}>With systematic meltdown</p>
+            <div className="kpi-card">
+              <span className="kpi-label">Optimized Taxes</span>
+              <span className="kpi-val" style={{ color: "#38bdf8" }}>{formatMoney(comparison.optimized_lifetime_taxes)}</span>
+              <span className="kpi-sub">With systematic meltdown</span>
             </div>
           </div>
         </section>
@@ -579,35 +567,47 @@ export function RetirementView() {
       {/* TAB 2: MONTE CARLO & SEQUENCE OF RETURNS (MODULE 10) */}
       {activeTab === "monte_carlo" && monteCarlo && (
         <section className="stack">
-          <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1rem", marginBottom: "1rem" }}>
-            <div className="card">
-              <span className="fine">Monte Carlo Success Probability</span>
-              <div style={{ fontSize: "2rem", fontWeight: "800", color: monteCarlo.probability_of_success >= 85 ? "#34d399" : "#fbbf24", marginTop: "0.25rem" }}>
+          <div className="kpi-grid" style={{ marginBottom: "1rem" }}>
+            <div className="kpi-card">
+              <span className="kpi-label">Monte Carlo Success Probability</span>
+              <span
+                className="kpi-val"
+                style={{
+                  fontSize: "2rem",
+                  color: monteCarlo.probability_of_success >= 85 ? "#34d399" : "#fbbf24",
+                }}
+              >
                 {monteCarlo.probability_of_success}%
-              </div>
-              <p className="fine" style={{ marginTop: "0.35rem" }}>
+              </span>
+              <span className="kpi-sub">
                 {monteCarlo.successful_trials} of {monteCarlo.total_trials} random trials solvent at age {plan.household.primary.life_expectancy_age}.
-              </p>
+              </span>
             </div>
 
-            <div className="card">
-              <span className="fine">Historical 2008 Crash Replay</span>
-              <div style={{ fontSize: "1.4rem", fontWeight: "700", color: monteCarlo.crash_replay_success ? "#34d399" : "#f87171", marginTop: "0.25rem" }}>
+            <div className="kpi-card">
+              <span className="kpi-label">Historical 2008 Crash Replay</span>
+              <span
+                className="kpi-val"
+                style={{
+                  fontSize: "1.3rem",
+                  color: monteCarlo.crash_replay_success ? "#34d399" : "#f87171",
+                }}
+              >
                 {monteCarlo.crash_replay_success ? "Survived -22% / -8% / +12%" : "Shortfall in Crash"}
-              </div>
-              <p className="fine" style={{ marginTop: "0.35rem" }}>
-                Ending liquid balance: {formatMoney(monteCarlo.crash_replay_ending_balance)}
-              </p>
+              </span>
+              <span className="kpi-sub">
+                Ending liquid balance: <strong className="num">{formatMoney(monteCarlo.crash_replay_ending_balance)}</strong>
+              </span>
             </div>
 
-            <div className="card">
-              <span className="fine">2-Year Cash Wedge Resilience</span>
-              <div style={{ fontSize: "1.4rem", fontWeight: "700", color: "#38bdf8", marginTop: "0.25rem" }}>
+            <div className="kpi-card">
+              <span className="kpi-label">2-Year Cash Wedge Resilience</span>
+              <span className="kpi-val" style={{ color: "#38bdf8", fontSize: "1.3rem" }}>
                 {formatMoney(monteCarlo.cash_wedge_ending_balance)}
-              </div>
-              <p className="fine" style={{ marginTop: "0.35rem" }}>
+              </span>
+              <span className="kpi-sub">
                 Shields equity sales during down market years.
-              </p>
+              </span>
             </div>
           </div>
 
