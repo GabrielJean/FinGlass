@@ -751,7 +751,6 @@ nav button.selected svg {
   overflow-y: auto;
   overflow-x: hidden;
   padding: clamp(1rem, 2vw, 2rem);
-  max-width: 1450px;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
