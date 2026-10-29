@@ -56,6 +56,7 @@ html, body {
   margin: 0;
   padding: 0;
   width: 100%;
+  height: 100%;
   max-width: 100%;
   overflow-x: hidden;
 }
@@ -472,30 +473,38 @@ input[type="checkbox"], input[type="radio"] {
 .app-shell {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
-  min-height: 100vh;
+  height: 100vh;
+  max-height: 100vh;
   width: 100%;
   max-width: 100%;
   box-sizing: border-box;
-  overflow-x: clip;
+  overflow: hidden;
 }
 
 aside {
   border-right: 1px solid var(--border-dim);
-  padding: 1.75rem 1.1rem;
+  padding: 1.25rem 0.95rem;
   display: flex;
   flex-direction: column;
-  background: rgba(10, 19, 34, 0.85);
+  background: rgba(10, 19, 34, 0.92);
   backdrop-filter: blur(12px);
-  position: sticky;
-  top: 0;
   height: 100vh;
+  max-height: 100vh;
   overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
+
+aside::-webkit-scrollbar {
+  display: none;
 }
 
 .wordmark {
   font-weight: 800;
   letter-spacing: 0.06em;
-  font-size: 1.4rem;
+  font-size: 1.35rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -515,9 +524,9 @@ aside {
 }
 
 nav {
-  margin-top: 2rem;
+  margin-top: 1.15rem;
   display: grid;
-  gap: 0.3rem;
+  gap: 0.15rem;
 }
 
 nav .nav-category {
@@ -525,7 +534,7 @@ nav .nav-category {
   color: #5c7499;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  padding: 0.8rem 0.8rem 0.2rem;
+  padding: 0.55rem 0.65rem 0.15rem;
 }
 
 nav button {
@@ -533,12 +542,12 @@ nav button {
   color: #9cb1cb;
   text-align: left;
   border-radius: 7px;
-  padding: 0.65rem 0.85rem;
+  padding: 0.5rem 0.75rem;
   font-weight: 600;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 0.65rem;
   justify-content: flex-start;
   transition: all 0.12s ease;
   border: 1px solid transparent;
@@ -574,36 +583,39 @@ nav button.selected svg {
 
 .account {
   margin-top: auto;
-  padding-top: 1.5rem;
+  padding-top: 1rem;
   border-top: 1px solid var(--border-dim);
   display: grid;
-  gap: 0.35rem;
+  gap: 0.25rem;
   color: #dce7f7;
 }
 
 .account strong {
-  font-size: 0.92rem;
+  font-size: 0.9rem;
 }
 
 .account small {
   color: #7691b9;
-  font-size: 0.78rem;
+  font-size: 0.76rem;
 }
 
 .account .account-actions {
   display: flex;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  margin-top: 0.4rem;
 }
 
 /* Content Area */
 .content {
+  height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: clamp(1.25rem, 3vw, 2.75rem);
   max-width: 1450px;
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
-  overflow-x: hidden;
 }
 
 .content header {
@@ -951,22 +963,31 @@ td.text-negative {
 
 /* Responsive adjustments */
 @media (max-width: 900px) {
+  html, body {
+    overflow-y: auto;
+  }
+
   .app-shell {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    max-height: none;
+    overflow: visible;
   }
 
   aside {
     position: relative;
     height: auto;
+    max-height: none;
     border-right: none;
     border-bottom: 1px solid var(--border-dim);
     padding: 1rem;
+    overflow-y: visible;
   }
 
   nav {
     display: flex;
     overflow-x: auto;
-    margin-top: 1rem;
+    margin-top: 0.75rem;
     gap: 0.25rem;
   }
 
@@ -994,6 +1015,9 @@ td.text-negative {
   }
 
   .content {
+    height: auto;
+    max-height: none;
+    overflow: visible;
     padding: 1.5rem 1rem;
   }
 }
