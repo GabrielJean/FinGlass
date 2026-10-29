@@ -340,18 +340,18 @@ export function HoldingsView({ onNavigate }) {
           </div>
         ) : (
           <div className="table-wrap" style={{ border: "none" }}>
-            <table style={{ minWidth: 840 }}>
+            <table>
               <thead>
                 <tr>
                   <th>Symbol</th>
-                  <th>Security Name</th>
+                  <th>Security</th>
                   <th>Account</th>
                   <th className="num">Shares</th>
                   <th className="num">Price</th>
                   <th className="num">Book Value</th>
                   <th className="num">Market Value</th>
-                  <th className="num">Unrealized Return</th>
-                  <th style={{ textAlign: "center" }}>Actions</th>
+                  <th className="num">Return</th>
+                  <th style={{ textAlign: "center", width: "70px" }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -374,14 +374,14 @@ export function HoldingsView({ onNavigate }) {
                           {h.symbol}
                         </button>
                       </td>
-                      <td style={{ maxWidth: 220, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      <td style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={h.security_name || ""}>
                         {h.security_name || "-"}
                       </td>
                       <td>
                         <span
                           className="status info"
                           style={{
-                            maxWidth: 190,
+                            maxWidth: 130,
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
@@ -403,7 +403,7 @@ export function HoldingsView({ onNavigate }) {
                           {formatPercent(retPct)}
                         </div>
                       </td>
-                      <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                      <td style={{ textAlign: "center", whiteSpace: "nowrap", width: "70px" }}>
                         <button
                           type="button"
                           className="link"
