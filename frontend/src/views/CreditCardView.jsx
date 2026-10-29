@@ -24,15 +24,25 @@ import {
 import { CollapsibleChartSection } from "../components/charts/CollapsibleChartSection";
 import { ChartCard } from "../components/charts/ChartCard";
 
+// In-memory module cache for instant view transitions
+let ccCache = {
+  dashboard: null,
+  transactions: null,
+  cards: null,
+  categories: null,
+};
+
 export function CreditCardView() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!ccCache.dashboard);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const [dashboard, setDashboard] = useState(null);
-  const [cards, setCards] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [transactions, setTransactions] = useState([]);
+  const [dashboard, setDashboard] = useState(ccCache.dashboard);
+  const [cards, setCards] = useState(ccCache.cards || []);
+  const [categories, setCategories] = useState(ccCache.categories || []);
+  const [transactions, setTransactions] = useState(ccCache.transactions || []);
+  const [txLimit, setTxLimit] = useState(100);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Date & Filter state
   const [quickDateRange, setQuickDateRange] = useState("all");
@@ -69,8 +79,12 @@ export function CreditCardView() {
         api.creditCard.getCards(),
         api.creditCard.getCategories(),
       ]);
-      setCards(Array.isArray(cardsRes) ? cardsRes : (cardsRes?.cards || []));
-      setCategories(Array.isArray(catRes) ? catRes : (catRes?.categories || []));
+      const cardList = Array.isArray(cardsRes) ? cardsRes : (cardsRes?.cards || []);
+      const catList = Array.isArray(catRes) ? catRes : (catRes?.categories || []);
+      setCards(cardList);
+      setCategories(catList);
+      ccCache.cards = cardList;
+      ccCache.categories = catList;
     } catch (err) {
       console.error("Failed to load credit card metadata:", err);
     }
@@ -81,7 +95,7 @@ export function CreditCardView() {
   }, []);
 
   // Build query string for dashboard & transactions
-  const buildQueryParams = () => {
+  const buildQueryParams = (limit = txLimit) => {
     const params = new URLSearchParams();
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
@@ -92,12 +106,13 @@ export function CreditCardView() {
       params.set("merchant", debouncedSearch.trim());
     }
     if (includeHidden) params.set("include_hidden", "1");
+    if (limit) params.set("limit", String(limit));
     return params.toString();
   };
 
   // Main data fetching effect synchronized on all filter changes
   const fetchData = async () => {
-    setLoading(true);
+    if (!dashboard) setLoading(true);
     setError("");
     try {
       const q = buildQueryParams();
@@ -106,8 +121,11 @@ export function CreditCardView() {
         api.creditCard.getTransactions(q),
       ]);
       setDashboard(dashRes);
-      setTransactions(Array.isArray(txRes) ? txRes : (txRes?.transactions || txRes?.rows || []));
+      const txList = Array.isArray(txRes) ? txRes : (txRes?.transactions || txRes?.rows || []);
+      setTransactions(txList);
       setSelectedIds(new Set());
+      ccCache.dashboard = dashRes;
+      ccCache.transactions = txList;
     } catch (err) {
       setError(err.message || "Failed to load credit card data.");
     } finally {
@@ -118,6 +136,23 @@ export function CreditCardView() {
   useEffect(() => {
     fetchData();
   }, [startDate, endDate, selectedCard, selectedCategory, includeHidden, debouncedSearch]);
+
+  const handleLoadMore = async () => {
+    setLoadingMore(true);
+    const nextLimit = txLimit + 100;
+    setTxLimit(nextLimit);
+    try {
+      const q = buildQueryParams(nextLimit);
+      const txRes = await api.creditCard.getTransactions(q);
+      const txList = Array.isArray(txRes) ? txRes : (txRes?.transactions || txRes?.rows || []);
+      setTransactions(txList);
+      ccCache.transactions = txList;
+    } catch (err) {
+      setError("Failed to load more transactions: " + err.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleQuickDateSelect = (rangeId) => {
     setQuickDateRange(rangeId);
@@ -434,10 +469,6 @@ export function CreditCardView() {
       },
     };
   }, []);
-
-  if (loading && !dashboard) {
-    return <div className="loading">Loading credit card data...</div>;
-  }
 
   return (
     <div>
@@ -773,6 +804,20 @@ export function CreditCardView() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {transactions.length > 0 && transactions.length < totalTxCount && (
+          <div style={{ padding: "0.85rem 1.25rem", textAlign: "center", borderTop: "1px solid var(--border-dim)" }}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={loadingMore}
+              onClick={handleLoadMore}
+              style={{ padding: "0.5rem 1.25rem", fontSize: "0.84rem" }}
+            >
+              {loadingMore ? "Loading more..." : `Load More Transactions (${transactions.length} of ${totalTxCount})`}
+            </button>
           </div>
         )}
       </section>

@@ -92,17 +92,75 @@ def credit_card_dashboard(request):
     if not include_hidden:
         queryset = queryset.filter(is_hidden=False)
 
-    rows = []
-    for row in queryset:
-        mapped = _tx_dict(row)
-        mapped["merchant_category"] = normalize_credit_card_category(mapped.get("merchant_category", ""))
-        if selected_categories and mapped["merchant_category"] not in selected_categories:
+    raw_rows = queryset.values(
+        "id", "provider", "card_label", "transaction_date", "posted_date",
+        "card_last4", "merchant_category", "merchant_name", "merchant_city",
+        "merchant_region", "merchant_country", "amount", "rewards",
+        "is_hidden", "status", "activity_type", "reference_number"
+    )
+
+    expense_rows = []
+    total_expenses = 0.0
+    total_rewards = 0.0
+    largest_transaction = 0.0
+    monthly_totals = defaultdict(float)
+    category_totals = defaultdict(lambda: {"amount": 0.0, "transaction_count": 0})
+    merchant_totals = defaultdict(lambda: {"amount": 0.0, "transaction_count": 0})
+    unique_spend_days = set()
+    latest_transaction_date = None
+
+    for row in raw_rows:
+        cat = normalize_credit_card_category(row["merchant_category"])
+        if selected_categories and cat not in selected_categories:
             continue
-        rows.append(mapped)
+        amt = float(row["amount"] or 0)
+        if amt <= 0:
+            continue
 
-    expense_rows = [row for row in rows if float(row.get("amount") or 0) > 0]
+        tx_date = row["transaction_date"]
+        tx_date_str = tx_date.isoformat() if tx_date else ""
+        if tx_date_str:
+            unique_spend_days.add(tx_date_str)
+            if latest_transaction_date is None or tx_date_str > latest_transaction_date:
+                latest_transaction_date = tx_date_str
+            month = tx_date_str[:7]
+            monthly_totals[month] += amt
 
-    total_expenses = round(sum(float(row.get("amount") or 0) for row in expense_rows), 2)
+        total_expenses += amt
+        rew = float(row["rewards"] or 0)
+        total_rewards += rew
+        if amt > largest_transaction:
+            largest_transaction = amt
+
+        category_totals[cat]["amount"] += amt
+        category_totals[cat]["transaction_count"] += 1
+
+        merchant_name = str(row["merchant_name"] or "").strip() or "Unknown Merchant"
+        merchant_totals[merchant_name]["amount"] += amt
+        merchant_totals[merchant_name]["transaction_count"] += 1
+
+        mapped = {
+            "id": row["id"],
+            "provider": row["provider"],
+            "card_label": row["card_label"] or row["provider"] or "",
+            "transaction_date": tx_date_str,
+            "posted_date": row["posted_date"].isoformat() if row["posted_date"] else None,
+            "card_last4": row["card_last4"],
+            "merchant_category": cat,
+            "merchant_name": row["merchant_name"],
+            "merchant_city": row["merchant_city"],
+            "merchant_region": row["merchant_region"],
+            "merchant_country": row["merchant_country"],
+            "amount": amt,
+            "rewards": rew,
+            "is_hidden": bool(row["is_hidden"]),
+            "status": row["status"],
+            "activity_type": row["activity_type"],
+            "reference_number": row["reference_number"],
+        }
+        expense_rows.append(mapped)
+
+    total_expenses = round(total_expenses, 2)
     summary = {
         "total_expenses": total_expenses,
         "total_spending": total_expenses,
@@ -110,19 +168,7 @@ def credit_card_dashboard(request):
         "transaction_count": len(expense_rows),
     }
 
-    monthly_totals = defaultdict(float)
-    for row in expense_rows:
-        month = str(row.get("transaction_date") or "")[:7]
-        if month:
-            monthly_totals[month] += float(row.get("amount") or 0)
-
     monthly = [{"month": month, "expenses": round(monthly_totals[month], 2)} for month in sorted(monthly_totals.keys())]
-
-    category_totals = defaultdict(lambda: {"amount": 0.0, "transaction_count": 0})
-    for row in expense_rows:
-        normalized_category = row["merchant_category"]
-        category_totals[normalized_category]["amount"] += float(row.get("amount") or 0)
-        category_totals[normalized_category]["transaction_count"] += 1
 
     categories = []
     for category_name, totals in category_totals.items():
@@ -137,12 +183,6 @@ def credit_card_dashboard(request):
             }
         )
     categories.sort(key=lambda row: row["amount"], reverse=True)
-
-    merchant_totals = defaultdict(lambda: {"amount": 0.0, "transaction_count": 0})
-    for row in expense_rows:
-        merchant_name = str(row.get("merchant_name") or "").strip() or "Unknown Merchant"
-        merchant_totals[merchant_name]["amount"] += float(row.get("amount") or 0)
-        merchant_totals[merchant_name]["transaction_count"] += 1
 
     merchants = []
     for merchant_name, totals in merchant_totals.items():
@@ -161,15 +201,10 @@ def credit_card_dashboard(request):
     months_count = len(monthly)
     avg_monthly_expenses = round(total_expenses / months_count, 2) if months_count else 0.0
     avg_transaction = round(total_expenses / len(expense_rows), 2) if expense_rows else 0.0
-    largest_transaction = round(max((float(row.get("amount") or 0) for row in expense_rows), default=0.0), 2)
-    total_rewards = round(sum(float(row.get("rewards") or 0) for row in expense_rows), 2)
+    largest_transaction = round(largest_transaction, 2)
+    total_rewards = round(total_rewards, 2)
     rewards_rate_pct = round((total_rewards / total_expenses) * 100, 2) if total_expenses > 0 else 0.0
 
-    unique_spend_days = {
-        str(row.get("transaction_date") or "")
-        for row in expense_rows
-        if str(row.get("transaction_date") or "")
-    }
     avg_daily_spend = round(total_expenses / len(unique_spend_days), 2) if unique_spend_days else 0.0
 
     top_category = categories[0] if categories else None
@@ -211,10 +246,6 @@ def credit_card_dashboard(request):
         key=lambda row: (row.get("transaction_date") or "", int(row.get("id") or 0)),
         reverse=True,
     )[:80]
-
-    latest_transaction_date = None
-    if expense_rows:
-        latest_transaction_date = max(str(row.get("transaction_date") or "") for row in expense_rows)
 
     return JsonResponse(
         {
@@ -298,13 +329,42 @@ def credit_card_transactions(request):
     if not include_hidden:
         queryset = queryset.filter(is_hidden=False)
 
-    rows = queryset.order_by("-transaction_date", "-id")
+    if not selected_categories and limit is not None:
+        queryset = queryset.order_by("-transaction_date", "-id")[:limit]
+    else:
+        queryset = queryset.order_by("-transaction_date", "-id")
+
+    raw_rows = queryset.values(
+        "id", "provider", "card_label", "transaction_date", "posted_date",
+        "card_last4", "merchant_category", "merchant_name", "merchant_city",
+        "merchant_region", "merchant_country", "amount", "rewards",
+        "is_hidden", "status", "activity_type", "reference_number"
+    )
+
     normalized_rows = []
-    for row in rows:
-        mapped = _tx_dict(row)
-        mapped["merchant_category"] = normalize_credit_card_category(mapped.get("merchant_category", ""))
-        if selected_categories and mapped["merchant_category"] not in selected_categories:
+    for row in raw_rows:
+        cat = normalize_credit_card_category(row["merchant_category"])
+        if selected_categories and cat not in selected_categories:
             continue
+        mapped = {
+            "id": row["id"],
+            "provider": row["provider"],
+            "card_label": row["card_label"] or row["provider"] or "",
+            "transaction_date": row["transaction_date"].isoformat() if row["transaction_date"] else "",
+            "posted_date": row["posted_date"].isoformat() if row["posted_date"] else None,
+            "card_last4": row["card_last4"],
+            "merchant_category": cat,
+            "merchant_name": row["merchant_name"],
+            "merchant_city": row["merchant_city"],
+            "merchant_region": row["merchant_region"],
+            "merchant_country": row["merchant_country"],
+            "amount": float(row["amount"] or 0),
+            "rewards": float(row["rewards"] or 0),
+            "is_hidden": bool(row["is_hidden"]),
+            "status": row["status"],
+            "activity_type": row["activity_type"],
+            "reference_number": row["reference_number"],
+        }
         normalized_rows.append(mapped)
         if limit is not None and len(normalized_rows) >= limit:
             break
