@@ -1,7 +1,7 @@
 date,account,type,amount,memo,destination_account,year,is_unused
 ,,OpeningBalance,55000.00,CRA available room as starting point,,2024,
 2025-01-01,,AnnualLimit,31560.00,CRA RRSP deduction limit,,2025,
-2025-02-10,TD RRSP,Deposit,2500.00,Payroll contribution,,,1
-2025-03-05,RBC RRSP,Deposit,1500.00,One-time contribution,,,0
-2025-04-01,TD RRSP,Transfer,1000.00,Move cash to RBC,RBC RRSP,,
-2025-07-01,RBC RRSP,Withdrawal,500.00,Cash out,,,
+2025-02-10,Wealthsimple RRSP,Deposit,2500.00,Payroll contribution,,,1
+2025-03-05,Wealthsimple RRSP,Deposit,1500.00,One-time contribution,,,0
+2025-04-01,Wealthsimple RRSP,Transfer,1000.00,Move cash between accounts,Wealthsimple Save,,
+2025-07-01,Wealthsimple RRSP,Withdrawal,500.00,Cash out,,,

@@ -32,7 +32,9 @@ export function ImportWizardView() {
     setNotice("");
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("import_type", importType);
     formData.append("source_type", importType);
+    formData.append("broker", "wealthsimple");
 
     try {
       const res = await api.imports.createReview(formData);
@@ -102,7 +104,7 @@ export function ImportWizardView() {
           <p className="eyebrow">DATA PORTABILITY & ONBOARDING</p>
           <h1>Import Wizard & Backup</h1>
           <p>
-            Staged brokerage statements review, direct CSV imports, and complete system backup snapshots.
+            Staged Wealthsimple statements review, direct CSV imports, and complete system backup snapshots.
           </p>
         </div>
 
@@ -138,11 +140,15 @@ export function ImportWizardView() {
           {!stagedBatch ? (
             <section className="panel">
               <div className="panel-header">
-                <h3>Brokerage Activity & Tax Statement Staging</h3>
+                <h3>Wealthsimple Activity & Tax Statement Staging</h3>
+                <span className="status info">Wealthsimple Exclusive Support</span>
               </div>
-              <p className="fine" style={{ marginBottom: "1.5rem" }}>
-                Upload your Questrade or WealthSimple CSV or official CRA Tax slip PDF. Transactions will be parsed into an interactive staging table where you can inspect, edit, and verify rows before committing them to your permanent ledger.
+              <p className="fine" style={{ marginBottom: "0.75rem" }}>
+                Upload your Wealthsimple Activities CSV or official Wealthsimple Tax slip PDF. Transactions will be parsed into an interactive staging table where you can inspect, edit, and verify rows before committing them to your permanent ledger.
               </p>
+              <div className="signal" style={{ marginBottom: "1.5rem", padding: "0.45rem 0.8rem", fontSize: "0.8rem", width: "fit-content" }}>
+                <span></span> Note: FinGlass exclusively supports Wealthsimple for statement imports. Historical data from previously imported brokers is preserved.
+              </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", maxWidth: "600px", marginBottom: "1.5rem" }}>
                 <label>
@@ -151,8 +157,8 @@ export function ImportWizardView() {
                     value={importType}
                     onChange={(e) => setImportType(e.target.value)}
                   >
-                    <option value="activities_csv">Questrade / WealthSimple Activities CSV</option>
-                    <option value="tax_pdf">Brokerage Tax Slip PDF</option>
+                    <option value="activities_csv">Wealthsimple Activities CSV</option>
+                    <option value="tax_pdf">Wealthsimple / CRA Tax Slip PDF</option>
                   </select>
                 </label>
               </div>

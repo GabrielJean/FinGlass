@@ -202,7 +202,7 @@ export function CreditCardView() {
         <div>
           <p className="eyebrow">LIABILITIES & SPENDING</p>
           <h1>Credit Card Tracker</h1>
-          <p>Rogers Bank & Scotiabank statement imports, merchant categories, and cash back rewards.</p>
+          <p>Credit & spend card tracking, merchant categories, and cash back rewards.</p>
         </div>
 
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
