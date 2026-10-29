@@ -162,6 +162,7 @@ urlpatterns = [
     path("api/import/review/<int:batch_id>", get_import_review, name="import-review-get"),
     path("api/import/review/<int:batch_id>/rows/<int:row_id>", import_review_row_item, name="import-review-row-item"),
     path("api/import/review/<int:batch_id>/commit", commit_import_review, name="import-review-commit"),
+    path("api/import/review/commit", commit_import_review, name="import-review-commit-body"),
     path("api/import/commit/<int:batch_id>", commit_batch_endpoint, name="import-commit-alias"),
     path("api/import/template/<str:template_type>", download_template, name="import-template"),
     path("api/export/transactions", export_transactions, name="export-transactions"),

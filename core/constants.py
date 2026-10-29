@@ -23,6 +23,11 @@ SUPPORTED_TRANSACTION_TYPES = {
     "Split",
 }
 
+SUPPORTED_IMPORT_BROKER = "Wealthsimple"
+SUPPORTED_IMPORT_BROKERS = {
+    "wealthsimple": "Wealthsimple",
+}
+
 CHEQUING_DEFAULT_PROVIDER = "WealthSimple"
 CHEQUING_SUPPORTED_PROVIDERS = {
     "wealthsimple": "WealthSimple",

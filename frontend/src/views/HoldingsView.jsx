@@ -336,7 +336,7 @@ export function HoldingsView({ onNavigate }) {
         ) : filteredHoldings.length === 0 ? (
           <div className="empty">
             <h3>No positions found</h3>
-            <p>Add a new position manually or import your activity statements.</p>
+            <p>Add a new position manually or import your Wealthsimple statements.</p>
           </div>
         ) : (
           <div className="table-wrap" style={{ border: "none" }}>
@@ -454,7 +454,7 @@ export function HoldingsView({ onNavigate }) {
                   <input
                     type="text"
                     required
-                    placeholder="e.g. Questrade TFSA"
+                    placeholder="e.g. Wealthsimple TFSA"
                     value={form.account_name}
                     onChange={(e) => setForm({ ...form, account_name: e.target.value })}
                   />

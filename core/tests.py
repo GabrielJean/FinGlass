@@ -189,6 +189,23 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(last_row["share_balance"], 50)
         self.assertAlmostEqual(last_row["capital_gain"], 245.0)
 
+    def test_wealthsimple_import_review(self):
+        ws_csv = (
+            "date,activity_type,activity_sub_type,symbol,quantity,net_cash_amount,commission\n"
+            "2026-03-15,Trade,BUY,XEQT.TO,100,3000.00,0.00\n"
+            "2026-06-20,Trade,SELL,XEQT.TO,50,1650.00,0.00\n"
+        ).encode("utf-8")
+        uploaded = SimpleUploadedFile("wealthsimple_activities.csv", ws_csv, content_type="text/csv")
+        res = self.client.post("/api/import/review", {"file": uploaded, "import_type": "activities_csv"})
+        self.assertEqual(res.status_code, 201)
+        batch = res.json()
+        self.assertEqual(len(batch.get("rows", [])), 2)
+        batch_id = batch["batch_id"]
+
+        commit_res = self.client.post("/api/import/review/commit", {"batch_id": batch_id}, content_type="application/json")
+        self.assertEqual(commit_res.status_code, 200)
+        self.assertEqual(commit_res.json()["committed_rows"], 2)
+
 
 class DatabaseBackupTests(TransactionTestCase):
     def test_admin_database_export_and_restore(self):

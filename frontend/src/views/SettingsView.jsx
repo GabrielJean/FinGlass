@@ -90,12 +90,12 @@ export function SettingsView({ user, onFeaturesChanged }) {
     { key: "holdings_overview", label: "Holdings & Market Quotes", desc: "Live-priced stock, ETF, and cash accounts." },
     { key: "acb_tracker", label: "ACB & Capital Gains Tracker", desc: "Canadian adjusted cost base calculation for non-registered accounts." },
     { key: "chequing_tracker", label: "Chequing Cash Flow Tracker", desc: "WealthSimple monthly cash flow, categories, and savings." },
-    { key: "credit_card", label: "Credit Card Spending Tracker", desc: "Rogers & Scotiabank statement imports, merchant analysis, cash back." },
+    { key: "credit_card", label: "Credit Card Spending Tracker", desc: "Credit & spend card tracking, merchant analysis, cash back." },
     { key: "tfsa_tracker", label: "TFSA Contribution Room Tracker", desc: "CRA Tax-Free Savings Account limits and withdrawal carry-forwards." },
     { key: "rrsp_tracker", label: "RRSP Deduction Limit Tracker", desc: "Registered Retirement Savings Plan deduction room & unused deductions." },
     { key: "fhsa_tracker", label: "FHSA Home Savings Tracker", desc: "First Home Savings Account $40,000 lifetime room and withdrawals." },
     { key: "net_worth", label: "Historical Net Worth Tracker", desc: "Periodic net worth snapshot progression timeline." },
-    { key: "imports", label: "Import Wizard & Data Portability", desc: "Staged statement review, CSV templates, full database exports." },
+    { key: "imports", label: "Import Wizard & Data Portability", desc: "Staged Wealthsimple statement review, CSV templates, full database exports." },
   ];
 
   return (

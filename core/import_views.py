@@ -37,12 +37,24 @@ def _parse_number(value, default=0.0):
     return -parsed if is_negative else parsed
 
 
+def _normalize_csv_header(header):
+    return re.sub(r"[^a-z0-9]", "", str(header or "").lower())
+
+
+def _csv_get_value(normalized_row, *candidate_headers):
+    for header in candidate_headers:
+        value = normalized_row.get(_normalize_csv_header(header), "")
+        if value is not None and str(value).strip() != "":
+            return str(value).strip()
+    return ""
+
+
 def _normalize_date(raw):
     raw = (raw or "").strip()
     if not raw:
         raise ValueError("Missing date")
 
-    for fmt in ("%Y-%m-%d", "%Y-%b-%d"):
+    for fmt in ("%Y-%m-%d", "%Y-%b-%d", "%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y"):
         try:
             return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
         except ValueError:
@@ -56,7 +68,7 @@ def _normalize_trade_date(value):
     if not raw:
         raise ValueError("Missing trade date")
 
-    for fmt in ("%Y-%b-%d", "%Y-%m-%d"):
+    for fmt in ("%Y-%b-%d", "%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y"):
         try:
             return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
         except ValueError:
@@ -70,8 +82,12 @@ def parse_activities_csv_text(csv_text):
     rows = []
 
     for source_row_number, item in enumerate(reader, start=2):
-        activity_type = (item.get("activity_type") or "").strip()
-        symbol = (item.get("symbol") or "").strip().upper()
+        normalized_item = {
+            _normalize_csv_header(k): v for k, v in (item or {}).items() if k is not None
+        }
+
+        activity_type = _csv_get_value(normalized_item, "activity_type", "activity", "type", "transaction_type")
+        symbol = _csv_get_value(normalized_item, "symbol", "ticker", "security").upper()
         if not activity_type:
             continue
 
@@ -79,26 +95,36 @@ def parse_activities_csv_text(csv_text):
         amount = 0.0
         shares = 0.0
 
-        if activity_type == "Trade":
-            sub_type = (item.get("activity_sub_type") or "").strip().upper()
-            quantity = _parse_number(item.get("quantity"), 0.0)
-            net_cash = _parse_number(item.get("net_cash_amount"), 0.0)
-            commission = _parse_number(item.get("commission"), 0.0)
+        activity_upper = activity_type.upper()
+        sub_type = _csv_get_value(normalized_item, "activity_sub_type", "sub_type", "action", "description").upper()
 
-            if sub_type == "BUY":
+        if activity_upper in {"TRADE", "BUY", "SELL"}:
+            quantity = _parse_number(_csv_get_value(normalized_item, "quantity", "shares", "units"), 0.0)
+            net_cash = _parse_number(_csv_get_value(normalized_item, "net_cash_amount", "amount", "net_amount", "total"), 0.0)
+            commission = _parse_number(_csv_get_value(normalized_item, "commission", "fee", "fees"), 0.0)
+
+            if sub_type == "BUY" or activity_upper == "BUY":
                 mapped_type = "Buy"
                 shares = abs(quantity)
                 amount = abs(net_cash)
-            elif sub_type == "SELL":
+            elif sub_type == "SELL" or activity_upper == "SELL":
                 mapped_type = "Sell"
                 shares = abs(quantity)
                 amount = abs(net_cash)
             else:
                 continue
-        elif activity_type == "ReturnOfCapital":
+        elif activity_upper in {"RETURNOFCAPITAL", "ROC", "RETURN OF CAPITAL"}:
             mapped_type = "Return of Capital"
-            amount = abs(_parse_number(item.get("net_cash_amount"), 0.0))
+            amount = abs(_parse_number(_csv_get_value(normalized_item, "net_cash_amount", "amount", "net_amount", "total"), 0.0))
             shares = 0.0
+            commission = 0.0
+        elif "DIVIDEND" in activity_upper or "DISTRIBUTION" in activity_upper:
+            if "REINVEST" in activity_upper or "DRIP" in sub_type:
+                mapped_type = "Reinvested Dividend"
+            else:
+                mapped_type = "Capital Gains Dividend"
+            amount = abs(_parse_number(_csv_get_value(normalized_item, "net_cash_amount", "amount", "net_amount", "total"), 0.0))
+            shares = abs(_parse_number(_csv_get_value(normalized_item, "quantity", "shares", "units"), 0.0))
             commission = 0.0
         else:
             continue
@@ -106,9 +132,10 @@ def parse_activities_csv_text(csv_text):
         if not symbol:
             continue
 
-        trade_date = _normalize_date(item.get("transaction_date", ""))
+        raw_date = _csv_get_value(normalized_item, "transaction_date", "date", "trade_date")
+        trade_date = _normalize_date(raw_date)
         amount_per_share = amount / shares if shares else 0.0
-        commission = _parse_number(item.get("commission"), 0.0)
+        commission = _parse_number(_csv_get_value(normalized_item, "commission", "fee", "fees"), 0.0)
 
         rows.append(
             {
@@ -119,7 +146,7 @@ def parse_activities_csv_text(csv_text):
                 "shares": shares,
                 "amount_per_share": amount_per_share,
                 "commission": commission,
-                "source": "activities_csv",
+                "source": "wealthsimple_activities_csv",
                 "source_row_number": source_row_number,
             }
         )
@@ -735,6 +762,7 @@ def _import_transactions_rows(parsed_rows, user_id):
         "parsed": len(parsed_rows),
         "inserted": inserted,
         "imported": inserted,
+        "committed_rows": inserted,
         "skipped": skipped_existing,
         "skipped_existing": skipped_existing,
         "duplicate_groups": duplicate_groups,
@@ -1116,7 +1144,7 @@ def create_import_review(request):
     if "file" not in request.FILES:
         return JsonResponse({"error": "Missing file upload field: file"}, status=400)
 
-    import_type = str(request.POST.get("import_type") or "").strip()
+    import_type = str(request.POST.get("import_type") or request.POST.get("source_type") or "").strip()
     if import_type not in SUPPORTED_IMPORT_TYPES:
         return JsonResponse({"error": "Unsupported import_type"}, status=400)
 
@@ -1149,6 +1177,7 @@ def create_import_review(request):
 
     batch_id = _create_import_batch(import_type, uploaded_file.name, rows, user_id)
     batch_data = _get_batch(batch_id, user_id)
+    batch_data["batch_id"] = batch_id
     batch_data["duplicate_groups"] = duplicate_groups
     batch_data["duplicate_rows"] = duplicate_rows
     batch_data["warnings"] = warnings
@@ -1199,8 +1228,17 @@ def delete_import_review_row(request, batch_id, row_id):
 
 
 @require_http_methods(["POST"])
-def commit_import_review(request, batch_id):
+def commit_import_review(request, batch_id=None):
     user_id = request.user.id
+    if batch_id is None:
+        try:
+            payload = _read_json(request)
+            batch_id = int(payload.get("batch_id") or 0)
+        except Exception:
+            batch_id = None
+    if not batch_id:
+        return JsonResponse({"error": "batch_id is required"}, status=400)
+
     summary = _commit_batch(batch_id, user_id)
     if summary is None:
         return JsonResponse({"error": "Import batch not found"}, status=404)
