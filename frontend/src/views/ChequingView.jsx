@@ -250,6 +250,10 @@ export function ChequingView() {
     }
   };
 
+  if (loading && !dashboard) {
+    return <div className="loading">Loading chequing data...</div>;
+  }
+
   const summary = dashboard?.summary || {};
   const moneyIn = Number(summary.total_in ?? summary.money_in ?? 0);
   const moneyOut = Number(summary.total_out ?? summary.money_out ?? 0);

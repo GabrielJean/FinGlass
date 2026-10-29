@@ -191,7 +191,33 @@ export function TfsaView() {
     }
   };
 
-  const isRoomConfigured = openingBalance?.configured || summary?.configured;
+  const isRoomConfigured = Boolean(
+    openingBalance?.configured ||
+    summary?.configured ||
+    summary?.opening_balance_configured
+  );
+
+  if (loading && !summary) {
+    return <div className="loading">Loading TFSA details...</div>;
+  }
+
+  const availableRoom = Number(summary?.total_available_room || 0);
+  const remainingRoom = Number(summary?.total_remaining ?? summary?.current_year_room ?? 0);
+  const usedRoom = Number(summary?.room_used ?? summary?.total_used ?? 0);
+  const totalDeposits = Number(summary?.total_deposits ?? summary?.current_year_contributions ?? 0);
+  const totalWithdrawals = Number(summary?.total_withdrawals ?? summary?.current_year_withdrawals ?? 0);
+  const roomStatus = summary?.room_status || (remainingRoom <= 0 && availableRoom > 0 ? "full" : "normal");
+
+  const usedPct = availableRoom > 0 ? Math.min(100, Math.max(0, (usedRoom / availableRoom) * 100)) : 0;
+  const remainingPct = availableRoom > 0 ? Math.min(100, Math.max(0, (remainingRoom / availableRoom) * 100)) : 0;
+
+  const barColor = roomStatus === "over-limit"
+    ? "#ef4444"
+    : roomStatus === "near-limit"
+    ? "#f59e0b"
+    : roomStatus === "full"
+    ? "#10b981"
+    : "var(--accent)";
 
   return (
     <div>
@@ -276,27 +302,67 @@ export function TfsaView() {
       {/* KPI Cards */}
       <section className="kpi-grid">
         <div className="kpi-card">
-          <span className="kpi-label">Remaining TFSA Room</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="kpi-label">Remaining TFSA Room</span>
+            {roomStatus && roomStatus !== "normal" && (
+              <span className={`room-badge ${roomStatus}`}>
+                {roomStatus.replace("-", " ")}
+              </span>
+            )}
+          </div>
           <span className="kpi-val" style={{ color: "var(--accent)" }}>
-            {formatMoney(summary?.current_year_room || 0)}
+            {formatMoney(remainingRoom)}
           </span>
-          <span className="kpi-sub">Available contribution room</span>
+          <span className="kpi-sub">
+            of <strong className="num">{formatMoney(availableRoom)}</strong> available CRA room
+          </span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-track">
+              <div
+                className="room-progress-fill"
+                style={{ width: `${usedPct}%`, background: barColor }}
+              />
+            </div>
+            <div className="room-progress-meta">
+              <span>{usedPct.toFixed(1)}% utilized</span>
+              <span>{remainingPct.toFixed(1)}% room left</span>
+            </div>
+          </div>
         </div>
 
         <div className="kpi-card">
-          <span className="kpi-label">Current Year Deposits</span>
+          <span className="kpi-label">Total Deposits</span>
           <span className="kpi-val text-positive">
-            {formatMoney(summary?.current_year_contributions || 0)}
+            {formatMoney(totalDeposits)}
           </span>
-          <span className="kpi-sub">Total deposits this calendar year</span>
+          <span className="kpi-sub">
+            {usedPct.toFixed(1)}% of total available room
+          </span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-track">
+              <div
+                className="room-progress-fill"
+                style={{ width: `${usedPct}%`, background: "var(--positive)" }}
+              />
+            </div>
+            <div className="room-progress-meta">
+              <span>Net room used: {formatMoney(usedRoom)}</span>
+            </div>
+          </div>
         </div>
 
         <div className="kpi-card">
-          <span className="kpi-label">Current Year Withdrawals</span>
+          <span className="kpi-label">Total Withdrawals</span>
           <span className="kpi-val">
-            {formatMoney(summary?.current_year_withdrawals || 0)}
+            {formatMoney(totalWithdrawals)}
           </span>
           <span className="kpi-sub">Re-added to room on Jan 1 next year</span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-meta" style={{ marginTop: "0.85rem" }}>
+              <span>Eligible added: {formatMoney(summary?.room_withdrawals_eligible || 0)}</span>
+              <span>Pending: {formatMoney(summary?.room_withdrawals_pending || 0)}</span>
+            </div>
+          </div>
         </div>
 
         <div className="kpi-card">

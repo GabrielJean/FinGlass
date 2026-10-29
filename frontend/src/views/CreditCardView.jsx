@@ -253,6 +253,10 @@ export function CreditCardView() {
     }
   };
 
+  if (loading && !dashboard) {
+    return <div className="loading">Loading credit card data...</div>;
+  }
+
   const summary = dashboard?.summary || {};
   const insights = dashboard?.insights || {};
   const totalSpending = Number(summary.total_expenses ?? summary.total_spending ?? dashboard?.total_spending ?? 0);

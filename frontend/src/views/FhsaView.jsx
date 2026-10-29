@@ -189,7 +189,38 @@ export function FhsaView() {
     }
   };
 
-  const isRoomConfigured = openingBalance?.configured || summary?.configured;
+  const isRoomConfigured = Boolean(
+    openingBalance?.configured ||
+    summary?.configured ||
+    summary?.opening_balance_configured
+  );
+
+  if (loading && !summary) {
+    return <div className="loading">Loading FHSA details...</div>;
+  }
+
+  const annualAvailable = Number(summary?.total_available_room || 8000);
+  const annualRemaining = Number(summary?.total_remaining ?? summary?.current_year_room ?? 0);
+  const lifetimeRemaining = Number(summary?.lifetime_contribution_remaining ?? summary?.lifetime_room_remaining ?? 40000);
+  const lifetimeLimit = Number(summary?.lifetime_limit || 40000);
+  const lifetimeUsed = Number(summary?.room_used ?? summary?.total_deposits ?? 0);
+  const totalDeposits = Number(summary?.total_deposits || 0);
+  const qualifyingWithdrawals = Number(summary?.qualifying_withdrawals ?? summary?.total_qualifying_withdrawals ?? 0);
+  const roomStatus = summary?.room_status || null;
+
+  const lifetimeUsedPct = lifetimeLimit > 0 ? Math.min(100, Math.max(0, (lifetimeUsed / lifetimeLimit) * 100)) : 0;
+  const lifetimeRemainingPct = lifetimeLimit > 0 ? Math.min(100, Math.max(0, (lifetimeRemaining / lifetimeLimit) * 100)) : 0;
+  const annualUsed = Math.max(0, annualAvailable - annualRemaining);
+  const annualUsedPct = annualAvailable > 0 ? Math.min(100, Math.max(0, (annualUsed / annualAvailable) * 100)) : 0;
+  const annualRemainingPct = annualAvailable > 0 ? Math.min(100, Math.max(0, (annualRemaining / annualAvailable) * 100)) : 0;
+
+  const barColor = roomStatus === "over-limit"
+    ? "#ef4444"
+    : roomStatus === "near-limit"
+    ? "#f59e0b"
+    : roomStatus === "full"
+    ? "#10b981"
+    : "#ffd391";
 
   return (
     <div>
@@ -274,27 +305,70 @@ export function FhsaView() {
       {/* KPI Cards */}
       <section className="kpi-grid">
         <div className="kpi-card">
-          <span className="kpi-label">Current Year Room</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="kpi-label">Current Year Room</span>
+            {roomStatus && roomStatus !== "normal" && (
+              <span className={`room-badge ${roomStatus}`}>
+                {roomStatus.replace("-", " ")}
+              </span>
+            )}
+          </div>
           <span className="kpi-val" style={{ color: "#ffd391" }}>
-            {formatMoney(summary?.current_year_room || 0)}
+            {formatMoney(annualRemaining)}
           </span>
-          <span className="kpi-sub">Available contribution room for this year</span>
+          <span className="kpi-sub">
+            of <strong className="num">{formatMoney(annualAvailable)}</strong> annual limit
+          </span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-track">
+              <div
+                className="room-progress-fill"
+                style={{ width: `${annualUsedPct}%`, background: barColor }}
+              />
+            </div>
+            <div className="room-progress-meta">
+              <span>{annualUsedPct.toFixed(1)}% annual used</span>
+              <span>{annualRemainingPct.toFixed(1)}% room left</span>
+            </div>
+          </div>
         </div>
 
         <div className="kpi-card">
-          <span className="kpi-label">Lifetime Room Remaining</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="kpi-label">Lifetime Room Remaining</span>
+            <span className="status positive">$40k Max</span>
+          </div>
           <span className="kpi-val text-positive">
-            {formatMoney(summary?.lifetime_room_remaining || 40000)}
+            {formatMoney(lifetimeRemaining)}
           </span>
-          <span className="kpi-sub">Out of $40,000 lifetime maximum</span>
+          <span className="kpi-sub">
+            of <strong className="num">{formatMoney(lifetimeLimit)}</strong> lifetime maximum
+          </span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-track">
+              <div
+                className="room-progress-fill"
+                style={{ width: `${lifetimeUsedPct}%`, background: "var(--positive)" }}
+              />
+            </div>
+            <div className="room-progress-meta">
+              <span>{lifetimeUsedPct.toFixed(1)}% of $40k used</span>
+              <span>{lifetimeRemainingPct.toFixed(1)}% left</span>
+            </div>
+          </div>
         </div>
 
         <div className="kpi-card">
           <span className="kpi-label">Qualifying Withdrawals</span>
           <span className="kpi-val">
-            {formatMoney(summary?.total_qualifying_withdrawals || 0)}
+            {formatMoney(qualifyingWithdrawals)}
           </span>
           <span className="kpi-sub">Tax-free home purchases</span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-meta" style={{ marginTop: "0.85rem" }}>
+              <span>Total deposits: {formatMoney(totalDeposits)}</span>
+            </div>
+          </div>
         </div>
 
         <div className="kpi-card">

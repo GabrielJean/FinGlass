@@ -193,7 +193,33 @@ export function RrspView() {
     }
   };
 
-  const isRoomConfigured = openingBalance?.configured || summary?.configured;
+  const isRoomConfigured = Boolean(
+    openingBalance?.configured ||
+    summary?.configured ||
+    summary?.opening_balance_configured
+  );
+
+  if (loading && !summary) {
+    return <div className="loading">Loading RRSP details...</div>;
+  }
+
+  const availableRoom = Number(summary?.total_available_room || 0);
+  const remainingRoom = Number(summary?.total_remaining ?? summary?.deduction_limit_remaining ?? summary?.current_year_room ?? 0);
+  const usedRoom = Number(summary?.room_used ?? summary?.total_used ?? 0);
+  const totalDeposits = Number(summary?.total_deposits ?? summary?.current_year_contributions ?? 0);
+  const unusedContributions = Number(summary?.total_unused_contributions ?? summary?.unused_contributions ?? 0);
+  const roomStatus = summary?.room_status || (remainingRoom <= 0 && availableRoom > 0 ? "full" : "normal");
+
+  const usedPct = availableRoom > 0 ? Math.min(100, Math.max(0, (usedRoom / availableRoom) * 100)) : 0;
+  const remainingPct = availableRoom > 0 ? Math.min(100, Math.max(0, (remainingRoom / availableRoom) * 100)) : 0;
+
+  const barColor = roomStatus === "over-limit"
+    ? "#ef4444"
+    : roomStatus === "near-limit"
+    ? "#f59e0b"
+    : roomStatus === "full"
+    ? "#10b981"
+    : "#91b6ff";
 
   return (
     <div>
@@ -278,27 +304,66 @@ export function RrspView() {
       {/* KPI Cards */}
       <section className="kpi-grid">
         <div className="kpi-card">
-          <span className="kpi-label">Remaining Deduction Room</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span className="kpi-label">Remaining Deduction Room</span>
+            {roomStatus && roomStatus !== "normal" && (
+              <span className={`room-badge ${roomStatus}`}>
+                {roomStatus.replace("-", " ")}
+              </span>
+            )}
+          </div>
           <span className="kpi-val" style={{ color: "#91b6ff" }}>
-            {formatMoney(summary?.current_year_room || 0)}
+            {formatMoney(remainingRoom)}
           </span>
-          <span className="kpi-sub">Available for tax deduction</span>
+          <span className="kpi-sub">
+            of <strong className="num">{formatMoney(availableRoom)}</strong> deduction limit
+          </span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-track">
+              <div
+                className="room-progress-fill"
+                style={{ width: `${usedPct}%`, background: barColor }}
+              />
+            </div>
+            <div className="room-progress-meta">
+              <span>{usedPct.toFixed(1)}% utilized</span>
+              <span>{remainingPct.toFixed(1)}% limit left</span>
+            </div>
+          </div>
         </div>
 
         <div className="kpi-card">
-          <span className="kpi-label">Current Year Contributions</span>
+          <span className="kpi-label">Total Contributions</span>
           <span className="kpi-val text-positive">
-            {formatMoney(summary?.current_year_contributions || 0)}
+            {formatMoney(totalDeposits)}
           </span>
-          <span className="kpi-sub">Deposits made this year</span>
+          <span className="kpi-sub">
+            {usedPct.toFixed(1)}% of available deduction room
+          </span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-track">
+              <div
+                className="room-progress-fill"
+                style={{ width: `${usedPct}%`, background: "var(--positive)" }}
+              />
+            </div>
+            <div className="room-progress-meta">
+              <span>Deducted room used: {formatMoney(usedRoom)}</span>
+            </div>
+          </div>
         </div>
 
         <div className="kpi-card">
           <span className="kpi-label">Unused Contributions</span>
           <span className="kpi-val" style={{ color: "#ffd391" }}>
-            {formatMoney(summary?.unused_contributions || 0)}
+            {formatMoney(unusedContributions)}
           </span>
-          <span className="kpi-sub">Contributed but not yet deducted</span>
+          <span className="kpi-sub">Carried forward for future deduction</span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-meta" style={{ marginTop: "0.85rem" }}>
+              <span>Cushion: {formatMoney(summary?.cushion_remaining || 2000)} left</span>
+            </div>
+          </div>
         </div>
 
         <div className="kpi-card">
