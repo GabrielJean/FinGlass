@@ -9,6 +9,11 @@ import {
   CheckCircle2,
   XCircle,
   FileClock,
+  Database,
+  Download,
+  UploadCloud,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 
 export function AdminUsersView({ currentUser }) {
@@ -18,7 +23,7 @@ export function AdminUsersView({ currentUser }) {
 
   const [users, setUsers] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
-  const [activeTab, setActiveTab] = useState("users"); // 'users' | 'audit'
+  const [activeTab, setActiveTab] = useState("users"); // 'users' | 'audit' | 'database'
 
   // Password reset modal
   const [pwdUser, setPwdUser] = useState(null);
@@ -27,6 +32,13 @@ export function AdminUsersView({ currentUser }) {
   // Delete modal
   const [delUser, setDelUser] = useState(null);
   const [confirmName, setConfirmName] = useState("");
+
+  // Database management state
+  const [dbExporting, setDbExporting] = useState(false);
+  const [dbImporting, setDbImporting] = useState(false);
+  const [importFile, setImportFile] = useState(null);
+  const [confirmOverwriteModal, setConfirmOverwriteModal] = useState(false);
+  const [overwriteConfirmText, setOverwriteConfirmText] = useState("");
 
   const loadData = async () => {
     setLoading(true);
@@ -101,13 +113,46 @@ export function AdminUsersView({ currentUser }) {
     }
   };
 
+  const handleExportDatabase = async () => {
+    setDbExporting(true);
+    setError("");
+    setNotice("");
+    try {
+      await api.admin.exportDatabase();
+      setNotice("Application database backup downloaded successfully.");
+    } catch (err) {
+      setError(err.message || "Failed to download database.");
+    } finally {
+      setDbExporting(false);
+    }
+  };
+
+  const handleImportDatabase = async () => {
+    if (!importFile || overwriteConfirmText !== "OVERWRITE") return;
+    setDbImporting(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await api.admin.importDatabase(importFile);
+      setConfirmOverwriteModal(false);
+      setImportFile(null);
+      setNotice(res.message || "Database imported and overwritten successfully! Reloading...");
+      setTimeout(() => {
+        window.location.reload();
+      }, 1500);
+    } catch (err) {
+      setError(err.message || "Failed to import database.");
+      setDbImporting(false);
+    }
+  };
+
   return (
     <div>
       <div className="top-bar">
         <div>
           <p className="eyebrow">SYSTEM SECURITY DESK</p>
           <h1>Administration & User Control</h1>
-          <p>Superuser privileges, account activations, and audit event logs.</p>
+          <p>Superuser privileges, account activations, database management, and audit event logs.</p>
         </div>
 
         <div className="tabs" style={{ marginBottom: 0 }}>
@@ -125,6 +170,14 @@ export function AdminUsersView({ currentUser }) {
           >
             Audit Trail ({Array.isArray(auditLogs) ? auditLogs.length : 0})
           </button>
+          <button
+            type="button"
+            className={`tab-btn ${activeTab === "database" ? "active" : ""}`}
+            onClick={() => setActiveTab("database")}
+          >
+            <Database size={13} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
+            Database Backup & Restore
+          </button>
         </div>
       </div>
 
@@ -136,7 +189,7 @@ export function AdminUsersView({ currentUser }) {
         </div>
       )}
 
-      {activeTab === "users" ? (
+      {activeTab === "users" && (
         <section className="panel" style={{ padding: 0, overflow: "hidden" }}>
           {loading ? (
             <div className="loading" style={{ minHeight: "200px" }}>Loading accounts...</div>
@@ -230,7 +283,9 @@ export function AdminUsersView({ currentUser }) {
             </div>
           )}
         </section>
-      ) : (
+      )}
+
+      {activeTab === "audit" && (
         /* Audit Trail Table */
         <section className="panel" style={{ padding: 0, overflow: "hidden" }}>
           {loading ? (
@@ -238,7 +293,7 @@ export function AdminUsersView({ currentUser }) {
           ) : auditLogs.length === 0 ? (
             <div className="empty">
               <h3>No administrative actions recorded</h3>
-              <p>Security operations such as user additions and permission modifications appear here.</p>
+              <p>Security operations such as user additions, permission modifications, and database operations appear here.</p>
             </div>
           ) : (
             <div className="table-wrap" style={{ border: "none" }}>
@@ -257,7 +312,9 @@ export function AdminUsersView({ currentUser }) {
                     <tr key={log.id}>
                       <td className="mono fine">{formatDateTime(log.created_at)}</td>
                       <td>
-                        <span className="status info">{log.action_type}</span>
+                        <span className={`status ${log.action_type.includes("RESTORE") ? "negative" : log.action_type.includes("EXPORT") ? "positive" : "info"}`}>
+                          {log.action_type}
+                        </span>
                       </td>
                       <td><strong>{log.actor_username || "System"}</strong></td>
                       <td>{log.target_username || "-"}</td>
@@ -273,6 +330,159 @@ export function AdminUsersView({ currentUser }) {
             </div>
           )}
         </section>
+      )}
+
+      {activeTab === "database" && (
+        <div className="stack" style={{ gap: "1.75rem" }}>
+          {/* Download Full Database Snapshot */}
+          <section className="panel">
+            <div className="panel-header">
+              <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                <Database size={20} color="var(--accent)" />
+                <h2 style={{ fontSize: "1.2rem", margin: 0 }}>Export & Download Application Database</h2>
+              </div>
+              <span className="status positive">Live SQLite Snapshot</span>
+            </div>
+
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", lineHeight: 1.6, margin: "0 0 1.25rem" }}>
+              Download a complete, transactionally-consistent snapshot of the active SQLite database directly to your computer. This full snapshot contains all registered accounts, portfolios, ACB history, banking flows, credit card ledger records, and CRA contribution tracking.
+            </p>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={handleExportDatabase}
+                disabled={dbExporting}
+              >
+                <Download size={15} />
+                {dbExporting ? "Generating database snapshot..." : "Download SQL Database (.sqlite3)"}
+              </button>
+              <span className="fine" style={{ color: "var(--text-fine)" }}>
+                Online backup runs via SQLite WAL backup engine without locking active reads.
+              </span>
+            </div>
+          </section>
+
+          {/* Import and Overwrite Database */}
+          <section className="panel" style={{ borderColor: "rgba(248, 113, 113, 0.35)", background: "rgba(239, 68, 68, 0.03)" }}>
+            <div className="panel-header" style={{ borderBottomColor: "rgba(248, 113, 113, 0.2)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                <AlertTriangle size={20} color="var(--negative)" />
+                <h2 style={{ fontSize: "1.2rem", margin: 0, color: "#fca5a5" }}>Import & Overwrite Application Database</h2>
+              </div>
+              <span className="status negative">Destructive Action</span>
+            </div>
+
+            <div className="error-banner" style={{ marginBottom: "1.25rem", background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.3)" }}>
+              <strong>CRITICAL WARNING:</strong> Uploading a database file will <u>completely overwrite and replace all existing data</u> in this FinGlass instance. All current accounts, transactions, imported records, and settings will be permanently lost and replaced with the uploaded file.
+            </div>
+
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", lineHeight: 1.6, margin: "0 0 1.25rem" }}>
+              Select a valid FinGlass SQLite database file (<code>.sqlite3</code> or <code>.db</code>). The system will verify file integrity, validate internal schema tables, restore the data, and run any pending migrations before reloading.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem", maxWidth: "560px" }}>
+              <label>
+                <span>Select Database File</span>
+                <input
+                  type="file"
+                  accept=".sqlite3,.db,application/vnd.sqlite3,application/x-sqlite3"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] || null;
+                    setImportFile(file);
+                    setError("");
+                  }}
+                />
+              </label>
+
+              {importFile && (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "var(--bg-input)", padding: "0.75rem 1rem", borderRadius: "var(--radius-sm)", border: "1px solid var(--border-input)", gap: "1rem", flexWrap: "wrap" }}>
+                  <div>
+                    <strong style={{ fontSize: "0.88rem", display: "block" }}>{importFile.name}</strong>
+                    <span className="fine" style={{ color: "var(--text-fine)" }}>
+                      {(importFile.size / (1024 * 1024)).toFixed(2)} MB · Ready for restore
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="danger"
+                    disabled={dbImporting}
+                    onClick={() => {
+                      setOverwriteConfirmText("");
+                      setConfirmOverwriteModal(true);
+                    }}
+                  >
+                    <UploadCloud size={15} />
+                    Import & Overwrite
+                  </button>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* Overwrite Confirmation Modal */}
+      {confirmOverwriteModal && importFile && (
+        <div className="modal-overlay" onClick={() => !dbImporting && setConfirmOverwriteModal(false)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()} style={{ borderColor: "rgba(248, 113, 113, 0.5)" }}>
+            <p className="eyebrow" style={{ color: "var(--negative)" }}>DANGER: DATABASE REPLACEMENT</p>
+            <h2 style={{ color: "#fca5a5" }}>Overwrite Whole Database?</h2>
+
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", lineHeight: 1.6 }}>
+              You are about to overwrite all current data with <strong>{importFile.name}</strong> ({(importFile.size / (1024 * 1024)).toFixed(2)} MB).
+            </p>
+            <p className="fine" style={{ color: "#fca5a5", marginTop: "0.5rem" }}>
+              This cannot be undone. To proceed, please type <strong>OVERWRITE</strong> below:
+            </p>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleImportDatabase();
+              }}
+              className="stack"
+              style={{ marginTop: "1rem" }}
+            >
+              <label>
+                <span>Confirmation Phrase</span>
+                <input
+                  type="text"
+                  required
+                  placeholder="OVERWRITE"
+                  value={overwriteConfirmText}
+                  onChange={(e) => setOverwriteConfirmText(e.target.value)}
+                  disabled={dbImporting}
+                  autoFocus
+                />
+              </label>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={dbImporting}
+                  onClick={() => setConfirmOverwriteModal(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="danger"
+                  disabled={overwriteConfirmText !== "OVERWRITE" || dbImporting}
+                >
+                  {dbImporting ? (
+                    <>
+                      <RefreshCw size={14} className="spin" /> Overwriting database...
+                    </>
+                  ) : (
+                    "Confirm & Overwrite All Data"
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Set Password Modal */}

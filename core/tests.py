@@ -1,5 +1,6 @@
-from django.test import TestCase, Client
+from django.test import TestCase, TransactionTestCase, Client
 from django.contrib.auth import get_user_model
+from django.core.files.uploadedfile import SimpleUploadedFile
 from core.models import (
     HoldingSnapshot,
     ChequingAccount,
@@ -187,3 +188,36 @@ class FinGlassComprehensiveTests(TestCase):
         last_row = ledger[-1]
         self.assertEqual(last_row["share_balance"], 50)
         self.assertAlmostEqual(last_row["capital_gain"], 245.0)
+
+
+class DatabaseBackupTests(TransactionTestCase):
+    def test_admin_database_export_and_restore(self):
+        client = Client()
+        user = User.objects.create_superuser(username="adminuser2", password="adminpassword123")
+
+        # 1. Non-admin gets 403
+        non_admin = User.objects.create_user(username="standarduser2", password="standardpassword123")
+        client.force_login(non_admin)
+        res = client.get("/api/auth/admin/database")
+        self.assertEqual(res.status_code, 403)
+
+        # 2. Superadmin can export database
+        client.force_login(user)
+        export_res = client.get("/api/auth/admin/database")
+        self.assertEqual(export_res.status_code, 200)
+        self.assertEqual(export_res.headers.get("Content-Type"), "application/vnd.sqlite3")
+        db_content = b"".join(export_res.streaming_content)
+        self.assertTrue(len(db_content) > 0)
+
+        # 3. Restoring corrupt file fails validation
+        corrupt_file = SimpleUploadedFile("corrupt.sqlite3", b"not-a-valid-sqlite-db")
+        res = client.post("/api/auth/admin/database", {"file": corrupt_file})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("error", res.json())
+
+        # 4. Restoring valid exported snapshot succeeds
+        valid_file = SimpleUploadedFile("backup.sqlite3", db_content)
+        res = client.post("/api/auth/admin/database", {"file": valid_file})
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json().get("ok"))
+
