@@ -261,7 +261,7 @@ export function RrspView() {
         </div>
       )}
 
-      {!isRoomConfigured && (
+      {!loading && !isRoomConfigured && (
         <div className="notice" style={{ marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
             <AlertCircle size={20} color="#91b6ff" />
