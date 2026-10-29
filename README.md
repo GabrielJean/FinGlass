@@ -3,10 +3,10 @@
 Simple web app to track securities transactions over time, with Adjusted Cost Base (ACB) calculations.
 
 ## Stack
-- Python API: Django
+- Python API: Django (Python 3.12)
 - Database: SQLite
-- Frontend: Vite + React (SPA with StockBot dark aesthetics, Manrope & DM Mono typography, Lucide icons)
-- Containerization: Docker (multi-stage Node + Python) + Docker Compose
+- Frontend: Vite + React (Node.js 26)
+- Containerization: Docker (multi-stage Node 26 + Python 3.12) + Docker Compose
 
 ## Architecture
 - Django project: `finglass_project/` (settings, urls, WSGI/ASGI).
