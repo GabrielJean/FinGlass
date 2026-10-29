@@ -23,15 +23,25 @@ import {
 import { CollapsibleChartSection } from "../components/charts/CollapsibleChartSection";
 import { ChartCard } from "../components/charts/ChartCard";
 
+// In-memory module cache for instant view transitions
+let cheqCache = {
+  dashboard: null,
+  transactions: null,
+  accounts: null,
+  categories: null,
+};
+
 export function ChequingView() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cheqCache.dashboard);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
-  const [dashboard, setDashboard] = useState(null);
-  const [accounts, setAccounts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [transactions, setTransactions] = useState([]);
+  const [dashboard, setDashboard] = useState(cheqCache.dashboard);
+  const [accounts, setAccounts] = useState(cheqCache.accounts || []);
+  const [categories, setCategories] = useState(cheqCache.categories || []);
+  const [transactions, setTransactions] = useState(cheqCache.transactions || []);
+  const [txLimit, setTxLimit] = useState(100);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   // Date & Filter state
   const [quickDateRange, setQuickDateRange] = useState("all");
@@ -69,8 +79,12 @@ export function ChequingView() {
         api.chequing.getAccounts(),
         api.chequing.getCategories(),
       ]);
-      setAccounts(Array.isArray(accRes) ? accRes : (accRes?.accounts || []));
-      setCategories(Array.isArray(catRes) ? catRes : (catRes?.categories || []));
+      const accList = Array.isArray(accRes) ? accRes : (accRes?.accounts || []);
+      const catList = Array.isArray(catRes) ? catRes : (catRes?.categories || []);
+      setAccounts(accList);
+      setCategories(catList);
+      cheqCache.accounts = accList;
+      cheqCache.categories = catList;
     } catch (err) {
       console.error("Failed to load metadata:", err);
     }
@@ -81,7 +95,7 @@ export function ChequingView() {
   }, []);
 
   // Build query string for dashboard & transactions
-  const buildQueryParams = () => {
+  const buildQueryParams = (limit = txLimit) => {
     const params = new URLSearchParams();
     if (startDate) params.set("start_date", startDate);
     if (endDate) params.set("end_date", endDate);
@@ -90,12 +104,13 @@ export function ChequingView() {
     if (direction) params.set("direction", direction);
     if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
     if (includeHidden) params.set("include_hidden", "1");
+    if (limit) params.set("limit", String(limit));
     return params.toString();
   };
 
   // Main data fetching effect synchronized on all filter changes
   const fetchData = async () => {
-    setLoading(true);
+    if (!dashboard) setLoading(true);
     setError("");
     try {
       const q = buildQueryParams();
@@ -104,8 +119,11 @@ export function ChequingView() {
         api.chequing.getTransactions(q),
       ]);
       setDashboard(dashRes);
-      setTransactions(Array.isArray(txRes) ? txRes : (txRes?.transactions || txRes?.rows || []));
+      const txList = Array.isArray(txRes) ? txRes : (txRes?.transactions || txRes?.rows || []);
+      setTransactions(txList);
       setSelectedIds(new Set());
+      cheqCache.dashboard = dashRes;
+      cheqCache.transactions = txList;
     } catch (err) {
       setError(err.message || "Failed to load chequing data.");
     } finally {
@@ -116,6 +134,23 @@ export function ChequingView() {
   useEffect(() => {
     fetchData();
   }, [startDate, endDate, selectedAccount, selectedCategory, direction, includeHidden, debouncedSearch]);
+
+  const handleLoadMore = async () => {
+    setLoadingMore(true);
+    const nextLimit = txLimit + 100;
+    setTxLimit(nextLimit);
+    try {
+      const q = buildQueryParams(nextLimit);
+      const txRes = await api.chequing.getTransactions(q);
+      const txList = Array.isArray(txRes) ? txRes : (txRes?.transactions || txRes?.rows || []);
+      setTransactions(txList);
+      cheqCache.transactions = txList;
+    } catch (err) {
+      setError("Failed to load more transactions: " + err.message);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
 
   const handleQuickDateSelect = (rangeId) => {
     setQuickDateRange(rangeId);
@@ -409,10 +444,6 @@ export function ChequingView() {
       },
     };
   }, [dashboard?.categories]);
-
-  if (loading && !dashboard) {
-    return <div className="loading">Loading chequing data...</div>;
-  }
 
   return (
     <div>
@@ -748,6 +779,20 @@ export function ChequingView() {
                 })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {transactions.length > 0 && transactions.length < txCount && (
+          <div style={{ padding: "0.85rem 1.25rem", textAlign: "center", borderTop: "1px solid var(--border-dim)" }}>
+            <button
+              type="button"
+              className="secondary"
+              disabled={loadingMore}
+              onClick={handleLoadMore}
+              style={{ padding: "0.5rem 1.25rem", fontSize: "0.84rem" }}
+            >
+              {loadingMore ? "Loading more..." : `Load More Transactions (${transactions.length} of ${txCount})`}
+            </button>
           </div>
         )}
       </section>

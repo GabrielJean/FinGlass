@@ -1,4 +1,5 @@
 import re
+from functools import lru_cache
 
 MAX_FALLBACK_WORDS = 4
 
@@ -154,6 +155,7 @@ RULES = [
 ]
 
 
+@lru_cache(maxsize=2048)
 def normalize_credit_card_category(value):
 
     raw = str(value or "").strip()
