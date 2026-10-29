@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { api } from "../api";
 import { formatMoney, formatDate } from "../utils/formatters";
 import { QUICK_DATE_RANGES, computeQuickDateRange } from "../utils/dateFilters";
@@ -10,7 +10,18 @@ import {
   Trash2,
   Plus,
   RotateCcw,
+  Wallet,
 } from "lucide-react";
+import { Bar, Doughnut } from "react-chartjs-2";
+import "../components/charts/chartSetup";
+import {
+  CHART_PALETTE,
+  formatCompactMoney,
+  commonTooltipOptions,
+  commonScaleOptions,
+} from "../components/charts/chartSetup";
+import { CollapsibleChartSection } from "../components/charts/CollapsibleChartSection";
+import { ChartCard } from "../components/charts/ChartCard";
 
 export function ChequingView() {
   const [loading, setLoading] = useState(true);
@@ -260,6 +271,149 @@ export function ChequingView() {
   const netFlow = Number(summary.net_flow ?? (moneyIn - moneyOut));
   const txCount = summary.transactions ?? summary.transaction_count ?? transactions.length;
 
+  // Chart 1: Monthly Cash Flow (In, Out, Savings)
+  const monthlyFlowChartData = useMemo(() => {
+    const list = dashboard?.monthly || [];
+    return {
+      labels: list.map((m) => m.month),
+      datasets: [
+        {
+          label: "Money In",
+          data: list.map((m) => Number(m.in || 0)),
+          backgroundColor: "rgba(52, 211, 153, 0.65)",
+          borderColor: "#34d399",
+          borderWidth: 1.2,
+          borderRadius: 5,
+        },
+        {
+          label: "Money Out",
+          data: list.map((m) => Number(m.out || 0)),
+          backgroundColor: "rgba(248, 113, 113, 0.65)",
+          borderColor: "#f87171",
+          borderWidth: 1.2,
+          borderRadius: 5,
+        },
+        {
+          label: "Saving Money",
+          data: list.map((m) => Number(m.internal_out || 0)),
+          backgroundColor: "rgba(56, 189, 248, 0.65)",
+          borderColor: "#38bdf8",
+          borderWidth: 1.2,
+          borderRadius: 5,
+        },
+      ],
+    };
+  }, [dashboard?.monthly]);
+
+  const monthlyFlowChartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: "top",
+          align: "end",
+          labels: {
+            boxWidth: 10,
+            boxHeight: 10,
+            usePointStyle: true,
+            color: "#9bb2d1",
+            font: { size: 11 },
+            padding: 12,
+          },
+        },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => `${ctx.dataset.label}: ${formatMoney(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ...commonScaleOptions,
+          grid: { display: false },
+        },
+        y: {
+          ...commonScaleOptions,
+          ticks: {
+            ...commonScaleOptions.ticks,
+            callback: (val) => formatCompactMoney(val),
+          },
+        },
+      },
+    };
+  }, []);
+
+  // Chart 2: Category Breakdown
+  const categoryChartData = useMemo(() => {
+    const rawCategories = dashboard?.categories || [];
+    const spendingCats = rawCategories
+      .filter((c) => Number(c.total_out || 0) > 0)
+      .sort((a, b) => Number(b.total_out || 0) - Number(a.total_out || 0));
+
+    if (!spendingCats.length) return null;
+
+    const topCats = spendingCats.slice(0, 7);
+    const otherAmount = spendingCats.slice(7).reduce((sum, c) => sum + Number(c.total_out || 0), 0);
+
+    const labels = topCats.map((c) => c.category || "Other");
+    const data = topCats.map((c) => Number(c.total_out || 0));
+
+    if (otherAmount > 0) {
+      labels.push("Other Categories");
+      data.push(otherAmount);
+    }
+
+    return {
+      labels,
+      datasets: [
+        {
+          data,
+          backgroundColor: CHART_PALETTE.slice(0, labels.length),
+          borderColor: "transparent",
+          borderWidth: 0,
+          spacing: 3,
+        },
+      ],
+    };
+  }, [dashboard?.categories]);
+
+  const categoryChartOptions = useMemo(() => {
+    const total = (dashboard?.categories || []).reduce(
+      (sum, c) => sum + Number(c.total_out || 0),
+      0
+    );
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      cutout: "68%",
+      plugins: {
+        legend: {
+          position: "right",
+          labels: {
+            boxWidth: 10,
+            boxHeight: 10,
+            usePointStyle: true,
+            color: "#9bb2d1",
+            font: { size: 11 },
+            padding: 8,
+          },
+        },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => {
+              const val = Number(ctx.raw || 0);
+              const pct = total > 0 ? ((val / total) * 100).toFixed(1) : "0.0";
+              return `${ctx.label}: ${formatMoney(val)} (${pct}%)`;
+            },
+          },
+        },
+      },
+    };
+  }, [dashboard?.categories]);
+
   return (
     <div>
       <div className="top-bar">
@@ -479,6 +633,41 @@ export function ChequingView() {
           </div>
         )}
       </section>
+
+      {/* Collapsible Cash Flow & Spending Analytics Section */}
+      <CollapsibleChartSection
+        title="Cash Flow & Spending Analytics"
+        subtitle="Monthly income velocity, spending outflows, internal savings, and category distribution"
+        storageKey="finglass_collapse_chequing_charts"
+        chartCount={2}
+        icon={Wallet}
+      >
+        <div className="chart-grid">
+          <ChartCard
+            title="Monthly Cash Flow"
+            subtitle="Money in, money out, and transfers to savings"
+            height={260}
+            empty={!monthlyFlowChartData.labels.length}
+            emptyMessage="No monthly cash flow data available for the active filters."
+          >
+            {monthlyFlowChartData.labels.length > 0 && (
+              <Bar data={monthlyFlowChartData} options={monthlyFlowChartOptions} />
+            )}
+          </ChartCard>
+
+          <ChartCard
+            title="Outflow by Category"
+            subtitle="Expenses distributed by category tag"
+            height={260}
+            empty={!categoryChartData}
+            emptyMessage="No categorized expenses available."
+          >
+            {categoryChartData && (
+              <Doughnut data={categoryChartData} options={categoryChartOptions} />
+            )}
+          </ChartCard>
+        </div>
+      </CollapsibleChartSection>
 
       {/* Transactions Table */}
       <section className="panel" style={{ padding: 0, overflow: "hidden" }}>

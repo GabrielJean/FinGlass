@@ -1172,3 +1172,30 @@ td.text-negative {
   }
 }
 
+/* Charts & Collapsible Sections */
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 1.25rem;
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  .chart-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.collapsible-charts-header-card:hover {
+  border-color: var(--border-focus) !important;
+}
+
+.chart-card {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chart-card:hover {
+  border-color: #2e4d75 !important;
+}
+
+

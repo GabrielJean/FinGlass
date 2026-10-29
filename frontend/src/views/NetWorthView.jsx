@@ -1,7 +1,16 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../api";
 import { formatMoney, formatDate } from "../utils/formatters";
 import { Plus, Trash2, TrendingUp, Calendar } from "lucide-react";
+import { Line } from "react-chartjs-2";
+import "../components/charts/chartSetup";
+import {
+  formatCompactMoney,
+  commonTooltipOptions,
+  commonScaleOptions,
+} from "../components/charts/chartSetup";
+import { CollapsibleChartSection } from "../components/charts/CollapsibleChartSection";
+import { ChartCard } from "../components/charts/ChartCard";
 
 export function NetWorthView() {
   const [loading, setLoading] = useState(true);
@@ -72,6 +81,63 @@ export function NetWorthView() {
   const diff = latest && previous ? Number(latest.amount) - Number(previous.amount) : 0;
   const diffPct = previous && Number(previous.amount) > 0 ? (diff / Number(previous.amount)) * 100 : 0;
 
+  // Chronological order for chart
+  const chartChronological = useMemo(() => {
+    return [...(Array.isArray(history) ? history : [])].sort((a, b) =>
+      a.entry_date.localeCompare(b.entry_date)
+    );
+  }, [history]);
+
+  const chartData = useMemo(() => {
+    return {
+      labels: chartChronological.map((item) => formatDate(item.entry_date)),
+      datasets: [
+        {
+          label: "Net Worth",
+          data: chartChronological.map((item) => Number(item.amount || 0)),
+          borderColor: "#34d399",
+          backgroundColor: "rgba(52, 211, 153, 0.12)",
+          fill: true,
+          tension: 0.3,
+          pointRadius: chartChronological.length > 25 ? 2 : 4,
+          pointHoverRadius: 6,
+          pointBackgroundColor: "#34d399",
+          pointBorderColor: "#09111f",
+          pointBorderWidth: 2,
+        },
+      ],
+    };
+  }, [chartChronological]);
+
+  const chartOptions = useMemo(() => {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          ...commonTooltipOptions,
+          callbacks: {
+            label: (ctx) => `Net Worth: ${formatMoney(ctx.raw)}`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          ...commonScaleOptions,
+          grid: { display: false },
+        },
+        y: {
+          ...commonScaleOptions,
+          ticks: {
+            ...commonScaleOptions.ticks,
+            callback: (value) => formatCompactMoney(value),
+          },
+        },
+      },
+    };
+  }, []);
+
   return (
     <div>
       <div className="top-bar">
@@ -123,6 +189,26 @@ export function NetWorthView() {
           <span className="kpi-sub">Lifetime timeline records</span>
         </div>
       </section>
+
+      {/* Collapsible Net Worth Trajectory Chart */}
+      <CollapsibleChartSection
+        title="Net Worth Growth Trajectory"
+        subtitle="Historical timeline and valuation milestone progression"
+        storageKey="finglass_collapse_networth_chart"
+        chartCount={1}
+        icon={TrendingUp}
+      >
+        <ChartCard
+          title="Historical Net Worth"
+          subtitle="Assets minus liabilities valuation progression"
+          badge={chartChronological.length ? `${chartChronological.length} snapshots` : undefined}
+          height={300}
+          empty={chartChronological.length === 0}
+          emptyMessage="No snapshots recorded yet. Record your first snapshot to view your wealth curve."
+        >
+          {chartChronological.length > 0 && <Line data={chartData} options={chartOptions} />}
+        </ChartCard>
+      </CollapsibleChartSection>
 
       {/* History Table */}
       <section className="panel" style={{ padding: 0, overflow: "hidden" }}>
