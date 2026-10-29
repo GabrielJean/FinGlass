@@ -153,6 +153,7 @@ def chequing_dashboard(request):
     category = str(request.GET.get("category") or "").strip()
     search = str(request.GET.get("search") or "").strip()
     account_label = str(request.GET.get("account_label") or request.GET.get("account") or "").strip()
+    direction = str(request.GET.get("direction") or "").strip().lower()
     include_hidden = parse_bool_query(request.GET.get("include_hidden"))
 
     latest_transaction_date = (
@@ -173,6 +174,10 @@ def chequing_dashboard(request):
         queryset = queryset.filter(account_label=account_label)
     if search:
         queryset = queryset.filter(description__icontains=search)
+    if direction in {"in", "inflow"}:
+        queryset = queryset.filter(amount__gt=0)
+    elif direction in {"out", "outflow"}:
+        queryset = queryset.filter(amount__lt=0)
     if not include_hidden:
         queryset = queryset.filter(is_hidden=False)
 
@@ -484,9 +489,9 @@ def chequing_transactions(request):
         queryset = queryset.filter(account_label=account_label)
     if search:
         queryset = queryset.filter(description__icontains=search)
-    if direction == "in":
+    if direction in {"in", "inflow"}:
         queryset = queryset.filter(amount__gt=0)
-    elif direction == "out":
+    elif direction in {"out", "outflow"}:
         queryset = queryset.filter(amount__lt=0)
     if not include_zero:
         queryset = queryset.exclude(amount=0)

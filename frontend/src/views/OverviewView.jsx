@@ -82,9 +82,31 @@ export function OverviewView({ onNavigate }) {
   const isPositive = unrealizedReturn >= 0;
 
   // Calculate quick net worth estimate
-  const ccDebt = Number(ccDashboard?.total_spending || 0);
+  const ccDebt = Number(ccDashboard?.summary?.total_expenses ?? ccDashboard?.total_spending ?? 0);
   const cheqBalance = Number(cheqDashboard?.summary?.net_flow || 0);
   const netWorthEstimate = totalMarket - ccDebt;
+
+  // Registered account metrics
+  const tfsaAvailable = Number(tfsaSummary?.total_available_room || 0);
+  const tfsaRemaining = Number(tfsaSummary?.total_remaining ?? tfsaSummary?.current_year_room ?? 0);
+  const tfsaUsed = Number(tfsaSummary?.room_used ?? tfsaSummary?.total_deposits ?? 0);
+  const tfsaUsedPct = tfsaAvailable > 0 ? Math.min(100, Math.max(0, (tfsaUsed / tfsaAvailable) * 100)) : 0;
+  const tfsaStatus = tfsaSummary?.room_status || null;
+  const tfsaBarColor = tfsaStatus === "over-limit" ? "#ef4444" : tfsaStatus === "near-limit" ? "#f59e0b" : tfsaStatus === "full" ? "#10b981" : "var(--accent)";
+
+  const rrspAvailable = Number(rrspSummary?.total_available_room || 0);
+  const rrspRemaining = Number(rrspSummary?.total_remaining ?? rrspSummary?.current_year_room ?? 0);
+  const rrspUsed = Number(rrspSummary?.room_used ?? rrspSummary?.total_deposits ?? 0);
+  const rrspUsedPct = rrspAvailable > 0 ? Math.min(100, Math.max(0, (rrspUsed / rrspAvailable) * 100)) : 0;
+  const rrspStatus = rrspSummary?.room_status || null;
+  const rrspBarColor = rrspStatus === "over-limit" ? "#ef4444" : rrspStatus === "near-limit" ? "#f59e0b" : rrspStatus === "full" ? "#10b981" : "#91b6ff";
+
+  const fhsaLifetimeLimit = Number(fhsaSummary?.lifetime_limit || 40000);
+  const fhsaRemaining = Number(fhsaSummary?.total_remaining ?? fhsaSummary?.current_year_room ?? 0);
+  const fhsaLifetimeRemaining = Number(fhsaSummary?.lifetime_contribution_remaining ?? fhsaSummary?.lifetime_room_remaining ?? 40000);
+  const fhsaUsed = Number(fhsaSummary?.room_used ?? fhsaSummary?.total_deposits ?? 0);
+  const fhsaUsedPct = fhsaLifetimeLimit > 0 ? Math.min(100, Math.max(0, (fhsaUsed / fhsaLifetimeLimit) * 100)) : 0;
+  const fhsaStatusBarColor = fhsaSummary?.room_status === "over-limit" ? "#ef4444" : fhsaSummary?.room_status === "full" ? "#10b981" : "#ffd391";
 
   return (
     <div>
@@ -161,18 +183,27 @@ export function OverviewView({ onNavigate }) {
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span className="kpi-label">TFSA Room</span>
-            <span className="status positive">Tax-Free</span>
+            {tfsaStatus && tfsaStatus !== "normal" ? (
+              <span className={`room-badge ${tfsaStatus}`}>{tfsaStatus.replace("-", " ")}</span>
+            ) : (
+              <span className="status positive">Tax-Free</span>
+            )}
           </div>
           <span className="kpi-val" style={{ color: "var(--accent)" }}>
-            {tfsaSummary?.total_remaining !== undefined
-              ? formatMoney(tfsaSummary.total_remaining)
-              : tfsaSummary?.current_year_room !== undefined
-              ? formatMoney(tfsaSummary.current_year_room)
-              : "Set Room"}
+            {formatMoney(tfsaRemaining)}
           </span>
           <span className="kpi-sub">
-            Contributed: {formatMoney(tfsaSummary?.current_year_contributions || 0)}
+            of <strong className="num">{formatMoney(tfsaAvailable)}</strong> available CRA room
           </span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-track">
+              <div className="room-progress-fill" style={{ width: `${tfsaUsedPct}%`, background: tfsaBarColor }} />
+            </div>
+            <div className="room-progress-meta">
+              <span>{tfsaUsedPct.toFixed(1)}% utilized</span>
+              <span>{(100 - tfsaUsedPct).toFixed(1)}% left</span>
+            </div>
+          </div>
         </div>
 
         <div
@@ -183,18 +214,27 @@ export function OverviewView({ onNavigate }) {
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span className="kpi-label">RRSP Room</span>
-            <span className="status info">Tax-Deferred</span>
+            {rrspStatus && rrspStatus !== "normal" ? (
+              <span className={`room-badge ${rrspStatus}`}>{rrspStatus.replace("-", " ")}</span>
+            ) : (
+              <span className="status info">Tax-Deferred</span>
+            )}
           </div>
           <span className="kpi-val" style={{ color: "#91b6ff" }}>
-            {rrspSummary?.total_remaining !== undefined
-              ? formatMoney(rrspSummary.total_remaining)
-              : rrspSummary?.current_year_room !== undefined
-              ? formatMoney(rrspSummary.current_year_room)
-              : "Set Room"}
+            {formatMoney(rrspRemaining)}
           </span>
           <span className="kpi-sub">
-            Unused contributions: {formatMoney(rrspSummary?.unused_contributions || 0)}
+            of <strong className="num">{formatMoney(rrspAvailable)}</strong> deduction limit
           </span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-track">
+              <div className="room-progress-fill" style={{ width: `${rrspUsedPct}%`, background: rrspBarColor }} />
+            </div>
+            <div className="room-progress-meta">
+              <span>{rrspUsedPct.toFixed(1)}% utilized</span>
+              <span>{(100 - rrspUsedPct).toFixed(1)}% left</span>
+            </div>
+          </div>
         </div>
 
         <div
@@ -208,15 +248,20 @@ export function OverviewView({ onNavigate }) {
             <span className="status info">First Home</span>
           </div>
           <span className="kpi-val" style={{ color: "#ffd391" }}>
-            {fhsaSummary?.total_remaining !== undefined
-              ? formatMoney(fhsaSummary.total_remaining)
-              : fhsaSummary?.current_year_room !== undefined
-              ? formatMoney(fhsaSummary.current_year_room)
-              : "Set Room"}
+            {formatMoney(fhsaRemaining)}
           </span>
           <span className="kpi-sub">
-            Lifetime remaining: {formatMoney(fhsaSummary?.lifetime_room_remaining || 40000)}
+            {formatMoney(fhsaLifetimeRemaining)} lifetime room left
           </span>
+          <div className="room-progress-wrap">
+            <div className="room-progress-track">
+              <div className="room-progress-fill" style={{ width: `${fhsaUsedPct}%`, background: fhsaStatusBarColor }} />
+            </div>
+            <div className="room-progress-meta">
+              <span>{fhsaUsedPct.toFixed(1)}% of $40k used</span>
+              <span>{(100 - fhsaUsedPct).toFixed(1)}% left</span>
+            </div>
+          </div>
         </div>
       </section>
 
