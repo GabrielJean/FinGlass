@@ -11,6 +11,7 @@ DEFAULT_FEATURE_SETTINGS = {
     "tfsa_tracker": True,
     "rrsp_tracker": True,
     "fhsa_tracker": True,
+    "retirement_planner": True,
 }
 
 SUPPORTED_TRANSACTION_TYPES = {

@@ -25,7 +25,7 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(response.json(), {"ok": True, "service": "django", "status": "healthy"})
 
     def test_spa_index_and_routes(self):
-        for route in ["/", "/login", "/holdings", "/credit-card", "/chequing", "/tfsa", "/rrsp", "/fhsa", "/acb", "/net-worth", "/import", "/settings"]:
+        for route in ["/", "/login", "/holdings", "/credit-card", "/chequing", "/tfsa", "/rrsp", "/fhsa", "/acb", "/net-worth", "/import", "/retirement", "/settings"]:
             response = self.client.get(route)
             self.assertEqual(response.status_code, 200)
             self.assertContains(response, '<div id="root">')
@@ -217,6 +217,54 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(data["symbol"], "AAPL")
         self.assertGreater(data["price"], 0)
         self.assertIn("currency", data)
+
+    def test_retirement_endpoints(self):
+        # 1. Config endpoint
+        res = self.client.get("/api/retirement/config")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["base_tax_year"], 2026)
+
+        # 2. Plan get / put
+        res = self.client.get("/api/retirement/plan")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("plan_data", res.json())
+
+        plan_update = {
+            "name": "My Quebec Plan",
+            "plan_data": {
+                "household": {
+                    "marital_status": "SINGLE",
+                    "primary": {
+                        "current_age": 62,
+                        "retirement_age": 65,
+                        "life_expectancy_age": 92,
+                    },
+                },
+                "spending": {
+                    "go_go_spending": 60000,
+                },
+            },
+        }
+        res = self.client.put("/api/retirement/plan", plan_update, content_type="application/json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["name"], "My Quebec Plan")
+
+        # 3. Simulate endpoint
+        sim_res = self.client.post("/api/retirement/simulate", plan_update, content_type="application/json")
+        self.assertEqual(sim_res.status_code, 200)
+        sim_data = sim_res.json()
+        self.assertIn("scorecard", sim_data)
+        self.assertIn("cash_flow_series", sim_data)
+        self.assertIn("audit_table", sim_data)
+        self.assertIn("monte_carlo", sim_data)
+        self.assertIn("comparison", sim_data)
+
+        # 4. Export CSV endpoint
+        csv_res = self.client.post("/api/retirement/export-csv", plan_update, content_type="application/json")
+        self.assertEqual(csv_res.status_code, 200)
+        self.assertEqual(csv_res.headers.get("Content-Type"), "text/csv")
+        self.assertContains(csv_res, "year,age_primary")
+
 
 
 class DatabaseBackupTests(TransactionTestCase):

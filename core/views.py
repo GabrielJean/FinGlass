@@ -33,6 +33,7 @@ rrsp_page = index_page
 fhsa_page = index_page
 import_page = index_page
 holdings_page = index_page
+retirement_page = index_page
 admin_users_page = index_page
 
 

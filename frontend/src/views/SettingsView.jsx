@@ -17,6 +17,7 @@ export function SettingsView({ user, onFeaturesChanged }) {
     tfsa_tracker: true,
     rrsp_tracker: true,
     fhsa_tracker: true,
+    retirement_planner: true,
   });
 
   // Password state
@@ -94,6 +95,7 @@ export function SettingsView({ user, onFeaturesChanged }) {
     { key: "tfsa_tracker", label: "TFSA Contribution Room Tracker", desc: "CRA Tax-Free Savings Account limits and withdrawal carry-forwards." },
     { key: "rrsp_tracker", label: "RRSP Deduction Limit Tracker", desc: "Registered Retirement Savings Plan deduction room & unused deductions." },
     { key: "fhsa_tracker", label: "FHSA Home Savings Tracker", desc: "First Home Savings Account $40,000 lifetime room and withdrawals." },
+    { key: "retirement_planner", label: "Quebec Retirement Planning Engine", desc: "Modules 1–11: QPP, OAS/GIS, CRA & RQ dual tax, RRSP Meltdown, Monte Carlo, and Estate." },
     { key: "net_worth", label: "Historical Net Worth Tracker", desc: "Periodic net worth snapshot progression timeline." },
     { key: "imports", label: "Import Wizard & Data Portability", desc: "Staged Wealthsimple statement review, CSV templates, full database exports." },
   ];

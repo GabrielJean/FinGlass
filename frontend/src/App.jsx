@@ -10,6 +10,7 @@ import { RrspView } from "./views/RrspView";
 import { FhsaView } from "./views/FhsaView";
 import { AcbView } from "./views/AcbView";
 import { NetWorthView } from "./views/NetWorthView";
+import { RetirementView } from "./views/RetirementView";
 import { ImportWizardView } from "./views/ImportWizardView";
 import { SettingsView } from "./views/SettingsView";
 import { AdminUsersView } from "./views/AdminUsersView";
@@ -24,6 +25,7 @@ import {
   Building,
   Home,
   LineChart,
+  Compass,
   UploadCloud,
   Sliders,
   Users,
@@ -53,6 +55,7 @@ export function App() {
     tfsa_tracker: true,
     rrsp_tracker: true,
     fhsa_tracker: true,
+    retirement_planner: true,
   });
 
   const getInitialViewFromPath = () => {
@@ -64,6 +67,7 @@ export function App() {
     if (path === "tfsa") return "tfsa";
     if (path === "rrsp") return "rrsp";
     if (path === "fhsa") return "fhsa";
+    if (path === "retirement") return "retirement";
     if (path === "acb") return "acb";
     if (path.startsWith("security/")) {
       const sym = path.replace("security/", "");
@@ -270,6 +274,16 @@ export function App() {
             </button>
           )}
 
+          {features.retirement_planner && (
+            <button
+              type="button"
+              className={currentView === "retirement" ? "selected" : ""}
+              onClick={() => navigateTo("retirement")}
+            >
+              <Compass size={17} /> Retirement Plan
+            </button>
+          )}
+
           <div className="nav-category">SYSTEM & TOOLS</div>
           {features.net_worth && (
             <button
@@ -350,6 +364,7 @@ export function App() {
         {currentView === "tfsa" && <TfsaView />}
         {currentView === "rrsp" && <RrspView />}
         {currentView === "fhsa" && <FhsaView />}
+        {currentView === "retirement" && <RetirementView />}
         {currentView === "acb" && <AcbView initialSymbol={viewParams?.symbol} />}
         {currentView === "net-worth" && <NetWorthView />}
         {currentView === "import" && <ImportWizardView />}

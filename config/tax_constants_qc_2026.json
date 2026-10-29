@@ -1,0 +1,175 @@
+{
+  "base_tax_year": 2026,
+  "macro_assumptions": {
+    "general_inflation": 0.021,
+    "wage_growth": 0.031,
+    "real_estate_appreciation": 0.031,
+    "asset_classes": {
+      "cash": {
+        "mu": 0.024,
+        "sigma": 0.015
+      },
+      "fixed_income": {
+        "mu": 0.032,
+        "sigma": 0.060
+      },
+      "canadian_equities": {
+        "mu": 0.063,
+        "sigma": 0.155
+      },
+      "us_equities": {
+        "mu": 0.064,
+        "sigma": 0.160
+      },
+      "intl_equities": {
+        "mu": 0.066,
+        "sigma": 0.170
+      }
+    }
+  },
+  "federal": {
+    "credit_conversion_rate": 0.14,
+    "brackets": [
+      { "threshold": 58523, "rate": 0.14 },
+      { "threshold": 117045, "rate": 0.205 },
+      { "threshold": 181440, "rate": 0.26 },
+      { "threshold": 258482, "rate": 0.29 },
+      { "threshold": null, "rate": 0.33 }
+    ],
+    "basic_personal_amount": {
+      "base": 16452,
+      "minimum": 14829,
+      "phase_out_start": 181440,
+      "phase_out_end": 258482
+    },
+    "age_amount": {
+      "max_amount": 9028,
+      "clawback_threshold": 45522,
+      "clawback_rate": 0.15
+    },
+    "pension_income_credit_max": 2000,
+    "metc": {
+      "fixed_threshold": 2833,
+      "net_income_pct": 0.03
+    },
+    "dividend_tax_credit": {
+      "gross_up_factor": 1.38,
+      "credit_rate": 0.150198
+    },
+    "quebec_abatement_rate": 0.165,
+    "oas_clawback": {
+      "threshold": 95323,
+      "rate": 0.15
+    },
+    "gis": {
+      "single_income_threshold": 22272,
+      "clawback_rate": 0.50
+    }
+  },
+  "quebec": {
+    "credit_conversion_rate": 0.14,
+    "brackets": [
+      { "threshold": 54345, "rate": 0.14 },
+      { "threshold": 108680, "rate": 0.19 },
+      { "threshold": 132245, "rate": 0.24 },
+      { "threshold": null, "rate": 0.2575 }
+    ],
+    "basic_personal_amount": 18952,
+    "line_361": {
+      "age_amount_base": 3906,
+      "retirement_income_base_max": 3470,
+      "reduction_threshold": 42090,
+      "reduction_rate": 0.1875
+    },
+    "metc": {
+      "net_income_pct": 0.03
+    },
+    "dividend_tax_credit": {
+      "gross_up_factor": 1.38,
+      "credit_rate": 0.1170
+    },
+    "ramq_prescription_drug": {
+      "max_premium_per_person": 789.00
+    },
+    "home_support_70_plus": {
+      "gross_credit_rate": 0.40,
+      "expense_caps": {
+        "autonomous_single": 19500,
+        "autonomous_couple": 39000,
+        "non_autonomous_single": 25500,
+        "non_autonomous_couple": 51000
+      },
+      "income_thresholds": {
+        "threshold_1": 72465,
+        "threshold_2": 117590
+      },
+      "reduction_rates": {
+        "tier_1": 0.03,
+        "tier_2_autonomous": 0.07
+      }
+    },
+    "solidarity_credit": {
+      "single_base": 1150,
+      "couple_base": 1500,
+      "threshold_single": 41000,
+      "reduction_rate": 0.06
+    }
+  },
+  "pensions": {
+    "qpp": {
+      "max_monthly_at_65": 1507.65,
+      "max_annual_at_65": 18091.80,
+      "early_reduction_per_month": 0.006,
+      "deferral_bonus_per_month": 0.007,
+      "post_retirement_rate": 0.005,
+      "death_benefit": 2500
+    },
+    "oas": {
+      "max_annual_at_65": 9041.00,
+      "deferral_bonus_per_month": 0.006,
+      "age_75_step_up_multiplier": 1.10
+    }
+  },
+  "accounts": {
+    "rrsp": {
+      "annual_limit_2026": 33810,
+      "earned_income_pct": 0.18,
+      "mandatory_conversion_age": 71
+    },
+    "rrif_factors": {
+      "71": 0.0528,
+      "72": 0.0540,
+      "73": 0.0553,
+      "74": 0.0567,
+      "75": 0.0582,
+      "76": 0.0598,
+      "77": 0.0617,
+      "78": 0.0636,
+      "79": 0.0658,
+      "80": 0.0682,
+      "81": 0.0708,
+      "82": 0.0738,
+      "83": 0.0771,
+      "84": 0.0808,
+      "85": 0.0851,
+      "86": 0.0899,
+      "87": 0.0955,
+      "88": 0.1021,
+      "89": 0.1099,
+      "90": 0.1192,
+      "91": 0.1306,
+      "92": 0.1449,
+      "93": 0.1634,
+      "94": 0.1879,
+      "95": 0.2000
+    },
+    "tfsa": {
+      "annual_limit_2026": 7000,
+      "rounding_increment": 500
+    }
+  },
+  "estate": {
+    "liquidation_allowance_notarized": 3500,
+    "will_verification_fee_non_notarized": 2500
+  }
+}
