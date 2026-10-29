@@ -43,6 +43,7 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          provenance: false
           build-args: |
             APP_GITHUB_REPOSITORY=${{ github.repository }}
             APP_GITHUB_DEFAULT_BRANCH=main
