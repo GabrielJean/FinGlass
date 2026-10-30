@@ -76,7 +76,6 @@ class UserAdmin(DjangoUserAdmin):
 
     @admin.action(description="View user statistics")
     def view_statistics(self, request, queryset):
-        from django.contrib.admin import messages
         stats = []
         for user in queryset:
             stats.append(f"{user.username}: active={user.is_active}, staff={user.is_staff}")

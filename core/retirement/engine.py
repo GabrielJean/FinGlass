@@ -1,16 +1,12 @@
 import csv
 import io
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from .config import load_raw_tax_constants, TaxConstantsIndexed
 from .models import (
-    AccountBalances,
     ExecutiveScorecard,
     HouseholdProfile,
-    PersonProfile,
     SimulationParameters,
-    SimulationResult,
-    StrategyComparison,
     StrategyConfig,
     YearlyAuditRow,
 )
@@ -29,7 +25,7 @@ from .estate import (
     compute_terminal_estate,
     execute_spousal_rollover_first_death,
 )
-from .monte_carlo import run_monte_carlo_simulation, MonteCarloSimulationResult
+from .monte_carlo import run_monte_carlo_simulation
 
 
 def run_deterministic_projection(

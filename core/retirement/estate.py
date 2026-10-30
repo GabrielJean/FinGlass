@@ -1,9 +1,8 @@
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
 from .config import TaxConstantsIndexed
 from .models import AccountBalances, HouseholdProfile, StrategyConfig
 from .accounts import StatutoryAccountState
-from .tax import calculate_individual_tax, TaxCalculationResult
+from .tax import calculate_individual_tax
 
 
 @dataclass

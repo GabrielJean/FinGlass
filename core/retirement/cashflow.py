@@ -1,10 +1,8 @@
-from typing import Dict, List, Optional, Tuple
+from typing import List, Optional, Tuple
 from .config import TaxConstantsIndexed
 from .models import (
-    AccountBalances,
     HouseholdProfile,
     LumpyEvent,
-    PersonProfile,
     SpendingProfile,
     StrategyConfig,
 )
@@ -14,12 +12,10 @@ from .accounts import (
     calculate_lif_minimum,
     sell_non_registered,
     deposit_non_registered,
-    process_real_estate_year,
 )
 from .tax import (
     calculate_individual_tax,
     optimize_pension_income_splitting,
-    TaxCalculationResult,
 )
 
 

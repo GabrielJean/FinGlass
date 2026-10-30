@@ -16,7 +16,6 @@ from core.services.tfsa_service import (
     get_user_tfsa_opening_balance,
     get_user_tfsa_opening_balance_base_year,
     is_user_tfsa_opening_balance_configured,
-    list_user_tfsa_annual_limits,
     reset_user_tfsa_data,
     set_user_tfsa_opening_balance,
     set_user_tfsa_opening_balance_base_year,

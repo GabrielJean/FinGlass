@@ -58,7 +58,7 @@
   - `python3 -m venv .venv && source .venv/bin/activate`
   - `pip install -r requirements.txt`
   - `python manage.py migrate` (apply database migrations)
-  - `python manage.py runserver` or `python run.py` (serves on `http://localhost:8000`)
+  - `python manage.py runserver` (serves on `http://localhost:8000`)
 - Docker run: `docker compose up --build`.
 - Database migrations:
   - After modifying models: `python manage.py makemigrations`

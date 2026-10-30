@@ -1,7 +1,6 @@
+from django.conf import settings
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
-from django.shortcuts import redirect
-from django.conf import settings
 
 
 class LoginRequiredMiddleware:

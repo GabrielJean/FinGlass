@@ -1,4 +1,3 @@
-from typing import Optional
 from .config import TaxConstantsIndexed
 from .models import PersonProfile
 

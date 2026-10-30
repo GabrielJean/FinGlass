@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, Tuple, Optional
+from typing import Tuple
 from .config import TaxConstantsIndexed
 
 

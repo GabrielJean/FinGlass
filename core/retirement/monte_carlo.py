@@ -1,8 +1,8 @@
 import math
 import random
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
-from .models import AssetAllocation, MacroAssumptions, SimulationParameters
+from typing import Dict, List
+from .models import SimulationParameters
 
 
 def box_muller_normal(mu: float, sigma: float) -> float:

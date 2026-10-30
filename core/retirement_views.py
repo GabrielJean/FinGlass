@@ -1,7 +1,6 @@
 import json
 from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
-from django.contrib.auth.decorators import login_required
 
 from core.models import RetirementPlan
 from core.retirement import (
