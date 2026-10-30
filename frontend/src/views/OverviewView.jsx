@@ -13,6 +13,8 @@ import {
   RefreshCw,
   PlusCircle,
   BarChart3,
+  Sparkles,
+  CheckCircle2,
 } from "lucide-react";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
 import "../components/charts/chartSetup";
@@ -453,6 +455,38 @@ export function OverviewView({ onNavigate }) {
         </div>
       )}
 
+      {/* Friendly Co-Pilot Health Summary Banner */}
+      <section className="friendly-banner">
+        <div className="friendly-banner-content">
+          <div className="friendly-banner-icon">
+            <Sparkles size={28} />
+          </div>
+          <div>
+            <h2 className="friendly-banner-title">Welcome to Your Financial Dashboard</h2>
+            <p className="friendly-banner-desc">
+              Here is your overall financial health in plain English: your total investments, how much your money has grown, and your available tax-sheltered contribution room.
+            </p>
+          </div>
+        </div>
+
+        <div className="friendly-pills">
+          <div className="friendly-pill">
+            <span className="friendly-pill-label">Total Assets</span>
+            <span className="friendly-pill-val" style={{ color: "var(--accent)" }}>{formatMoney(totalMarket)}</span>
+          </div>
+          <div className="friendly-pill">
+            <span className="friendly-pill-label">All-Time Growth</span>
+            <span className="friendly-pill-val" style={{ color: isPositive ? "#34d399" : "#f87171" }}>
+              {isPositive ? "+" : ""}{formatMoney(unrealizedReturn)}
+            </span>
+          </div>
+          <div className="friendly-pill">
+            <span className="friendly-pill-label">Tax-Free TFSA Room</span>
+            <span className="friendly-pill-val" style={{ color: "#38bdf8" }}>{formatMoney(tfsaRemaining)}</span>
+          </div>
+        </div>
+      </section>
+
       {/* Primary KPI Row */}
       <section className="kpi-grid">
         <div className="kpi-card">
@@ -591,6 +625,39 @@ export function OverviewView({ onNavigate }) {
               <span>{(100 - fhsaUsedPct).toFixed(1)}% left</span>
             </div>
           </div>
+        </div>
+      </section>
+
+      {/* Plain-English Tips from your Financial Co-Pilot */}
+      <section className="friendly-tips-grid">
+        <div className="friendly-tip-card" onClick={() => onNavigate("tfsa")} style={{ cursor: "pointer" }}>
+          <div className="friendly-tip-head">
+            <span style={{ fontSize: "1.4rem" }}>🇨🇦</span>
+            <span>TFSA: 100% Tax-Free</span>
+          </div>
+          <p className="friendly-tip-body">
+            You have <strong>{formatMoney(tfsaRemaining)}</strong> in available room. Any growth, interest, or dividends earned inside your TFSA is completely shielded from CRA income taxes forever.
+          </p>
+        </div>
+
+        <div className="friendly-tip-card" onClick={() => onNavigate("rrsp")} style={{ cursor: "pointer" }}>
+          <div className="friendly-tip-head">
+            <span style={{ fontSize: "1.4rem" }}>🍁</span>
+            <span>RRSP: Tax Deductions</span>
+          </div>
+          <p className="friendly-tip-body">
+            You have <strong>{formatMoney(rrspRemaining)}</strong> in RRSP room. Every dollar deposited directly lowers your taxable income to generate an immediate income tax refund.
+          </p>
+        </div>
+
+        <div className="friendly-tip-card" onClick={() => onNavigate("retirement")} style={{ cursor: "pointer" }}>
+          <div className="friendly-tip-head">
+            <span style={{ fontSize: "1.4rem" }}>🧭</span>
+            <span>Retirement Co-Pilot</span>
+          </div>
+          <p className="friendly-tip-body">
+            See your guaranteed monthly Quebec Pension (QPP), Old Age Security, and savings plan in plain English in the easy Retirement Planner.
+          </p>
         </div>
       </section>
 

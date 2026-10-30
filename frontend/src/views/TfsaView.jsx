@@ -299,6 +299,17 @@ export function TfsaView() {
         </div>
       )}
 
+      {/* Friendly Co-Pilot Explainer */}
+      <div className="friendly-explainer">
+        <div className="friendly-explainer-icon">🇨🇦</div>
+        <div>
+          <h4 className="friendly-explainer-title">TFSA in Plain English</h4>
+          <p className="friendly-explainer-text">
+            The Tax-Free Savings Account (TFSA) is Canada's most powerful tax shelter. Any money you deposit grows <strong>100% tax-free</strong>. You can withdraw your money at any time without paying income tax, and whatever amount you withdraw is added back to your contribution room on January 1st of the following year!
+          </p>
+        </div>
+      </div>
+
       {/* KPI Cards */}
       <section className="kpi-grid">
         <div className="kpi-card">

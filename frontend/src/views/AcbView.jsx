@@ -337,6 +337,17 @@ export function AcbView({ initialSymbol = null }) {
         </div>
       )}
 
+      {/* Friendly Co-Pilot Explainer */}
+      <div className="friendly-explainer">
+        <div className="friendly-explainer-icon">🧾</div>
+        <div>
+          <h4 className="friendly-explainer-title">Capital Gains & ACB in Plain English</h4>
+          <p className="friendly-explainer-text">
+            <strong>ACB (Adjusted Cost Base)</strong> is simply the true total price you paid for your shares (including commissions and reinvested distributions). When you sell shares in a taxable account, the CRA only taxes your profit above your ACB. Tracking this accurately ensures you never pay tax twice on the same dollars!
+          </p>
+        </div>
+      </div>
+
       {/* Main View: Security List vs Security Ledger Drill-down */}
       {!selectedSecurity ? (
         <>

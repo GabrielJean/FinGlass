@@ -301,6 +301,17 @@ export function RrspView() {
         </div>
       )}
 
+      {/* Friendly Co-Pilot Explainer */}
+      <div className="friendly-explainer">
+        <div className="friendly-explainer-icon">🍁</div>
+        <div>
+          <h4 className="friendly-explainer-title">RRSP in Plain English</h4>
+          <p className="friendly-explainer-text">
+            The Registered Retirement Savings Plan (RRSP) cuts your tax bill today. Every dollar you deposit is <strong>subtracted directly from your taxable income</strong>, resulting in an income tax refund this tax season. Your money grows sheltered from taxes until you retire!
+          </p>
+        </div>
+      </div>
+
       {/* KPI Cards */}
       <section className="kpi-grid">
         <div className="kpi-card">
