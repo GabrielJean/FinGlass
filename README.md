@@ -1,150 +1,145 @@
 # FinGlass
 
-Simple web app to track securities transactions over time, with Adjusted Cost Base (ACB) calculations.
+[![FinGlass Version](https://img.shields.io/badge/version-1.4.4-blue.svg)](VERSION)
+[![Python](https://img.shields.io/badge/python-3.12-brightgreen.svg)](https://www.python.org/)
+[![Django](https://img.shields.io/badge/django-5.0-green.svg)](https://www.djangoproject.com/)
+[![React](https://img.shields.io/badge/react-18-blue.svg)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/vite-5-purple.svg)](https://vitejs.dev/)
+[![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Stack
-- Python API: Django (Python 3.12)
-- Database: SQLite
-- Frontend: Vite + React (Node.js 26)
-- Containerization: Docker (multi-stage Node 26 + Python 3.12) + Docker Compose
+**FinGlass** is a modern, privacy-first personal wealth intelligence and retirement planning platform built specifically for Canadian investors and retirees, with specialized support for Quebec statutory tax, pension, and estate optimization.
 
-## Architecture
-- Django project: `finglass_project/` (settings, urls, WSGI/ASGI).
-- Django apps: `accounts/` (custom user + auth endpoints) and `core/` (core models, middleware, API routes).
-- Data/persistence: Django ORM models + versioned migrations in `accounts/migrations` and `core/migrations`.
-- Frontend: Modern Single Page App in `frontend/` powered by Vite & React, building directly to `static/app.js` and `static/app.css`, served via Django's `templates/index.html`.
+---
 
+## 🌟 Key Capabilities
 
+### 1. 📈 Capital Gains & Adjusted Cost Base (ACB) Tracker
+- **Strict CRA Compliance:** Implements Canada Revenue Agency weighted-average cost rules.
+- **Transaction Ledger:** Real-time rolling share balance, total ACB, ACB per share, and realized capital gains.
+- **Corporate Actions & Distributions:** Handles Return of Capital (ROC) ACB reductions and Reinvested Capital Gains phantom distributions with negative ACB protection.
 
+### 2. 🍁 Quebec Statutory Retirement & Estate Optimizer
+- **Dual CRA & Revenu Québec Engine:** Progressive bracket solver (2026 base year) with Quebec Abatement (16.5%), Age Credits, Pension Income Tax Credits, and RAMQ drug insurance.
+- **Pensions:** Exact actuarial adjustment factors for QPP/RRQ (ages 60–72), OAS residency ratios and clawback thresholds (\$90,997), and Guaranteed Income Supplement (GIS).
+- **RRSP Meltdown Sandbox:** Compares systematic early RRSP/RRIF withdrawals against standard ad-hoc decumulation to prevent tax spikes and protect OAS from clawbacks.
+- **Monte Carlo Sequence-of-Returns Simulator:** 1,000 stochastic trials using Box-Muller transforms across cash, bond, and equity asset allocations.
+- **Senior / Retiree Mode:** Switch between comprehensive quantitative audits and a simplified, large-print, jargon-free mode with plain-English health status and 3 actionable steps.
+- **Terminal Estate & Rollovers:** Deemed disposition at death, spousal rollovers, terminal tax liability, and liquidity solvency checks.
 
+### 3. 🛡️ Canadian Registered Tax Shelters
+- **TFSA (Tax-Free Savings Account):** Cumulative statutory room schedules, contribution and withdrawal tracking, room re-crediting rules, and CRA 1%/mo excess contribution warnings.
+- **RRSP (Registered Retirement Savings Plan):** CRA deduction limits, earned income room generation (18%), unused contributions, and marginal tax refund projections.
+- **FHSA (First Home Savings Account):** Annual (\$8k) and lifetime (\$40k) limits, carry-forward room tracking, and qualifying withdrawal status.
 
+### 4. 💳 Banking & Cash Flow Intelligence
+- **Chequing & Cash Flow:** Account balances, monthly cash burn rates, categorized transactions, and runway indicators.
+- **Credit Card Expenses:** Statement tracking, category breakdowns, and transaction visibility toggles for discretionary spend.
 
-## Features
-- Portfolio overview dashboard with charts and summaries
-- Per-security detail/edit page with full transaction history
-- **Intuitive Import Wizard** with guided step-by-step process for:
-	- Investment transactions (Activities CSV from your broker)
-	- Holdings snapshots (Portfolio positions CSV from your broker)
-	- Credit card transactions (Rogers Bank statement CSV)
-	- Tax documents (ROC / Reinvested Capital Gains PDFs)
-- Preview and review all imports before committing
-- Add manual transactions (Buy, Sell, Return of Capital)
-- View per-security summary (shares, ACB, ACB/share, realized capital gain)
-- View rolling transaction ledger over time for each security
-- Overview charts for portfolio allocation and market value
-- Investment accounts dashboard with holdings breakdown
-- Credit card expense tracking with category breakdowns
-- Net worth tracker with historical graphs
+### 5. 🧙‍♂️ Smart Import Wizard & Backup Engine
+- **Guided Importer:** Drag-and-drop CSV and PDF import wizard with immediate validation and pre-commit staging review.
+- **Supported Formats:** Broker activity statements, holdings snapshots, Rogers Bank / Scotiabank credit card statements, and T3/T5 tax slips.
+- **Zero Lock-In:** Complete single-click JSON backup export and restore.
 
-## Run locally (without Docker)
+---
+
+## 🏗️ System Architecture
+
+FinGlass follows a clean, decoupled architecture:
+- **Frontend:** React 18 Single Page App powered by Vite 5, packaged into `static/app.js` and `static/app.css`.
+- **Backend:** Django 5 (Python 3.12) running under Gunicorn with modular views, domain services, and zero external runtime telemetry.
+- **Database:** Persistent SQLite database stored in `./data/finglass.sqlite3`.
+
+```
+FinGlass/
+├── accounts/          # User authentication & RBAC
+├── config/            # Externalized tax & statutory constants (QC 2026)
+├── core/              # Main business application
+│   ├── management/    # Management CLI commands (seed_demo_data)
+│   ├── migrations/    # Schema migrations
+│   ├── retirement/    # Quebec statutory retirement engine (Modules 1–11)
+│   ├── services/      # Business logic, ACB math, and CSV parsers
+│   └── views/         # Modular API view endpoints
+├── data/              # SQLite database storage
+├── docs/              # In-depth architectural & domain documentation
+├── finglass_project/  # Django settings, WSGI, ASGI
+├── frontend/          # React 18 frontend source code
+├── static/            # Compiled static bundle (JS, CSS)
+└── templates/         # Base SPA template
+```
+
+---
+
+## 🚀 Quickstart
+
+### Running with Docker Compose (Recommended)
+
+The easiest way to start FinGlass:
+
 ```bash
-# 1. Setup Python backend
+docker compose up -d --build
+```
+
+Access the application in your browser:
+- **URL:** [http://localhost:8000](http://localhost:8000)
+- On first launch, the setup wizard will prompt you to create your secure admin account.
+
+### Local Development (Without Docker)
+
+```bash
+# 1. Setup Python Virtual Environment
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 python manage.py migrate
 
-# 2. Build or run frontend
-npm run build     # compiles Vite React frontend into static/
-# or: npm run dev # runs Vite hot module reload
+# 2. Build Frontend Bundle
+cd frontend
+npm ci
+npm run build
+cd ..
 
-# 3. Start server
+# 3. Seed Demo Data (Optional)
+python manage.py seed_demo_data
+
+# 4. Start Development Server
 python manage.py runserver
 ```
 
-Open: http://localhost:8000
+---
 
-Security env vars:
-- Set `SECRET_KEY` in production to use a stable strong session-signing key.
-- Optional: set `SESSION_COOKIE_SECURE=true` when serving over HTTPS.
-- Optional: set `ALLOWED_HOSTS` (comma-separated) for deployment hostnames.
-- Optional: set `DJANGO_DEBUG=1` for local debugging only.
+## ⚙️ Configuration & Environment Variables
 
-Market data setup:
-- Real-time quote search and holdings market value refresh use a free, zero-authentication market data service out of the box with automatic resolution for Canadian (.TO) and US tickers.
-- No API key or config file is required.
-- Optional fallback: set `ALPHA_VANTAGE_API_KEY` in the environment if desired.
+| Variable | Default | Purpose |
+| :--- | :--- | :--- |
+| `APP_ENV` | `production` | Set to `development` for local debugging |
+| `DJANGO_DEBUG` | `0` | Enable Django debug mode (disable in production) |
+| `SECRET_KEY` | *(generated)* | Cryptographic key for session cookie signing |
+| `ALLOWED_HOSTS` | `*` | Comma-separated list of valid hostnames |
+| `SESSION_COOKIE_SECURE` | `0` | Set to `1` when serving behind an HTTPS reverse proxy |
+| `SEED_DEMO_DATA` | `0` | Set to `1` to automatically populate sample accounts |
 
-## Using the Import Wizard
+---
 
-The revamped import wizard provides a clear, step-by-step experience for bringing data into FinGlass:
+## 📚 Documentation Index
 
-### Getting Started
-1. From the dashboard, click **"Launch Import Wizard"**
-2. Select the type of data you want to import:
-   - **Investment Transactions** - For ACB tracking
-   - **Holdings Snapshot** - Current portfolio positions
-   - **Credit Card Transactions** - Expense tracking
-   - **Tax Documents** - ROC and reinvested gains
+For in-depth guides and technical details, consult the documentation suite in [`docs/`](docs/):
 
-### Import Process
-1. **Select Type**: Choose what you're importing
-2. **Upload File**: Drag & drop or browse for your file
-   - See format requirements and download templates
-   - File is validated immediately
-3. **Review & Edit**: Preview parsed data before importing
-   - Edit any fields if needed
-   - See warnings about duplicates or issues
-4. **Complete**: Data is imported and dashboard updates
+- 📐 [**System Architecture (`docs/ARCHITECTURE.md`)**](docs/ARCHITECTURE.md) — Technical topology, security model, and directory structure.
+- 🔌 [**REST API Reference (`docs/API.md`)**](docs/API.md) — Complete endpoint reference with request/response schemas.
+- 🍁 [**Retirement Engine Manual (`docs/RETIREMENT_ENGINE.md`)**](docs/RETIREMENT_ENGINE.md) — Detailed statutory rules, QPP/OAS formulas, dual-tax engine, and Monte Carlo specs.
+- 🛡️ [**Tax Shelters Guide (`docs/TAX_SHELTERS.md`)**](docs/TAX_SHELTERS.md) — TFSA, RRSP, and FHSA contribution room rules and CRA penalty logic.
+- 📥 [**Import Guide (`docs/IMPORT_GUIDE.md`)**](docs/IMPORT_GUIDE.md) — Broker activity CSVs, holdings exports, and statement templates.
+- 📑 [**IPF 2026 Engine Specification (`docs/SPEC.md`)**](docs/SPEC.md) — Complete mathematical equations and statutory source references.
 
-### File Format Requirements
+---
 
-**Investment Transactions CSV:**
-Required columns: `transaction_date`, `symbol`, `activity_type`, `activity_sub_type`, `quantity`, `net_cash_amount`, `commission`
+## 🧪 Testing & Verification
 
-**Holdings Snapshot CSV:**
-Required columns: `Symbol`, `Account Number`, `Account Name`, `Account Type`, `Quantity`, `Market Price`, `Market Value`, `Book Value (CAD)`
-
-**Credit Card CSV:**
-Download from Rogers Bank or Scotiabank online banking. Should include: Transaction Date, Posted Date, Description, Amount, Category
-
-**Tax PDFs:**
-T3/T5 slips with Return of Capital or reinvested capital gains. Include security symbol in filename (e.g., `VDY-T3-2024.pdf`)
-
-### Template Files
-Each import type includes a downloadable template showing the expected format. Click "Download Template File" in the wizard to get a sample.
-
-## Legacy Import (Deprecated)
-The old dropdown-based import on the overview page has been replaced with the Import Wizard, which provides:
-- Clear descriptions of what each import type does
-- Format requirements shown upfront
-- Better error messages
-- Consistent preview/review flow for all imports
-
-## Run with Docker Compose (Development)
-```bash
-docker compose up --build
-```
-
-Development compose supports iterative reload:
-- Python code changes auto-reload via Django `runserver`.
-- Templates and static files are served in dev mode (no manifest hashing).
-- Browser refresh is required to see frontend JS/CSS updates.
-
-Default development env vars in Compose:
-- `APP_ENV=development`
-- `DJANGO_DEBUG=1`
-- `ALLOWED_HOSTS=localhost,127.0.0.1`
-- `SESSION_COOKIE_SECURE=0`
-- `SECURE_SSL_REDIRECT=0`
-
-You can override any of these by exporting env vars or using a `.env` file.
-
-Optional environment setup (recommended):
-- Create a `.env` file in project root.
-- Set `SECRET_KEY` to a strong random value so sessions remain valid across container restarts.
-
-Open: http://localhost:8000
-
-Data is persisted in `./data/finglass.sqlite3`.
-
-## Run Dockerfile image (Production-style)
-Build and run the production image directly:
+Run the full automated test suite inside Docker:
 
 ```bash
-docker build -t finglass:prod .
-docker run --rm -p 8000:8000 -e DJANGO_DEBUG=0 -e ALLOWED_HOSTS=* finglass:prod
+docker compose exec -T finglass-web python manage.py test
 ```
 
-The container starts Gunicorn via `finglass_project.wsgi:application`.
-The Dockerfile defaults are production-oriented (`APP_ENV=production`, `DJANGO_DEBUG=0`).
+Per project release guidelines ([`AGENTS.md`](AGENTS.md)), all code changes must bump versions in `VERSION` and `frontend/package.json`, recompile the frontend bundle (`npm run build`), pass all unit tests, and rebuild the container.
