@@ -10,12 +10,19 @@ from core.retirement import (
     SimulationParameters,
     calculate_qpp_annual,
     calculate_oas_gross_annual,
+    calculate_gis_annual,
     calculate_db_pension_annual,
     calculate_individual_tax,
     optimize_pension_income_splitting,
     run_retirement_simulation,
     export_audit_csv_string,
+    LumpyEvent,
+    StatutoryAccountState,
+    compute_terminal_estate,
+    execute_spousal_rollover_first_death,
+    run_monte_carlo_simulation,
 )
+from core.retirement.monte_carlo import box_muller_normal
 
 
 class RetirementEngineTests(TestCase):
@@ -223,4 +230,103 @@ class RetirementEngineTests(TestCase):
         csv_str = export_audit_csv_string(res["audit_table"])
         self.assertTrue(len(csv_str) > 0)
         self.assertIn("year,age_primary", csv_str)
+
+    def test_gis_annual_calculation(self):
+        # 1. Low income senior gets maximum GIS
+        gis_max = calculate_gis_annual(65, 0.0, self.constants_0)
+        self.assertGreater(gis_max, 10000.0)
+
+        # 2. High income senior gets 0 GIS (fully clawed back)
+        gis_zero = calculate_gis_annual(65, 50000.0, self.constants_0)
+        self.assertEqual(gis_zero, 0.0)
+
+        # 3. Under age 65 gets 0 GIS
+        gis_under65 = calculate_gis_annual(64, 0.0, self.constants_0)
+        self.assertEqual(gis_under65, 0.0)
+
+    def test_terminal_estate_single_vs_spousal_rollover(self):
+        state = StatutoryAccountState(
+            rrsp_balance=200000.0,
+            lif_balance=0.0,
+            tfsa_balance=50000.0,
+            tfsa_room=10000.0,
+            spouse_rrsp_balance=100000.0,
+            spouse_lif_balance=0.0,
+            spouse_tfsa_balance=40000.0,
+            spouse_tfsa_room=5000.0,
+            non_reg_market_value=80000.0,
+            non_reg_acb=50000.0,
+            primary_residence_value=400000.0,
+            mortgage_balance=0.0,
+            secondary_property_value=0.0,
+            secondary_property_acb=0.0,
+            has_downsized=False,
+        )
+        household = HouseholdProfile(marital_status="SINGLE")
+        acc_cfg = AccountBalances(rrsp=200000.0, tfsa=50000.0)
+        strat = StrategyConfig()
+
+        # Terminal estate for single
+        estate_res = compute_terminal_estate(85, state, household, acc_cfg, strat, self.constants_0)
+        self.assertEqual(estate_res.gross_estate_value, 870000.0)
+        self.assertGreater(estate_res.terminal_tax_bill, 0.0)
+        self.assertLess(estate_res.net_after_tax_estate, estate_res.gross_estate_value)
+
+        # Test spousal rollover on first death (primary survives)
+        execute_spousal_rollover_first_death(state, survivor_is_primary=True)
+        self.assertEqual(state.rrsp_balance, 300000.0)
+        self.assertEqual(state.spouse_rrsp_balance, 0.0)
+        self.assertEqual(state.tfsa_balance, 90000.0)
+        self.assertEqual(state.spouse_tfsa_balance, 0.0)
+
+    def test_lumpy_events_simulation(self):
+        params = SimulationParameters(
+            household=HouseholdProfile(
+                marital_status="SINGLE",
+                primary=PersonProfile(current_age=60, retirement_age=65, life_expectancy_age=80),
+            ),
+            accounts=AccountBalances(
+                rrsp=200000.0,
+                tfsa=50000.0,
+                primary_residence_value=400000.0,
+            ),
+            spending=SpendingProfile(go_go_spending=45000.0),
+            lumpy_events=[
+                LumpyEvent(
+                    id="vehicle_purchase",
+                    label="New Vehicle",
+                    type="OUTFLOW",
+                    amount=30000.0,
+                    recurrence="ONCE",
+                    target_age=63,
+                ),
+            ],
+        )
+        res = run_retirement_simulation(params, include_comparison=False, include_monte_carlo=False)
+        self.assertIn("scorecard", res)
+        self.assertIn("audit_table", res)
+
+    def test_monte_carlo_distribution(self):
+        # 1. Box-Muller transform produces numbers around mean
+        samples = [box_muller_normal(0.06, 0.15) for _ in range(500)]
+        mean = sum(samples) / len(samples)
+        self.assertAlmostEqual(mean, 0.06, delta=0.04)
+
+        # 2. Run simulation with Monte Carlo enabled
+        params = SimulationParameters(
+            household=HouseholdProfile(
+                marital_status="SINGLE",
+                primary=PersonProfile(current_age=65, retirement_age=65, life_expectancy_age=85),
+            ),
+            accounts=AccountBalances(rrsp=500000.0, tfsa=100000.0),
+            spending=SpendingProfile(go_go_spending=40000.0),
+        )
+        res = run_retirement_simulation(params, include_monte_carlo=True, include_comparison=False)
+        mc_data = res["monte_carlo"]
+        self.assertGreaterEqual(mc_data["probability_of_success"], 0.0)
+        self.assertLessEqual(mc_data["probability_of_success"], 100.0)
+        self.assertIn("percentiles", mc_data)
+        self.assertIn("10th", mc_data["percentiles"])
+        self.assertIn("50th", mc_data["percentiles"])
+        self.assertIn("90th", mc_data["percentiles"])
 

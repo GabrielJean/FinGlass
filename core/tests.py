@@ -257,6 +257,250 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(csv_res.headers.get("Content-Type"), "text/csv")
         self.assertContains(csv_res, "year,age_primary")
 
+    def test_rrsp_full_workflow(self):
+        # 1. Set opening balance
+        res = self.client.put(
+            "/api/rrsp/opening-balance",
+            {"opening_balance": 45000, "base_year": 2024},
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+
+        # 2. Create account
+        acc_res = self.client.post(
+            "/api/rrsp/accounts",
+            {"account_name": "Questrade RRSP", "account_number": "Q-RRSP-1"},
+            content_type="application/json",
+        )
+        self.assertIn(acc_res.status_code, (200, 201))
+        acc_id = acc_res.json()["id"]
+
+        # 3. Add contribution
+        res = self.client.post(
+            "/api/rrsp/contributions",
+            {
+                "rrsp_account_id": acc_id,
+                "contribution_date": "2024-03-01",
+                "amount": 10000,
+                "contribution_type": "Deposit",
+                "memo": "Annual RRSP deduction",
+            },
+            content_type="application/json",
+        )
+        self.assertIn(res.status_code, (200, 201))
+
+        # 4. Check summary
+        res = self.client.get("/api/rrsp/summary")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["opening_balance_configured"])
+
+        # 5. Reset
+        reset_res = self.client.post("/api/rrsp/reset")
+        self.assertEqual(reset_res.status_code, 200)
+
+    def test_fhsa_full_workflow(self):
+        # 1. Set opening balance
+        res = self.client.put(
+            "/api/fhsa/opening-balance",
+            {"opening_balance": 8000, "base_year": 2024},
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+
+        # 2. Create account
+        acc_res = self.client.post(
+            "/api/fhsa/accounts",
+            {"account_name": "EQ Bank FHSA", "account_number": "EQ-FHSA-1"},
+            content_type="application/json",
+        )
+        self.assertIn(acc_res.status_code, (200, 201))
+        acc_id = acc_res.json()["id"]
+
+        # 3. Add contribution
+        res = self.client.post(
+            "/api/fhsa/contributions",
+            {
+                "fhsa_account_id": acc_id,
+                "contribution_date": "2024-04-10",
+                "amount": 8000,
+                "contribution_type": "Deposit",
+                "memo": "First Year Max",
+            },
+            content_type="application/json",
+        )
+        self.assertIn(res.status_code, (200, 201))
+
+        # 4. Check summary
+        res = self.client.get("/api/fhsa/summary")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["opening_balance_configured"])
+
+        # 5. Reset
+        reset_res = self.client.post("/api/fhsa/reset")
+        self.assertEqual(reset_res.status_code, 200)
+
+    def test_net_worth_api(self):
+        # Create record
+        create_res = self.client.post(
+            "/api/net-worth",
+            {
+                "entry_date": "2024-12-31",
+                "amount": 350000,
+                "note": "Year end",
+            },
+            content_type="application/json",
+        )
+        self.assertIn(create_res.status_code, (200, 201))
+        record_id = create_res.json()["id"]
+
+        # List records
+        list_res = self.client.get("/api/net-worth")
+        self.assertEqual(list_res.status_code, 200)
+        self.assertTrue(len(list_res.json()) >= 1)
+
+        # Update record
+        update_res = self.client.put(
+            f"/api/net-worth/{record_id}",
+            {
+                "entry_date": "2024-12-31",
+                "amount": 380000,
+                "note": "Updated",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(update_res.status_code, 200)
+        self.assertEqual(update_res.json()["amount"], 380000.0)
+
+        # Delete record
+        del_res = self.client.delete(f"/api/net-worth/{record_id}")
+        self.assertEqual(del_res.status_code, 200)
+
+    def test_settings_features_api(self):
+        res = self.client.get("/api/settings/features")
+        self.assertEqual(res.status_code, 200)
+        features = res.json()["features"]
+        self.assertIn("retirement_planner", features)
+
+        # Update settings
+        features["retirement_planner"] = False
+        put_res = self.client.put(
+            "/api/settings/features",
+            {"features": features},
+            content_type="application/json",
+        )
+        self.assertEqual(put_res.status_code, 200)
+        self.assertFalse(put_res.json()["features"]["retirement_planner"])
+
+        # Restore
+        features["retirement_planner"] = True
+        self.client.put(
+            "/api/settings/features",
+            {"features": features},
+            content_type="application/json",
+        )
+
+    def test_banking_transactions_advanced(self):
+        from core.models import ChequingTransaction, CreditCardTransaction
+
+        # Create chequing transactions
+        t1 = ChequingTransaction.objects.create(
+            user=self.user,
+            account_label="Main Account",
+            transaction_date="2024-05-01",
+            description="Grocery Store",
+            amount=-120.50,
+            category="Groceries",
+        )
+        t2 = ChequingTransaction.objects.create(
+            user=self.user,
+            account_label="Main Account",
+            transaction_date="2024-05-02",
+            description="Coffee Shop",
+            amount=-5.75,
+            category="Dining Out",
+        )
+
+        # Recategorize chequing transactions
+        recat_res = self.client.post("/api/chequing/transactions/recategorize")
+        self.assertEqual(recat_res.status_code, 200)
+        self.assertEqual(recat_res.json()["scanned"], 2)
+
+        # Hide single transaction
+        hide_res = self.client.patch(
+            f"/api/chequing/transactions/{t1.id}/hidden",
+            {"hidden": True},
+            content_type="application/json",
+        )
+        self.assertEqual(hide_res.status_code, 200)
+        t1.refresh_from_db()
+        self.assertTrue(t1.is_hidden)
+
+        # Delete many chequing transactions
+        del_res = self.client.post(
+            "/api/chequing/transactions/delete-many",
+            {"ids": [t1.id, t2.id]},
+            content_type="application/json",
+        )
+        self.assertEqual(del_res.status_code, 200)
+        self.assertEqual(del_res.json()["deleted"], 2)
+
+        # Create credit card transaction
+        c1 = CreditCardTransaction.objects.create(
+            user=self.user,
+            provider="scotiabank",
+            card_label="Visa Card",
+            transaction_date="2024-05-05",
+            merchant_name="Gas Station",
+            amount=65.00,
+            merchant_category="Transportation",
+        )
+        # CC hide
+        cc_hide_res = self.client.patch(
+            f"/api/credit-card/transactions/{c1.id}/hidden",
+            {"hidden": True},
+            content_type="application/json",
+        )
+        self.assertEqual(cc_hide_res.status_code, 200)
+        c1.refresh_from_db()
+        self.assertTrue(c1.is_hidden)
+
+        # CC delete many
+        cc_del_res = self.client.post(
+            "/api/credit-card/transactions/delete-many",
+            {"ids": [c1.id]},
+            content_type="application/json",
+        )
+        self.assertEqual(cc_del_res.status_code, 200)
+        self.assertEqual(cc_del_res.json()["deleted"], 1)
+
+    def test_acb_advanced_edge_cases(self):
+        from core.services.acb_service import calculate_ledger_rows
+
+        # 1. Buy 100 shares @ $10 ($1000)
+        # 2. Return of Capital (ROC) of $150 -> reduces ACB to $850
+        # 3. Capital Gains Dividend of $50 -> increases ACB to $900
+        # 4. Partial Sell of 50 shares @ $15 ($750) -> capital gain = 750 - (900/100 * 50) = 750 - 450 = $300, remaining ACB = $450
+        # 5. ROC of $500 on $450 ACB -> ACB drops below 0 -> triggers $50 capital gain and resets ACB to $0
+        raw_trades = [
+            {"id": 1, "security": "XEQT.TO", "memo": "", "source": "", "trade_date": "2024-01-01", "transaction_type": "Buy", "shares": 100, "amount": 1000.0, "commission": 0.0},
+            {"id": 2, "security": "XEQT.TO", "memo": "", "source": "", "trade_date": "2024-04-01", "transaction_type": "Return of Capital", "shares": 0, "amount": 150.0, "commission": 0.0},
+            {"id": 3, "security": "XEQT.TO", "memo": "", "source": "", "trade_date": "2024-07-01", "transaction_type": "Capital Gains Dividend", "shares": 0, "amount": 50.0, "commission": 0.0},
+            {"id": 4, "security": "XEQT.TO", "memo": "", "source": "", "trade_date": "2024-09-01", "transaction_type": "Sell", "shares": 50, "amount": 750.0, "commission": 0.0},
+            {"id": 5, "security": "XEQT.TO", "memo": "", "source": "", "trade_date": "2024-11-01", "transaction_type": "Return of Capital", "shares": 0, "amount": 500.0, "commission": 0.0},
+        ]
+        rows = calculate_ledger_rows(raw_trades)
+        self.assertEqual(len(rows), 5)
+        # After ROC
+        self.assertEqual(rows[1]["acb"], 850.0)
+        # After Capital Gains Dividend
+        self.assertEqual(rows[2]["acb"], 900.0)
+        # After Sell: capital gain is 300, ACB is 450
+        self.assertEqual(rows[3]["capital_gain"], 300.0)
+        self.assertEqual(rows[3]["acb"], 450.0)
+        # After negative ACB ROC: extra 50 is capital gain, ACB resets to 0
+        self.assertEqual(rows[4]["capital_gain"], 50.0)
+        self.assertEqual(rows[4]["acb"], 0.0)
+
 
 
 class DatabaseBackupTests(TransactionTestCase):
