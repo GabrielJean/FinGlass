@@ -13,13 +13,13 @@ flowchart TD
     Client["Browser (Desktop & Mobile)"]
     
     subgraph Container ["Docker Container: finglass-web"]
-        subgraph FrontendBuild ["Frontend (Vite + React 18)"]
-            UI["Single Page App (React 18)"]
+        subgraph FrontendBuild ["Frontend (Vite + React 19)"]
+            UI["Single Page App (React 19)"]
             CSS["Scoped Design System (style.css)"]
             Charts["Chart.js + Native SVG"]
         end
         
-        subgraph DjangoBackend ["Backend (Django 5 / Python 3.12)"]
+        subgraph DjangoBackend ["Backend (Django 5.2 LTS / Python 3.12)"]
             WSGI["Gunicorn WSGI / Dev Runserver"]
             Middleware["Adaptive Security & Auth Middleware"]
             
@@ -139,7 +139,7 @@ FinGlass/
 │   ├── SPEC.md               # IPF 2026 Quebec retirement engine specification
 │   └── TAX_SHELTERS.md       # Canadian registered accounts guide
 ├── finglass_project/         # Django core settings, WSGI, ASGI
-├── frontend/                 # React 18 frontend source code
+├── frontend/                 # React 19 frontend source code
 │   ├── src/
 │   │   ├── App.jsx           # Root application shell, navigation, & auth state
 │   │   ├── api.js            # Standardized fetch API wrapper
@@ -161,8 +161,8 @@ FinGlass/
 
 ## 3. Frontend Architecture
 
-- **Framework:** React 18 with functional components and native hooks (`useState`, `useEffect`, `useMemo`, `useCallback`).
-- **Tooling:** Vite 5 compiling cleanly to a unified `static/app.js` and `static/app.css`.
+- **Framework:** React 19 with functional components and native hooks (`useState`, `useEffect`, `useMemo`, `useCallback`).
+- **Tooling:** Vite 6 compiling cleanly to a unified `static/app.js` and `static/app.css`.
 - **Styling:** Custom, themeable dark-mode design system with pure CSS variables (`--bg-primary`, `--accent-primary`, etc.), zero heavy CSS frameworks, and instant render performance.
 - **Visualizations:** Chart.js 4 + native Canvas and inline SVG gauges.
 - **Accessibility & Senior Mode:**

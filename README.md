@@ -1,10 +1,10 @@
 # FinGlass
 
-[![FinGlass Version](https://img.shields.io/badge/version-1.4.4-blue.svg)](VERSION)
+[![FinGlass Version](https://img.shields.io/badge/version-1.5.0-blue.svg)](VERSION)
 [![Python](https://img.shields.io/badge/python-3.12-brightgreen.svg)](https://www.python.org/)
-[![Django](https://img.shields.io/badge/django-5.0-green.svg)](https://www.djangoproject.com/)
-[![React](https://img.shields.io/badge/react-18-blue.svg)](https://react.dev/)
-[![Vite](https://img.shields.io/badge/vite-5-purple.svg)](https://vitejs.dev/)
+[![Django](https://img.shields.io/badge/django-5.2%20LTS-green.svg)](https://www.djangoproject.com/)
+[![React](https://img.shields.io/badge/react-19-blue.svg)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/vite-6-purple.svg)](https://vitejs.dev/)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](Dockerfile)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
@@ -46,8 +46,8 @@
 ## 🏗️ System Architecture
 
 FinGlass follows a clean, decoupled architecture:
-- **Frontend:** React 18 Single Page App powered by Vite 5, packaged into `static/app.js` and `static/app.css`.
-- **Backend:** Django 5 (Python 3.12) running under Gunicorn with modular views, domain services, and zero external runtime telemetry.
+- **Frontend:** React 19 Single Page App powered by Vite 6, packaged into `static/app.js` and `static/app.css`.
+- **Backend:** Django 5.2 LTS (Python 3.12) running under Gunicorn with modular views, domain services, and zero external runtime telemetry.
 - **Database:** Persistent SQLite database stored in `./data/finglass.sqlite3`.
 
 ```
@@ -63,7 +63,7 @@ FinGlass/
 ├── data/              # SQLite database storage
 ├── docs/              # In-depth architectural & domain documentation
 ├── finglass_project/  # Django settings, WSGI, ASGI
-├── frontend/          # React 18 frontend source code
+├── frontend/          # React 19 frontend source code
 ├── static/            # Compiled static bundle (JS, CSS)
 └── templates/         # Base SPA template
 ```
