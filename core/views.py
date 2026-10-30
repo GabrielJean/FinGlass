@@ -1,11 +1,7 @@
 from django.conf import settings
-from django.db.models import Max
 from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import ensure_csrf_cookie
-
-from core.models import ChequingTransaction, CreditCardTransaction, HoldingSnapshot, ImportBatch
-from core.services.settings_service import get_feature_settings
 
 
 @ensure_csrf_cookie
