@@ -1,13 +1,14 @@
 {
   "name": "finglass",
-  "version": "1.4.6",
+  "version": "1.4.7",
   "private": true,
   "engines": {
     "node": ">=26.0.0"
   },
   "scripts": {
     "build": "npm --prefix frontend run build",
-    "dev": "npm --prefix frontend run dev"
+    "dev": "npm --prefix frontend run dev",
+    "test": "python manage.py test -v 2"
   }
 }
 
