@@ -1,14 +1,6 @@
 from django.test import TestCase, TransactionTestCase, Client
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from core.models import (
-    HoldingSnapshot,
-    ChequingAccount,
-    CreditCardAccount,
-    TfsaAccount,
-    TfsaContribution,
-    Transaction,
-)
 
 User = get_user_model()
 

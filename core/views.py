@@ -18,21 +18,6 @@ def index_page(request, *args, **kwargs):
     )
 
 
-login_page = index_page
-security_page = index_page
-acb_page = index_page
-credit_card_page = index_page
-chequing_page = index_page
-net_worth_page = index_page
-tfsa_page = index_page
-rrsp_page = index_page
-fhsa_page = index_page
-import_page = index_page
-holdings_page = index_page
-retirement_page = index_page
-admin_users_page = index_page
-
-
 def health_view(request):
     return JsonResponse({"ok": True, "service": "django", "status": "healthy"})
 
