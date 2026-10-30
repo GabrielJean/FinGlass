@@ -482,7 +482,7 @@ export function RetirementView() {
           <h1>{viewMode === "simple" ? "My Retirement Plan" : "Retirement & Estate Optimizer"}</h1>
           <p>
             {viewMode === "simple"
-              ? "No confusing jargon. Clear answers on your money, pensions, and lifestyle in plain English."
+              ? "Clear answers on your pensions, savings, and monthly spendable income."
               : "Comprehensive QPP, OAS, CRA/RQ Dual Tax, RRSP Meltdown, and Estate Simulation."}
           </p>
         </div>
@@ -910,11 +910,11 @@ export function RetirementView() {
             </div>
           </div>
 
-          {/* 5. Plain-English Financial Tips */}
+          {/* 5. Key Financial Tips */}
           <div className="senior-card">
             <div className="senior-card-header">
-              <h3>Plain-English Tips from Your Financial Co-Pilot</h3>
-              <p>Three key things every Quebec retiree should know:</p>
+              <h3>Key Tips from Your Financial Co-Pilot</h3>
+              <p>Three essential rules every Quebec retiree should know:</p>
             </div>
 
             <div className="senior-tips-grid">

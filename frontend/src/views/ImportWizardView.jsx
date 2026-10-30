@@ -138,7 +138,7 @@ export function ImportWizardView() {
       <div className="friendly-explainer">
         <div className="friendly-explainer-icon">📥</div>
         <div>
-          <h4 className="friendly-explainer-title">Importing in Plain English</h4>
+          <h4 className="friendly-explainer-title">Statement Staging & Review</h4>
           <p className="friendly-explainer-text">
             Easily load your transactions from Wealthsimple! When you upload an Activities CSV or Tax PDF, you get to <strong>review and verify everything first</strong> before anything gets permanently added to your accounts. Nothing changes until you give the green light.
           </p>

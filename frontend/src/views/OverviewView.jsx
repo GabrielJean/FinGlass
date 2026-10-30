@@ -464,7 +464,7 @@ export function OverviewView({ onNavigate }) {
           <div>
             <h2 className="friendly-banner-title">Welcome to Your Financial Dashboard</h2>
             <p className="friendly-banner-desc">
-              Here is your overall financial health in plain English: your total investments, how much your money has grown, and your available tax-sheltered contribution room.
+              Here is your financial snapshot at a glance: your total investments, portfolio performance, and available contribution rooms.
             </p>
           </div>
         </div>
@@ -656,7 +656,7 @@ export function OverviewView({ onNavigate }) {
             <span>Retirement Co-Pilot</span>
           </div>
           <p className="friendly-tip-body">
-            See your guaranteed monthly Quebec Pension (QPP), Old Age Security, and savings plan in plain English in the easy Retirement Planner.
+            See your guaranteed monthly Quebec Pension (QPP), Old Age Security, and savings plan clearly mapped out.
           </p>
         </div>
       </section>

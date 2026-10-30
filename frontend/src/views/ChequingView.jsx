@@ -493,7 +493,7 @@ export function ChequingView() {
       <div className="friendly-explainer">
         <div className="friendly-explainer-icon">🏦</div>
         <div>
-          <h4 className="friendly-explainer-title">Cash Flow in Plain English</h4>
+          <h4 className="friendly-explainer-title">Understanding Your Cash Flow</h4>
           <p className="friendly-explainer-text">
             Cash flow is simple: <strong>Money Coming In</strong> (paychecks, transfers) minus <strong>Money Going Out</strong> (bills, day-to-day spending). When you have positive net flow, that surplus automatically builds your investment accounts and strengthens your financial security!
           </p>

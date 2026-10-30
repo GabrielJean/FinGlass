@@ -518,7 +518,7 @@ export function CreditCardView() {
       <div className="friendly-explainer">
         <div className="friendly-explainer-icon">💳</div>
         <div>
-          <h4 className="friendly-explainer-title">Credit Card Spending in Plain English</h4>
+          <h4 className="friendly-explainer-title">Credit Card & Expense Overview</h4>
           <p className="friendly-explainer-text">
             Track all your card statements, store purchases, and cash back rewards in one place. By watching your top merchants and monthly trends, you can easily spot subscription leaks and keep your budget lean without any guesswork!
           </p>

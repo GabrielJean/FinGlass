@@ -165,7 +165,7 @@ export function NetWorthView() {
       <div className="friendly-explainer">
         <div className="friendly-explainer-icon">📈</div>
         <div>
-          <h4 className="friendly-explainer-title">Net Worth in Plain English</h4>
+          <h4 className="friendly-explainer-title">How Net Worth is Calculated</h4>
           <p className="friendly-explainer-text">
             Your <strong>Net Worth</strong> is the truest measure of your financial progress: <strong>Everything You Own</strong> (investments, bank accounts, home) minus <strong>Everything You Owe</strong> (credit cards, loans, mortgages). Watching this number trend upwards over time is financial peace of mind.
           </p>
