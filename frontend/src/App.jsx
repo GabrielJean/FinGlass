@@ -240,8 +240,8 @@ export function App() {
             </button>
           )}
 
-          {(features.tfsa_tracker || features.rrsp_tracker || features.fhsa_tracker || features.retirement_planner) && (
-            <div className="nav-category">TAX SHELTERS & RETIREMENT</div>
+          {(features.tfsa_tracker || features.rrsp_tracker || features.fhsa_tracker) && (
+            <div className="nav-category">CRA TAX SHELTERS</div>
           )}
 
           {features.tfsa_tracker && (
@@ -275,13 +275,16 @@ export function App() {
           )}
 
           {features.retirement_planner && (
-            <button
-              type="button"
-              className={currentView === "retirement" ? "selected" : ""}
-              onClick={() => navigateTo("retirement")}
-            >
-              <Compass size={17} /> Retirement & Pension
-            </button>
+            <>
+              <div className="nav-category">RETIREMENT PLANNING</div>
+              <button
+                type="button"
+                className={currentView === "retirement" ? "selected" : ""}
+                onClick={() => navigateTo("retirement")}
+              >
+                <Compass size={17} /> Retirement Plan
+              </button>
+            </>
           )}
 
           <div className="nav-category">PLANNING & TOOLS</div>

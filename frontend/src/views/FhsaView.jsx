@@ -306,7 +306,7 @@ export function FhsaView() {
       <div className="friendly-explainer">
         <div className="friendly-explainer-icon">🏡</div>
         <div>
-          <h4 className="friendly-explainer-title">FHSA in Plain English</h4>
+          <h4 className="friendly-explainer-title">About Your First Home Savings Account</h4>
           <p className="friendly-explainer-text">
             The First Home Savings Account (FHSA) gives you the best of both worlds: you get a <strong>tax deduction when you put money in</strong> (like an RRSP), and your withdrawal is <strong>100% tax-free when you buy your first home</strong> (like a TFSA). You can contribute up to $8,000/year to a $40,000 lifetime maximum!
           </p>
