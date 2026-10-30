@@ -8,8 +8,8 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_http_methods
 
 from core.constants import CASH_ACCOUNT_NUMBER
-from core.market_data import MarketDataError, get_quote
 from core.models import HoldingSnapshot
+from core.services.market_data_service import MarketDataError, get_quote
 from core.services.holdings_service import (
     derive_account_number,
     normalize_holding_symbol,

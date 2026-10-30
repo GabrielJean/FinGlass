@@ -4,9 +4,9 @@ from django.db.models import Count
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_http_methods
 
-from core.acb import calculate_ledger_rows
 from core.constants import SUPPORTED_TRANSACTION_TYPES
 from core.models import Transaction
+from core.services.acb_service import calculate_ledger_rows
 from core.services.transactions_service import parse_transaction_payload
 
 

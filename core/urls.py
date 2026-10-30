@@ -1,6 +1,9 @@
 from django.urls import path, re_path
 
-from .credit_card_views import (
+from .views import (
+    health_view,
+    index_page,
+    # Credit Card
     credit_card_cards,
     credit_card_cards_manage,
     credit_card_categories,
@@ -14,8 +17,7 @@ from .credit_card_views import (
     rename_credit_card,
     set_credit_card_transaction_hidden,
     set_many_credit_card_transactions_hidden,
-)
-from .chequing_views import (
+    # Chequing
     chequing_accounts,
     chequing_categories,
     chequing_dashboard,
@@ -28,16 +30,14 @@ from .chequing_views import (
     rename_chequing_account,
     set_chequing_transaction_hidden,
     set_many_chequing_transactions_hidden,
-)
-from .holdings_views import (
+    # Holdings
     accounts_dashboard,
     holdings_collection,
     holdings_item,
     market_data_quote,
     refresh_holdings_market_values,
     upsert_cash_account,
-)
-from .import_views import (
+    # Imports
     commit_batch_endpoint,
     commit_import_review,
     create_import_review,
@@ -57,15 +57,15 @@ from .import_views import (
     import_holdings_csv,
     import_rogers_credit_csv,
     import_chequing_courant_csv,
-)
-from .net_worth_views import net_worth_collection, net_worth_item
-from .retirement_views import (
+    # Net Worth
+    net_worth_collection,
+    net_worth_item,
+    # Retirement
     retirement_plan_endpoint,
     retirement_simulate_endpoint,
     retirement_export_csv_endpoint,
     retirement_config_endpoint,
-)
-from .rrsp_views import (
+    # RRSP
     rrsp_account_item,
     rrsp_accounts,
     rrsp_annual_limit_item,
@@ -78,9 +78,9 @@ from .rrsp_views import (
     rrsp_transaction_item,
     rrsp_transactions,
     rrsp_transfers,
-)
-from .settings_views import settings_features
-from .tfsa_views import (
+    # Settings
+    settings_features,
+    # TFSA
     tfsa_account_item,
     tfsa_accounts,
     tfsa_annual_limit_item,
@@ -93,8 +93,7 @@ from .tfsa_views import (
     tfsa_transaction_item,
     tfsa_transactions,
     tfsa_transfers,
-)
-from .fhsa_views import (
+    # FHSA
     fhsa_account_item,
     fhsa_accounts,
     fhsa_contributions,
@@ -106,18 +105,13 @@ from .fhsa_views import (
     fhsa_transaction_item,
     fhsa_transactions,
     fhsa_transfers,
-)
-from .transaction_views import (
+    # Transactions
     delete_many_transactions,
     get_ledger,
     list_securities,
     list_transaction_types,
     transactions_collection,
     transactions_item,
-)
-from .views import (
-    health_view,
-    index_page,
 )
 
 urlpatterns = [

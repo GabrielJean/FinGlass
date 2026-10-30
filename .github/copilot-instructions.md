@@ -9,19 +9,16 @@
 - Core domains in one DB: ACB transactions, holdings snapshots, net worth history, credit-card transactions, and account-specific data (RRSP, TFSA, FHSA).
 
 ### App modules & views
-- `django_apps/accounts/`: user auth, login/register (accounts/views.py, accounts/urls.py)
-- `django_apps/core/`: main business logic across multiple view files:
-  - `transaction_views.py`: ACB ledger, securities, transaction CRUD
-  - `holdings_views.py`: holdings dashboard/CRUD/cash/market refresh
-  - `net_worth_views.py`: net worth CRUD
-  - `credit_card_views.py`: credit card dashboard/filters/visibility/delete
-  - `import_views.py`: DB import/export + staged import review + direct holdings/CC imports
-  - `rrsp_views.py`, `tfsa_views.py`, `fhsa_views.py`: account-specific views and imports
-  - `settings_views.py`: feature settings APIs
+- `accounts/`: user auth, login/register (accounts/views.py, accounts/urls.py)
+- `core/`: main business logic across clean modular subdirectories:
+  - `views/`: modular view modules (`base.py`, `transactions.py`, `holdings.py`, `net_worth.py`, `credit_card.py`, `chequing.py`, `imports.py`, `rrsp.py`, `tfsa.py`, `fhsa.py`, `retirement.py`, `settings.py`)
+  - `services/`: reusable domain logic, importers, ACB calculator (`acb_service.py`), and market data (`market_data_service.py`)
+  - `retirement/`: complete Quebec statutory retirement calculation engine
+- `docs/`: domain specification (`SPEC.md`) and import specifications (`IMPORT_GUIDE.md`)
 
 ## Data flow and service boundaries
-- ACB math is isolated in `django_apps/core/acb.py` (`calculate_ledger_rows`) and reused by transaction views and API endpoints.
-- CSV/PDF parsing + idempotent import behavior lives in service modules (`django_apps/core/services/*_import_service.py`); views should stay thin and delegate there.
+- ACB math is isolated in `core/services/acb_service.py` (`calculate_ledger_rows`) and reused by transaction views and API endpoints.
+- CSV/PDF parsing + idempotent import behavior lives in service modules (`core/services/*_import_service.py`); views stay thin and delegate there.
 - Service-oriented architecture in `django_apps/core/services/`:
   - `settings_service.py` for feature settings parsing/persistence
   - `transactions_service.py` for transaction payload validation/normalization

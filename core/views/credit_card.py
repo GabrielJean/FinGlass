@@ -5,8 +5,8 @@ from django.db.models import Count, Q
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_http_methods
 
-from core.credit_card_categories import normalize_credit_card_category
 from core.models import CreditCardAccount, CreditCardTransaction
+from core.services.credit_card_categories import normalize_credit_card_category
 from core.services.credit_card_service import parse_bool_query, parse_credit_card_category_filters
 
 
