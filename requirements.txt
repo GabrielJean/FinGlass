@@ -1,4 +1,4 @@
-Django==6.0.3
-gunicorn==25.1.0
-pypdf==6.7.5
+Django==5.2.18
+gunicorn==26.2.0
+pypdf==6.21.4
 whitenoise==6.12.0
