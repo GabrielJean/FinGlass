@@ -112,3 +112,4 @@ FinGlass provides a toggleable **Senior Mode** designed specifically for users w
    - "Lifetime Taxes & Government Clawbacks"
    - "Leftover for Family / Estate"
 3. **Plain-English Action Checklist:** 3 high-impact recommendations (e.g. "Delay QPP to Age 68 to gain \$312/mo permanently", "Melt down \$14,000/yr from RRSP now to protect OAS").
+

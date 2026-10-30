@@ -193,3 +193,4 @@ FinGlass/
 - **Content Security Policy (CSP):** Strict allowlist configured in `core/middleware.py`.
 - **Local SQLite Storage:** All financial data remains on the user's host machine inside the Docker volume `./data:/app/data`.
 - **Role-Based Access Control:** Superuser flags control access to user management, feature toggles, and administrative data wiping.
+

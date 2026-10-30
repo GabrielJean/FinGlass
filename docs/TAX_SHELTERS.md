@@ -40,3 +40,4 @@ FinGlass features dedicated tracking, contribution room calculators, and penalty
 - **Lifetime Contribution Limit:** \$40,000 maximum.
 - **Carry-Forward Room:** Up to \$8,000 of unused annual room can be carried forward (maximum room in any single year is \$16,000).
 - **15-Year Rule:** Account must be used or transferred to an RRSP/RRIF within 15 years of opening or by the end of the year the account holder turns 71.
+

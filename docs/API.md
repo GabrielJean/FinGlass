@@ -234,3 +234,4 @@ Generates a complete JSON backup of all user data across all tables.
 
 ### `POST /api/import/full-backup`
 Restores user data from a previously exported JSON backup file.
+
