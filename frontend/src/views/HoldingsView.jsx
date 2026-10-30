@@ -384,6 +384,17 @@ export function HoldingsView({ onNavigate }) {
         </div>
       )}
 
+      {/* Friendly Co-Pilot Explainer */}
+      <div className="friendly-explainer">
+        <div className="friendly-explainer-icon">💼</div>
+        <div>
+          <h4 className="friendly-explainer-title">Holdings & Assets in Plain English</h4>
+          <p className="friendly-explainer-text">
+            Here you can see all your stocks, ETFs, mutual funds, and cash balances across your WealthSimple and brokerage accounts. Click <strong>"Refresh Quotes"</strong> anytime to update your portfolio with the latest live market prices!
+          </p>
+        </div>
+      </div>
+
       {/* KPI Row */}
       <section className="kpi-grid">
         <div className="kpi-card">

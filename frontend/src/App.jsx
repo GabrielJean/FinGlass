@@ -202,7 +202,7 @@ export function App() {
               className={currentView === "holdings" ? "selected" : ""}
               onClick={() => navigateTo("holdings")}
             >
-              <Layers size={17} /> Holdings & Cash
+              <Layers size={17} /> Holdings & Assets
             </button>
           )}
 
@@ -212,7 +212,7 @@ export function App() {
               className={currentView === "acb" ? "selected" : ""}
               onClick={() => navigateTo("acb")}
             >
-              <TrendingUp size={17} /> ACB & Capital Gains
+              <TrendingUp size={17} /> Capital Gains (ACB)
             </button>
           )}
 
@@ -226,7 +226,7 @@ export function App() {
               className={currentView === "chequing" ? "selected" : ""}
               onClick={() => navigateTo("chequing")}
             >
-              <Wallet size={17} /> Chequing Flow
+              <Wallet size={17} /> Chequing & Cash Flow
             </button>
           )}
 
@@ -236,12 +236,12 @@ export function App() {
               className={currentView === "credit-card" ? "selected" : ""}
               onClick={() => navigateTo("credit-card")}
             >
-              <CreditCard size={17} /> Credit Cards
+              <CreditCard size={17} /> Credit Cards & Spend
             </button>
           )}
 
-          {(features.tfsa_tracker || features.rrsp_tracker || features.fhsa_tracker) && (
-            <div className="nav-category">CRA TAX SHELTERS</div>
+          {(features.tfsa_tracker || features.rrsp_tracker || features.fhsa_tracker || features.retirement_planner) && (
+            <div className="nav-category">TAX SHELTERS & RETIREMENT</div>
           )}
 
           {features.tfsa_tracker && (
@@ -250,7 +250,7 @@ export function App() {
               className={currentView === "tfsa" ? "selected" : ""}
               onClick={() => navigateTo("tfsa")}
             >
-              <ShieldCheck size={17} /> TFSA Room
+              <ShieldCheck size={17} /> TFSA (Tax-Free Room)
             </button>
           )}
 
@@ -260,7 +260,7 @@ export function App() {
               className={currentView === "rrsp" ? "selected" : ""}
               onClick={() => navigateTo("rrsp")}
             >
-              <Building size={17} /> RRSP Limits
+              <Building size={17} /> RRSP (Tax Deduction)
             </button>
           )}
 
@@ -270,7 +270,7 @@ export function App() {
               className={currentView === "fhsa" ? "selected" : ""}
               onClick={() => navigateTo("fhsa")}
             >
-              <Home size={17} /> FHSA Room
+              <Home size={17} /> FHSA (First Home)
             </button>
           )}
 
@@ -280,18 +280,18 @@ export function App() {
               className={currentView === "retirement" ? "selected" : ""}
               onClick={() => navigateTo("retirement")}
             >
-              <Compass size={17} /> Retirement Plan
+              <Compass size={17} /> Retirement & Pension
             </button>
           )}
 
-          <div className="nav-category">SYSTEM & TOOLS</div>
+          <div className="nav-category">PLANNING & TOOLS</div>
           {features.net_worth && (
             <button
               type="button"
               className={currentView === "net-worth" ? "selected" : ""}
               onClick={() => navigateTo("net-worth")}
             >
-              <LineChart size={17} /> Net Worth
+              <LineChart size={17} /> Net Worth Tracker
             </button>
           )}
 
@@ -301,7 +301,7 @@ export function App() {
               className={currentView === "import" ? "selected" : ""}
               onClick={() => navigateTo("import")}
             >
-              <UploadCloud size={17} /> Import & Backup
+              <UploadCloud size={17} /> Import Statements & CSV
             </button>
           )}
 
@@ -310,7 +310,7 @@ export function App() {
             className={currentView === "settings" ? "selected" : ""}
             onClick={() => navigateTo("settings")}
           >
-            <Sliders size={17} /> Settings
+            <Sliders size={17} /> Settings & Features
           </button>
 
           {currentUser.is_superuser && (

@@ -514,6 +514,17 @@ export function CreditCardView() {
         </div>
       )}
 
+      {/* Friendly Co-Pilot Explainer */}
+      <div className="friendly-explainer">
+        <div className="friendly-explainer-icon">💳</div>
+        <div>
+          <h4 className="friendly-explainer-title">Credit Card Spending in Plain English</h4>
+          <p className="friendly-explainer-text">
+            Track all your card statements, store purchases, and cash back rewards in one place. By watching your top merchants and monthly trends, you can easily spot subscription leaks and keep your budget lean without any guesswork!
+          </p>
+        </div>
+      </div>
+
       {/* KPI Cards */}
       <section className="kpi-grid">
         <div className="kpi-card">
