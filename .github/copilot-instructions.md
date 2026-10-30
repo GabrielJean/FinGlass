@@ -62,7 +62,7 @@
   - Apply migrations: `python manage.py migrate`
 - Seeding demo data:
   - Populate database with fake data for testing: `python manage.py seed_demo_data` (source: `django_apps/core/management/commands/seed_demo_data.py`)
-- There is no test suite in the repo currently; validate changes by exercising affected API endpoints/pages manually.
+- Test battery: `python manage.py test -v 2` runs all 33 tests across accounts auth, ACB ledger, banking/credit-card APIs, tax shelters, and Quebec retirement engine.
 
 ## Agent guidance for edits
 - Keep view handlers thin in `django_apps/core/*.py`; place reusable validation/parsing/business logic in `django_apps/core/services/`.
