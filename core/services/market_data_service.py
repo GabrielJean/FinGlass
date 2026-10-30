@@ -12,7 +12,7 @@ YAHOO_BASES = (
     "https://query2.finance.yahoo.com",
 )
 ALPHA_VANTAGE_BASE_URL = "https://www.alphavantage.co/query"
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent / "config" / "market_data.json"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent.parent.parent / "config" / "market_data.json"
 SYMBOL_SUFFIXES = (".TO", ".TRT", ".V", ".NE")
 
 USER_AGENT = (

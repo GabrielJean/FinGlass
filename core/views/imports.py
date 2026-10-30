@@ -13,9 +13,9 @@ from django.views.decorators.http import require_GET, require_http_methods
 from pypdf import PdfReader
 
 from core.constants import CHEQUING_DEFAULT_PROVIDER, CHEQUING_SUPPORTED_PROVIDERS
-from core.credit_card_categories import normalize_credit_card_category
 from core.models import ChequingAccount, ChequingTransaction, CreditCardAccount, CreditCardTransaction, HoldingSnapshot, ImportBatch, ImportBatchRow, Transaction
 from core.services.chequing_service import normalize_chequing_category
+from core.services.credit_card_categories import normalize_credit_card_category
 
 SUPPORTED_IMPORT_TYPES = {"activities_csv", "tax_pdf"}
 EPSILON = Decimal("0.000001")
