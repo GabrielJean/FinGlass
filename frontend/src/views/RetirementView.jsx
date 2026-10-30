@@ -20,6 +20,12 @@ import {
   Trash2,
   FileSpreadsheet,
   Activity,
+  Sparkles,
+  ArrowRight,
+  Clock,
+  Wallet,
+  Shield,
+  HelpCircle,
 } from "lucide-react";
 import { Bar, Line } from "react-chartjs-2";
 import "../components/charts/chartSetup";
@@ -222,6 +228,124 @@ export function RetirementView() {
   const auditTable = simResult?.audit_table || [];
   const monteCarlo = simResult?.monte_carlo;
 
+  const [viewMode, setViewMode] = useState("simple"); // "simple" | "advanced"
+
+  // Senior Mode Computed Helpers
+  const baseQpp65 = plan.household.primary.qpp_monthly_at_65 || 1507.65;
+  const qppAt60 = Math.round(baseQpp65 * 0.64);
+  const qppAt65 = Math.round(baseQpp65);
+  const qppAt70 = Math.round(baseQpp65 * 1.42);
+
+  const currentQppMult =
+    plan.household.primary.qpp_start_age < 65
+      ? 1.0 - (65 - plan.household.primary.qpp_start_age) * 12 * 0.006
+      : plan.household.primary.qpp_start_age > 65
+      ? 1.0 + (plan.household.primary.qpp_start_age - 65) * 12 * 0.007
+      : 1.0;
+  const primaryEstimatedQpp = Math.round(baseQpp65 * currentQppMult);
+
+  const isCouple = plan.household.marital_status === "COUPLE";
+  const estimatedOas = isCouple ? 1484 : 742;
+
+  const primaryDbMonthly = Math.round((plan.household.primary.db_pension_annual || 0) / 12);
+  const spouseDbMonthly = isCouple
+    ? Math.round((plan.household.spouse?.db_pension_annual || 0) / 12)
+    : 0;
+  const totalDbMonthly = primaryDbMonthly + spouseDbMonthly;
+
+  const totalLiquidSavings =
+    (plan.accounts.rrsp || 0) +
+    (plan.accounts.tfsa || 0) +
+    (plan.accounts.non_reg_market_value || 0) +
+    (isCouple
+      ? (plan.accounts.spouse_rrsp || 0) + (plan.accounts.spouse_tfsa || 0)
+      : 0);
+
+  const currentMonthlySpending = Math.round((plan.spending?.go_go_spending || 60000) / 12);
+
+  const updateAndSimulate = (updater) => {
+    setPlan((prev) => {
+      const nextPlan = typeof updater === "function" ? updater(prev) : updater;
+      runSimulation(nextPlan);
+      return nextPlan;
+    });
+  };
+
+  const handleSelectQppAge = (age) => {
+    updateAndSimulate((prev) => ({
+      ...prev,
+      household: {
+        ...prev.household,
+        primary: {
+          ...prev.household.primary,
+          qpp_start_age: age,
+        },
+      },
+    }));
+  };
+
+  const handleAdjustSpending = (monthlyAmount) => {
+    const annual = Math.max(12000, monthlyAmount * 12);
+    updateAndSimulate((prev) => ({
+      ...prev,
+      spending: {
+        ...prev.spending,
+        go_go_spending: annual,
+        slow_go_spending: Math.round(annual * 0.85),
+        no_go_spending: Math.round(annual * 0.75),
+      },
+    }));
+  };
+
+  const handleStepSpending = (deltaMonthly) => {
+    handleAdjustSpending(currentMonthlySpending + deltaMonthly);
+  };
+
+  const handleQuickFixShortfall = () => {
+    updateAndSimulate((prev) => {
+      const next = JSON.parse(JSON.stringify(prev));
+      if (next.household.primary.qpp_start_age < 65) {
+        next.household.primary.qpp_start_age = 65;
+      } else {
+        const curMonthly = Math.round(next.spending.go_go_spending / 12);
+        const newMonthly = Math.max(2500, curMonthly - 400);
+        const annual = newMonthly * 12;
+        next.spending.go_go_spending = annual;
+        next.spending.slow_go_spending = Math.round(annual * 0.85);
+        next.spending.no_go_spending = Math.round(annual * 0.75);
+      }
+      return next;
+    });
+  };
+
+  const handleSetRrsp = (val) => {
+    updateAndSimulate((prev) => ({
+      ...prev,
+      accounts: { ...prev.accounts, rrsp: Math.max(0, val) },
+    }));
+  };
+
+  const handleSetTfsa = (val) => {
+    updateAndSimulate((prev) => ({
+      ...prev,
+      accounts: { ...prev.accounts, tfsa: Math.max(0, val) },
+    }));
+  };
+
+  const handleSetHomeValue = (val) => {
+    updateAndSimulate((prev) => ({
+      ...prev,
+      accounts: { ...prev.accounts, primary_residence_value: Math.max(0, val) },
+    }));
+  };
+
+  const handleToggleMarital = (status) => {
+    updateAndSimulate((prev) => ({
+      ...prev,
+      household: { ...prev.household, marital_status: status },
+    }));
+  };
+
   // Stacked Bar Cash Flow Chart Data
   const cashFlowChartData = useMemo(() => {
     if (!cashFlows || !cashFlows.labels) return null;
@@ -350,9 +474,17 @@ export function RetirementView() {
       {/* Top Bar */}
       <div className="top-bar">
         <div>
-          <p className="eyebrow">QUEBEC STATUTORY RETIREMENT ENGINE · 2026</p>
-          <h1>Retirement & Estate Optimizer</h1>
-          <p>Comprehensive QPP, OAS, CRA/RQ Dual Tax, RRSP Meltdown, and Estate Simulation.</p>
+          <p className="eyebrow">
+            {viewMode === "simple"
+              ? "QUEBEC RETIREMENT PLANNER · MADE SIMPLE"
+              : "QUEBEC STATUTORY RETIREMENT ENGINE · 2026"}
+          </p>
+          <h1>{viewMode === "simple" ? "My Retirement Plan" : "Retirement & Estate Optimizer"}</h1>
+          <p>
+            {viewMode === "simple"
+              ? "No confusing jargon. Clear answers on your money, pensions, and lifestyle in plain English."
+              : "Comprehensive QPP, OAS, CRA/RQ Dual Tax, RRSP Meltdown, and Estate Simulation."}
+          </p>
         </div>
 
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap", alignItems: "center" }}>
@@ -374,40 +506,30 @@ export function RetirementView() {
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="tabs" style={{ marginTop: "1.25rem", marginBottom: "1.5rem" }}>
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === "dashboard" ? "active" : ""}`}
-          onClick={() => setActiveTab("dashboard")}
-        >
-          <Activity size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
-          Scorecard & Inflows
-        </button>
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === "monte_carlo" ? "active" : ""}`}
-          onClick={() => setActiveTab("monte_carlo")}
-        >
-          <TrendingUp size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
-          Monte Carlo & Sequence Stress
-        </button>
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === "audit" ? "active" : ""}`}
-          onClick={() => setActiveTab("audit")}
-        >
-          <FileSpreadsheet size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
-          Year-by-Year Audit
-        </button>
-        <button
-          type="button"
-          className={`tab-btn ${activeTab === "inputs" ? "active" : ""}`}
-          onClick={() => setActiveTab("inputs")}
-        >
-          <Sliders size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
-          Household & Assumptions
-        </button>
+      {/* View Mode Switcher */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem", marginTop: "1rem", marginBottom: "1rem" }}>
+        <div className="view-mode-selector">
+          <button
+            type="button"
+            className={`view-mode-btn ${viewMode === "simple" ? "active" : ""}`}
+            onClick={() => setViewMode("simple")}
+          >
+            <Sparkles size={16} /> Simple Summary (Recommended)
+          </button>
+          <button
+            type="button"
+            className={`view-mode-btn ${viewMode === "advanced" ? "active" : ""}`}
+            onClick={() => setViewMode("advanced")}
+          >
+            <Activity size={16} /> Advanced Financial View
+          </button>
+        </div>
+
+        {viewMode === "simple" && (
+          <span style={{ fontSize: "0.88rem", color: "#94a3b8" }}>
+            ✨ Designed for retirees & seniors · Fast, clear, and easy
+          </span>
+        )}
       </div>
 
       {error && <div className="error-banner" style={{ marginBottom: "1rem" }}>{error}</div>}
@@ -417,6 +539,479 @@ export function RetirementView() {
           <button type="button" className="link" onClick={() => setNotice("")}>Dismiss</button>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* 1. SIMPLE VIEW FOR SENIORS (BRAIN-DEAD EASY MODE)                         */}
+      {/* ========================================================================= */}
+      {viewMode === "simple" && (
+        <div className="senior-container">
+          {/* 1. Solvency Hero Banner */}
+          <div className={`senior-hero ${scorecard?.plan_success ? "success" : "warning"}`}>
+            <div className="senior-hero-content">
+              <div className="senior-hero-icon">
+                {scorecard?.plan_success ? <CheckCircle2 size={38} /> : <AlertTriangle size={38} />}
+              </div>
+              <div>
+                <h2 className="senior-hero-title">
+                  {scorecard?.plan_success
+                    ? "You're In Great Shape! Your Money Will Last Past Age 95"
+                    : `Heads Up: Your Savings Might Run Low Around Age ${scorecard?.shortfall_age}`}
+                </h2>
+                <p className="senior-hero-desc">
+                  {scorecard?.plan_success
+                    ? "Your pensions, government benefits, and personal savings comfortably cover all your monthly bills for life. You don't have to worry about running out of money."
+                    : "Don't panic! Usually a small tweak to your monthly spending or waiting an extra year or two to take your Quebec pension completely fixes this."}
+                </p>
+              </div>
+            </div>
+
+            <div className="senior-hero-pills">
+              {scorecard?.plan_success ? (
+                <>
+                  <div className="senior-hero-pill">
+                    <span className="senior-hero-pill-label">Leaving to Family (Net Estate)</span>
+                    <span className="senior-hero-pill-value" style={{ color: "#a78bfa" }}>
+                      {formatMoney(scorecard.net_after_tax_estate)}
+                    </span>
+                  </div>
+                  {comparison?.taxes_saved > 0 && (
+                    <div className="senior-hero-pill">
+                      <span className="senior-hero-pill-label">Smart Tax Savings</span>
+                      <span className="senior-hero-pill-value" style={{ color: "#34d399" }}>
+                        +{formatMoney(comparison.taxes_saved)}
+                      </span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleQuickFixShortfall}
+                  style={{ fontSize: "1rem", padding: "0.85rem 1.4rem" }}
+                >
+                  <ShieldCheck size={18} /> Fix This For Me in 1 Click
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* 2. Monthly Spendable Paycheck Card */}
+          <div className="senior-card">
+            <div className="senior-paycheck-container">
+              <div>
+                <div className="senior-card-header">
+                  <h3>Your Monthly Spendable Paycheck</h3>
+                  <p>Clear cash in your pocket every month, after all Quebec & Federal taxes are paid.</p>
+                </div>
+                <div className="senior-paycheck-figure">
+                  {formatMoney(scorecard?.average_monthly_after_tax_income || 0)}
+                  <span style={{ fontSize: "1.2rem", fontWeight: "600", color: "#94a3b8", marginLeft: "0.5rem" }}>
+                    / month
+                  </span>
+                </div>
+                <p className="senior-paycheck-sub">
+                  Annual take-home income: <strong>{formatMoney((scorecard?.average_monthly_after_tax_income || 0) * 12)} / year</strong>
+                </p>
+                <p style={{ color: "#64748b", fontSize: "0.88rem", marginTop: "0.5rem" }}>
+                  💡 All provincial (Revenu Québec) and federal (CRA) taxes and deductions are already paid. This is yours to spend on groceries, hobbies, dining, gas, and family.
+                </p>
+              </div>
+
+              <div className="senior-stepper-box">
+                <label style={{ fontWeight: "700", color: "#f1f5f9", fontSize: "0.98rem", display: "block", marginBottom: "0.5rem" }}>
+                  Change Target Monthly Spending:
+                </label>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginBottom: "0.75rem" }}>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => handleStepSpending(-250)}
+                    style={{ flex: 1, padding: "0.7rem 0.5rem", fontSize: "0.95rem" }}
+                  >
+                    ➖ $250 Less
+                  </button>
+                  <div style={{ textAlign: "center", minWidth: "110px" }}>
+                    <span style={{ fontSize: "1.3rem", fontWeight: "800", color: "#38bdf8", fontFamily: "var(--font-mono)" }}>
+                      {formatMoney(currentMonthlySpending)}
+                    </span>
+                    <span style={{ display: "block", fontSize: "0.75rem", color: "#64748b" }}>target / mo</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => handleStepSpending(250)}
+                    style={{ flex: 1, padding: "0.7rem 0.5rem", fontSize: "0.95rem" }}
+                  >
+                    ➕ $250 More
+                  </button>
+                </div>
+
+                <div style={{ fontSize: "0.82rem", color: "#94a3b8", marginBottom: "0.35rem" }}>Quick amounts:</div>
+                <div className="senior-preset-row">
+                  {[3500, 4500, 5000, 6000, 7500].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      className={`senior-preset-btn ${currentMonthlySpending === amt ? "active" : ""}`}
+                      onClick={() => handleAdjustSpending(amt)}
+                    >
+                      ${(amt / 1000).toFixed(amt % 1000 === 0 ? 0 : 1)}k/mo
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Where Does Your Money Come From? */}
+          <div className="senior-card">
+            <div className="senior-card-header">
+              <h3>Where Does Your Monthly Money Come From?</h3>
+              <p>A simple breakdown of your guaranteed government pensions and personal nest egg:</p>
+            </div>
+
+            <div className="senior-income-grid">
+              {/* QPP */}
+              <div className="senior-income-item">
+                <div>
+                  <div className="senior-income-icon">🇨🇦</div>
+                  <h4 className="senior-income-name">Quebec Pension (RRQ / QPP)</h4>
+                  <div className="senior-income-val">{formatMoney(primaryEstimatedQpp)} <span style={{ fontSize: "0.9rem", color: "#64748b" }}>/mo</span></div>
+                </div>
+                <p className="senior-income-desc">
+                  Guaranteed for life by the Quebec government. Increases with inflation every January.
+                  {plan.household.primary.qpp_start_age !== 65 && ` (Started at age ${plan.household.primary.qpp_start_age})`}
+                </p>
+              </div>
+
+              {/* OAS */}
+              <div className="senior-income-item">
+                <div>
+                  <div className="senior-income-icon">🍁</div>
+                  <h4 className="senior-income-name">Old Age Security (OAS)</h4>
+                  <div className="senior-income-val">~{formatMoney(estimatedOas)} <span style={{ fontSize: "0.9rem", color: "#64748b" }}>/mo</span></div>
+                </div>
+                <p className="senior-income-desc">
+                  Monthly federal pension paid to all Canadian residents who have lived in Canada for 40+ years, starting at age 65.
+                </p>
+              </div>
+
+              {/* DB Pension */}
+              <div className="senior-income-item">
+                <div>
+                  <div className="senior-income-icon">💼</div>
+                  <h4 className="senior-income-name">Workplace Pension</h4>
+                  <div className="senior-income-val" style={{ color: totalDbMonthly > 0 ? "#34d399" : "#64748b" }}>
+                    {totalDbMonthly > 0 ? `${formatMoney(totalDbMonthly)} /mo` : "$0 /mo"}
+                  </div>
+                </div>
+                <p className="senior-income-desc">
+                  {totalDbMonthly > 0
+                    ? "Guaranteed monthly company defined benefit pension."
+                    : "No company pension entered (your lifestyle is funded by your personal savings)."}
+                </p>
+              </div>
+
+              {/* Personal Savings */}
+              <div className="senior-income-item">
+                <div>
+                  <div className="senior-income-icon">🏦</div>
+                  <h4 className="senior-income-name">Your Personal Savings</h4>
+                  <div className="senior-income-val" style={{ color: "#38bdf8" }}>
+                    {formatMoney(totalLiquidSavings)}
+                  </div>
+                </div>
+                <p className="senior-income-desc">
+                  Total liquid nest egg in RRSP & TFSA. Automatically drawn down in the most tax-friendly sequence to cover your spending.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* 4. 3 Simple Levers You Can Change */}
+          <div className="senior-card">
+            <div className="senior-card-header">
+              <h3>3 Simple Decisions You Control</h3>
+              <p>Click any option below to see how it instantly changes your monthly money and peace of mind:</p>
+            </div>
+
+            {/* Decision 1: QPP Start Age */}
+            <div style={{ marginBottom: "2rem" }}>
+              <h4 style={{ fontSize: "1.1rem", color: "#f1f5f9", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Clock size={18} color="#38bdf8" /> 1. When do you want to start taking your Quebec Pension (QPP)?
+              </h4>
+              <p style={{ color: "#94a3b8", fontSize: "0.92rem", marginBottom: "1rem" }}>
+                You can start QPP anytime between 60 and 70. Starting early gets you cash sooner, but waiting gives you a permanently bigger check every month for the rest of your life.
+              </p>
+
+              <div className="senior-choice-grid">
+                {/* Age 60 */}
+                <div
+                  className={`senior-choice-card ${plan.household.primary.qpp_start_age === 60 ? "selected" : ""}`}
+                  onClick={() => handleSelectQppAge(60)}
+                >
+                  <span className="senior-choice-badge early">Take it Early (Age 60)</span>
+                  <div className="senior-choice-title">Age 60</div>
+                  <div className="senior-choice-amount">{formatMoney(qppAt60)} / mo</div>
+                  <p className="senior-choice-note">
+                    You get checks 5 years earlier, but they are permanently <strong>36% smaller</strong> for life. Good if you want to stop working immediately.
+                  </p>
+                </div>
+
+                {/* Age 65 */}
+                <div
+                  className={`senior-choice-card ${plan.household.primary.qpp_start_age === 65 ? "selected" : ""}`}
+                  onClick={() => handleSelectQppAge(65)}
+                >
+                  <span className="senior-choice-badge default">Standard Age (Age 65)</span>
+                  <div className="senior-choice-title">Age 65</div>
+                  <div className="senior-choice-amount">{formatMoney(qppAt65)} / mo</div>
+                  <p className="senior-choice-note">
+                    The normal retirement age in Quebec. You receive <strong>100%</strong> of your benchmark pension.
+                  </p>
+                </div>
+
+                {/* Age 70 */}
+                <div
+                  className={`senior-choice-card ${plan.household.primary.qpp_start_age === 70 ? "selected" : ""}`}
+                  onClick={() => handleSelectQppAge(70)}
+                >
+                  <span className="senior-choice-badge bonus">+42% Bonus Cash (Age 70)</span>
+                  <div className="senior-choice-title">Age 70</div>
+                  <div className="senior-choice-amount">{formatMoney(qppAt70)} / mo</div>
+                  <p className="senior-choice-note">
+                    Wait until 70 and the Quebec government permanently gives you <strong>+42% more cash</strong> every single month for life.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Decision 2: Current Nest Egg */}
+            <div style={{ marginBottom: "2rem" }}>
+              <h4 style={{ fontSize: "1.1rem", color: "#f1f5f9", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Wallet size={18} color="#38bdf8" /> 2. What do you have saved in your nest egg?
+              </h4>
+              <p style={{ color: "#94a3b8", fontSize: "0.92rem", marginBottom: "1rem" }}>
+                Click a quick button or type your current balance:
+              </p>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1.25rem" }}>
+                {/* RRSP */}
+                <div className="senior-stepper-box">
+                  <label style={{ fontWeight: "700", color: "#f1f5f9", display: "block", marginBottom: "0.4rem" }}>
+                    RRSP / RRIF Savings:
+                  </label>
+                  <input
+                    type="number"
+                    step="5000"
+                    value={plan.accounts.rrsp}
+                    onChange={(e) => handleSetRrsp(parseFloat(e.target.value) || 0)}
+                    style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "0.6rem" }}
+                  />
+                  <div className="senior-preset-row">
+                    {[150000, 250000, 350000, 500000].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        className={`senior-preset-btn ${plan.accounts.rrsp === v ? "active" : ""}`}
+                        onClick={() => handleSetRrsp(v)}
+                      >
+                        ${v / 1000}k
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* TFSA */}
+                <div className="senior-stepper-box">
+                  <label style={{ fontWeight: "700", color: "#f1f5f9", display: "block", marginBottom: "0.4rem" }}>
+                    TFSA (Tax-Free Savings):
+                  </label>
+                  <input
+                    type="number"
+                    step="5000"
+                    value={plan.accounts.tfsa}
+                    onChange={(e) => handleSetTfsa(parseFloat(e.target.value) || 0)}
+                    style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "0.6rem" }}
+                  />
+                  <div className="senior-preset-row">
+                    {[30000, 60000, 95000, 150000].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        className={`senior-preset-btn ${plan.accounts.tfsa === v ? "active" : ""}`}
+                        onClick={() => handleSetTfsa(v)}
+                      >
+                        ${v / 1000}k
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Home */}
+                <div className="senior-stepper-box">
+                  <label style={{ fontWeight: "700", color: "#f1f5f9", display: "block", marginBottom: "0.4rem" }}>
+                    Family Home Value:
+                  </label>
+                  <input
+                    type="number"
+                    step="25000"
+                    value={plan.accounts.primary_residence_value}
+                    onChange={(e) => handleSetHomeValue(parseFloat(e.target.value) || 0)}
+                    style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "0.6rem" }}
+                  />
+                  <div className="senior-preset-row">
+                    {[0, 450000, 650000, 850000].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        className={`senior-preset-btn ${plan.accounts.primary_residence_value === v ? "active" : ""}`}
+                        onClick={() => handleSetHomeValue(v)}
+                      >
+                        {v === 0 ? "No Home" : `$${v / 1000}k`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Decision 3: Single or Couple */}
+            <div>
+              <h4 style={{ fontSize: "1.1rem", color: "#f1f5f9", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Users size={18} color="#38bdf8" /> 3. Are you doing this solo or with your partner?
+              </h4>
+              <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
+                <button
+                  type="button"
+                  className={!isCouple ? "primary" : "secondary"}
+                  onClick={() => handleToggleMarital("SINGLE")}
+                  style={{ padding: "0.85rem 1.6rem", fontSize: "1rem" }}
+                >
+                  <User size={18} /> Just Myself (Single)
+                </button>
+                <button
+                  type="button"
+                  className={isCouple ? "primary" : "secondary"}
+                  onClick={() => handleToggleMarital("COUPLE")}
+                  style={{ padding: "0.85rem 1.6rem", fontSize: "1rem" }}
+                >
+                  <Users size={18} /> My Partner & Me (Couple)
+                </button>
+              </div>
+
+              {isCouple && (
+                <div style={{ marginTop: "1rem", padding: "1rem 1.25rem", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: "var(--radius-md)" }}>
+                  <p style={{ margin: 0, fontSize: "0.92rem", color: "#e2e8f0" }}>
+                    ✨ <strong>Pension Income Splitting Active:</strong> We automatically split eligible pension income between you and your spouse to keep you both in lower tax brackets and protect your OAS checks from clawbacks.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* 5. Plain-English Financial Tips */}
+          <div className="senior-card">
+            <div className="senior-card-header">
+              <h3>Plain-English Tips from Your Financial Co-Pilot</h3>
+              <p>Three key things every Quebec retiree should know:</p>
+            </div>
+
+            <div className="senior-tips-grid">
+              <div className="senior-tip-item">
+                <div className="senior-tip-icon">🛡️</div>
+                <div>
+                  <h4 className="senior-tip-title">The RRSP Tax Trick</h4>
+                  <p className="senior-tip-text">
+                    If you leave your RRSP untouched until age 72, the government forces huge lump-sum withdrawals that jump you into high tax brackets and cancel your OAS checks. We use a smooth withdrawal strategy that <strong>saves you an estimated {formatMoney(comparison?.taxes_saved || 15956)} in cold hard cash!</strong>
+                  </p>
+                </div>
+              </div>
+
+              <div className="senior-tip-item">
+                <div className="senior-tip-icon">🏡</div>
+                <div>
+                  <h4 className="senior-tip-title">Your Home Is 100% Tax-Free</h4>
+                  <p className="senior-tip-text">
+                    In Quebec and Canada, your family home is completely exempt from capital gains tax. If you sell or pass it down to your kids, the government takes $0 of the profit.
+                  </p>
+                </div>
+              </div>
+
+              <div className="senior-tip-item">
+                <div className="senior-tip-icon">📜</div>
+                <div>
+                  <h4 className="senior-tip-title">Get a Quebec Notarized Will</h4>
+                  <p className="senior-tip-text">
+                    In Quebec, a will drafted by a notary avoids months of court probate delays and legal fees for your heirs. If you don't have one yet, an afternoon with a notary will save your family immense stress.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 6. Footer Actions */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "1rem", marginTop: "0.5rem", marginBottom: "2rem" }}>
+            <button
+              type="button"
+              onClick={handleSavePlan}
+              style={{ padding: "0.9rem 1.75rem", fontSize: "1.05rem", fontWeight: "800" }}
+            >
+              <CheckCircle2 size={18} /> Save My Numbers
+            </button>
+
+            <button
+              type="button"
+              className="secondary"
+              onClick={() => setViewMode("advanced")}
+              style={{ padding: "0.85rem 1.35rem", fontSize: "0.95rem" }}
+            >
+              See Full Financial Analyst Report & Spreadsheets <ArrowRight size={16} />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 2. ADVANCED FINANCIAL ANALYST VIEW                                       */}
+      {/* ========================================================================= */}
+      {viewMode === "advanced" && (
+        <>
+          {/* Tabs */}
+          <div className="tabs" style={{ marginTop: "1.25rem", marginBottom: "1.5rem" }}>
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === "dashboard" ? "active" : ""}`}
+              onClick={() => setActiveTab("dashboard")}
+            >
+              <Activity size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
+              Scorecard & Inflows
+            </button>
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === "monte_carlo" ? "active" : ""}`}
+              onClick={() => setActiveTab("monte_carlo")}
+            >
+              <TrendingUp size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
+              Monte Carlo & Sequence Stress
+            </button>
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === "audit" ? "active" : ""}`}
+              onClick={() => setActiveTab("audit")}
+            >
+              <FileSpreadsheet size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
+              Year-by-Year Audit
+            </button>
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === "inputs" ? "active" : ""}`}
+              onClick={() => setActiveTab("inputs")}
+            >
+              <Sliders size={15} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
+              Household & Assumptions
+            </button>
+          </div>
 
       {/* MODULE 7.1: EXECUTIVE SCORECARD HEADER */}
       {scorecard && (
@@ -1097,6 +1692,8 @@ export function RetirementView() {
             </div>
           </div>
         </section>
+      )}
+        </>
       )}
     </div>
   );

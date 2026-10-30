@@ -1197,4 +1197,408 @@ td.text-negative {
   border-color: #2e4d75 !important;
 }
 
+/* ==========================================================================
+   Senior-Friendly Retirement Interface (Brain-Dead Easy Mode)
+   ========================================================================== */
+.view-mode-selector {
+  display: inline-flex;
+  background: var(--bg-card);
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-pill);
+  padding: 4px;
+  gap: 4px;
+}
+
+.view-mode-btn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 0.6rem 1.2rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
+}
+
+.view-mode-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: none;
+  transform: none;
+}
+
+.view-mode-btn.active {
+  background: var(--accent);
+  color: var(--accent-text);
+  box-shadow: 0 2px 10px rgba(56, 189, 248, 0.3);
+}
+
+.senior-container {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 1.25rem;
+}
+
+.senior-hero {
+  padding: 2rem 2.25rem;
+  border-radius: var(--radius-xl);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2rem;
+  flex-wrap: wrap;
+  transition: all 0.2s ease;
+}
+
+.senior-hero.success {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(6, 78, 59, 0.25) 100%);
+  border: 2px solid rgba(16, 185, 129, 0.35);
+  box-shadow: 0 8px 32px rgba(16, 185, 129, 0.1);
+}
+
+.senior-hero.warning {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(120, 53, 15, 0.25) 100%);
+  border: 2px solid rgba(245, 158, 11, 0.35);
+  box-shadow: 0 8px 32px rgba(245, 158, 11, 0.1);
+}
+
+.senior-hero-content {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  max-width: 800px;
+}
+
+.senior-hero-icon {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.senior-hero.success .senior-hero-icon {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+.senior-hero.warning .senior-hero-icon {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.senior-hero-title {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin: 0 0 0.4rem 0;
+  line-height: 1.3;
+}
+
+.senior-hero-desc {
+  font-size: 1.05rem;
+  color: #cbd5e1;
+  margin: 0;
+  line-height: 1.5;
+}
+
+.senior-hero-pills {
+  display: flex;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.senior-hero-pill {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 0.75rem 1.15rem;
+  border-radius: var(--radius-md);
+  text-align: right;
+}
+
+.senior-hero-pill-label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.senior-hero-pill-value {
+  display: block;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #f1f5f9;
+  font-family: var(--font-mono);
+}
+
+.senior-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-xl);
+  padding: 1.75rem 2rem;
+}
+
+.senior-card-header {
+  margin-bottom: 1.25rem;
+}
+
+.senior-card-header h2,
+.senior-card-header h3 {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0 0 0.35rem 0;
+}
+
+.senior-card-header p {
+  color: var(--text-muted);
+  font-size: 0.98rem;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* Paycheck Card */
+.senior-paycheck-container {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 2rem;
+  align-items: center;
+}
+
+@media (max-width: 900px) {
+  .senior-paycheck-container {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+}
+
+.senior-paycheck-figure {
+  font-size: 3.2rem;
+  font-weight: 800;
+  color: #38bdf8;
+  font-family: var(--font-sans);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.senior-paycheck-sub {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #94a3b8;
+  margin-top: 0.4rem;
+}
+
+/* Stepper & Presets */
+.senior-stepper-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+}
+
+.senior-preset-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+}
+
+.senior-preset-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border-input);
+  color: #cbd5e1;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+}
+
+.senior-preset-btn:hover {
+  background: var(--bg-hover);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.senior-preset-btn.active {
+  background: var(--accent);
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+
+/* 4-Column Income Grid */
+.senior-income-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+}
+
+.senior-income-item {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-lg);
+  padding: 1.35rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 0.75rem;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.senior-income-item:hover {
+  border-color: #38bdf8;
+  transform: translateY(-2px);
+}
+
+.senior-income-icon {
+  font-size: 1.8rem;
+  line-height: 1;
+}
+
+.senior-income-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.senior-income-val {
+  font-size: 1.6rem;
+  font-weight: 800;
+  color: #34d399;
+  font-family: var(--font-sans);
+  margin: 0.25rem 0;
+}
+
+.senior-income-desc {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+}
+
+/* Interactive Choice Grid (e.g. QPP Age) */
+.senior-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem;
+}
+
+.senior-choice-card {
+  background: var(--bg-panel);
+  border: 2px solid var(--border-panel);
+  border-radius: var(--radius-lg);
+  padding: 1.35rem 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  text-align: left;
+}
+
+.senior-choice-card:hover {
+  border-color: #47709e;
+  transform: translateY(-2px);
+}
+
+.senior-choice-card.selected {
+  border-color: #38bdf8;
+  background: linear-gradient(180deg, rgba(56, 189, 248, 0.12) 0%, rgba(15, 23, 42, 0.6) 100%);
+  box-shadow: 0 0 20px rgba(56, 189, 248, 0.15);
+}
+
+.senior-choice-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-pill);
+  margin-bottom: 0.5rem;
+}
+
+.senior-choice-badge.default {
+  background: rgba(56, 189, 248, 0.2);
+  color: #38bdf8;
+}
+
+.senior-choice-badge.bonus {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+.senior-choice-badge.early {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+.senior-choice-title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin: 0 0 0.3rem 0;
+}
+
+.senior-choice-amount {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #38bdf8;
+  margin-bottom: 0.4rem;
+}
+
+.senior-choice-card.selected .senior-choice-amount {
+  color: #6ee7b7;
+}
+
+.senior-choice-note {
+  font-size: 0.9rem;
+  color: #94a3b8;
+  line-height: 1.45;
+  margin: 0;
+}
+
+/* Tips Grid */
+.senior-tips-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 1.25rem;
+}
+
+.senior-tip-item {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-lg);
+  padding: 1.35rem 1.5rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.senior-tip-icon {
+  font-size: 1.8rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.senior-tip-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0 0 0.35rem 0;
+}
+
+.senior-tip-text {
+  font-size: 0.9rem;
+  color: #cbd5e1;
+  line-height: 1.5;
+  margin: 0;
+}
+
+
 
