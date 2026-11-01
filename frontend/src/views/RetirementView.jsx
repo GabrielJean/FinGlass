@@ -245,7 +245,10 @@ export function RetirementView() {
   const primaryEstimatedQpp = Math.round(baseQpp65 * currentQppMult);
 
   const isCouple = plan.household.marital_status === "COUPLE";
-  const estimatedOas = isCouple ? 1484 : 742;
+  const oasStartAge = plan.household.primary.oas_start_age || 65;
+  const oasMult = oasStartAge > 65 ? 1.0 + (oasStartAge - 65) * 12 * 0.006 : 1.0;
+  const baseOas = 742;
+  const estimatedOas = Math.round((isCouple ? baseOas * 2 : baseOas) * oasMult);
 
   const primaryDbMonthly = Math.round((plan.household.primary.db_pension_annual || 0) / 12);
   const spouseDbMonthly = isCouple
@@ -271,6 +274,15 @@ export function RetirementView() {
     });
   };
 
+  const scrollToSection = (id) => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("senior-lever-highlight");
+      setTimeout(() => el.classList.remove("senior-lever-highlight"), 1600);
+    }
+  };
+
   const handleSelectQppAge = (age) => {
     updateAndSimulate((prev) => ({
       ...prev,
@@ -279,6 +291,73 @@ export function RetirementView() {
         primary: {
           ...prev.household.primary,
           qpp_start_age: age,
+        },
+      },
+    }));
+  };
+
+  const handleSetBaseQpp = (val) => {
+    updateAndSimulate((prev) => ({
+      ...prev,
+      household: {
+        ...prev.household,
+        primary: {
+          ...prev.household.primary,
+          qpp_monthly_at_65: Math.max(0, val),
+        },
+      },
+    }));
+  };
+
+  const handleSetSpouseBaseQpp = (val) => {
+    updateAndSimulate((prev) => ({
+      ...prev,
+      household: {
+        ...prev.household,
+        spouse: {
+          ...(prev.household.spouse || {}),
+          qpp_monthly_at_65: Math.max(0, val),
+        },
+      },
+    }));
+  };
+
+  const handleSetPrimaryDbMonthly = (monthly) => {
+    const annual = Math.max(0, monthly * 12);
+    updateAndSimulate((prev) => ({
+      ...prev,
+      household: {
+        ...prev.household,
+        primary: {
+          ...prev.household.primary,
+          db_pension_annual: annual,
+        },
+      },
+    }));
+  };
+
+  const handleSetSpouseDbMonthly = (monthly) => {
+    const annual = Math.max(0, monthly * 12);
+    updateAndSimulate((prev) => ({
+      ...prev,
+      household: {
+        ...prev.household,
+        spouse: {
+          ...(prev.household.spouse || {}),
+          db_pension_annual: annual,
+        },
+      },
+    }));
+  };
+
+  const handleSelectOasAge = (age) => {
+    updateAndSimulate((prev) => ({
+      ...prev,
+      household: {
+        ...prev.household,
+        primary: {
+          ...prev.household.primary,
+          oas_start_age: age,
         },
       },
     }));
@@ -330,6 +409,22 @@ export function RetirementView() {
       ...prev,
       accounts: { ...prev.accounts, tfsa: Math.max(0, val) },
     }));
+  };
+
+  const handleSetNonReg = (val) => {
+    updateAndSimulate((prev) => {
+      const nextVal = Math.max(0, val);
+      const oldVal = prev.accounts.non_reg_market_value || 1;
+      const ratio = (prev.accounts.non_reg_acb || 0) / oldVal;
+      return {
+        ...prev,
+        accounts: {
+          ...prev.accounts,
+          non_reg_market_value: nextVal,
+          non_reg_acb: Math.round(nextVal * (ratio > 0 && ratio <= 1 ? ratio : 0.75)),
+        },
+      };
+    });
   };
 
   const handleSetHomeValue = (val) => {
@@ -667,14 +762,24 @@ export function RetirementView() {
           <div className="senior-card">
             <div className="senior-card-header">
               <h3>Where Does Your Monthly Money Come From?</h3>
-              <p>A simple breakdown of your guaranteed government pensions and personal nest egg:</p>
+              <p>A simple breakdown of your guaranteed government pensions and personal nest egg (click any card to adjust):</p>
             </div>
 
             <div className="senior-income-grid">
               {/* QPP */}
-              <div className="senior-income-item">
+              <div
+                className="senior-income-item"
+                role="button"
+                tabIndex={0}
+                onClick={() => scrollToSection("lever-qpp")}
+                onKeyDown={(e) => e.key === "Enter" && scrollToSection("lever-qpp")}
+                title="Click to jump to QPP start age & benchmark settings"
+              >
                 <div>
-                  <div className="senior-income-icon">🇨🇦</div>
+                  <div className="senior-income-header">
+                    <div className="senior-income-icon">🇨🇦</div>
+                    <span className="senior-income-edit-badge"><Sliders size={12} /> Adjust</span>
+                  </div>
                   <h4 className="senior-income-name">Quebec Pension (RRQ / QPP)</h4>
                   <div className="senior-income-val">{formatMoney(primaryEstimatedQpp)} <span style={{ fontSize: "0.9rem", color: "#64748b" }}>/mo</span></div>
                 </div>
@@ -685,21 +790,42 @@ export function RetirementView() {
               </div>
 
               {/* OAS */}
-              <div className="senior-income-item">
+              <div
+                className="senior-income-item"
+                role="button"
+                tabIndex={0}
+                onClick={() => scrollToSection("lever-oas")}
+                onKeyDown={(e) => e.key === "Enter" && scrollToSection("lever-oas")}
+                title="Click to jump to OAS & household status settings"
+              >
                 <div>
-                  <div className="senior-income-icon">🍁</div>
+                  <div className="senior-income-header">
+                    <div className="senior-income-icon">🍁</div>
+                    <span className="senior-income-edit-badge"><Sliders size={12} /> Adjust</span>
+                  </div>
                   <h4 className="senior-income-name">Old Age Security (OAS)</h4>
                   <div className="senior-income-val">~{formatMoney(estimatedOas)} <span style={{ fontSize: "0.9rem", color: "#64748b" }}>/mo</span></div>
                 </div>
                 <p className="senior-income-desc">
-                  Monthly federal pension paid to all Canadian residents who have lived in Canada for 40+ years, starting at age 65.
+                  Monthly federal pension paid to all Canadian residents who have lived in Canada for 40+ years.
+                  {oasStartAge !== 65 && ` (Started at age ${oasStartAge})`}
                 </p>
               </div>
 
               {/* DB Pension */}
-              <div className="senior-income-item">
+              <div
+                className="senior-income-item"
+                role="button"
+                tabIndex={0}
+                onClick={() => scrollToSection("lever-db-pension")}
+                onKeyDown={(e) => e.key === "Enter" && scrollToSection("lever-db-pension")}
+                title="Click to enter your company or workplace pension"
+              >
                 <div>
-                  <div className="senior-income-icon">💼</div>
+                  <div className="senior-income-header">
+                    <div className="senior-income-icon">💼</div>
+                    <span className="senior-income-edit-badge"><Sliders size={12} /> Adjust</span>
+                  </div>
                   <h4 className="senior-income-name">Workplace Pension</h4>
                   <div className="senior-income-val" style={{ color: totalDbMonthly > 0 ? "#34d399" : "#64748b" }}>
                     {totalDbMonthly > 0 ? `${formatMoney(totalDbMonthly)} /mo` : "$0 /mo"}
@@ -708,35 +834,45 @@ export function RetirementView() {
                 <p className="senior-income-desc">
                   {totalDbMonthly > 0
                     ? "Guaranteed monthly company defined benefit pension."
-                    : "No company pension entered (your lifestyle is funded by your personal savings)."}
+                    : "No company pension entered. Click to add your monthly employer pension."}
                 </p>
               </div>
 
               {/* Personal Savings */}
-              <div className="senior-income-item">
+              <div
+                className="senior-income-item"
+                role="button"
+                tabIndex={0}
+                onClick={() => scrollToSection("lever-nest-egg")}
+                onKeyDown={(e) => e.key === "Enter" && scrollToSection("lever-nest-egg")}
+                title="Click to adjust your RRSP, TFSA, and non-registered balances"
+              >
                 <div>
-                  <div className="senior-income-icon">🏦</div>
+                  <div className="senior-income-header">
+                    <div className="senior-income-icon">🏦</div>
+                    <span className="senior-income-edit-badge"><Sliders size={12} /> Adjust</span>
+                  </div>
                   <h4 className="senior-income-name">Your Personal Savings</h4>
                   <div className="senior-income-val" style={{ color: "#38bdf8" }}>
                     {formatMoney(totalLiquidSavings)}
                   </div>
                 </div>
                 <p className="senior-income-desc">
-                  Total liquid nest egg in RRSP & TFSA. Automatically drawn down in the most tax-friendly sequence to cover your spending.
+                  Total liquid nest egg in RRSP, TFSA & Non-Registered. Automatically drawn down in the most tax-friendly sequence to cover your spending.
                 </p>
               </div>
             </div>
           </div>
 
-          {/* 4. 3 Simple Levers You Can Change */}
+          {/* 4. 4 Simple Decisions You Control */}
           <div className="senior-card">
             <div className="senior-card-header">
-              <h3>3 Simple Decisions You Control</h3>
+              <h3>4 Simple Decisions You Control</h3>
               <p>Click any option below to see how it instantly changes your monthly money and peace of mind:</p>
             </div>
 
-            {/* Decision 1: QPP Start Age */}
-            <div style={{ marginBottom: "2rem" }}>
+            {/* Decision 1: QPP Start Age & Benchmark */}
+            <div id="lever-qpp" style={{ marginBottom: "2.5rem", padding: "0.5rem", transition: "all 0.3s ease" }}>
               <h4 style={{ fontSize: "1.1rem", color: "#f1f5f9", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Clock size={18} color="#38bdf8" /> 1. When do you want to start taking your Quebec Pension (QPP)?
               </h4>
@@ -784,18 +920,91 @@ export function RetirementView() {
                   </p>
                 </div>
               </div>
+
+              {/* Custom QPP Statement Benchmark */}
+              <div style={{ marginTop: "1.25rem", padding: "1rem 1.25rem", background: "rgba(15, 23, 42, 0.4)", border: "1px solid var(--border-dim)", borderRadius: "var(--radius-md)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem" }}>
+                  <div>
+                    <label style={{ fontWeight: "700", color: "#f1f5f9", display: "block", fontSize: "0.92rem", marginBottom: "0.2rem" }}>
+                      Estimated QPP at Age 65 (from your Statement of Participation):
+                    </label>
+                    <span style={{ fontSize: "0.82rem", color: "#94a3b8" }}>
+                      Retraite Québec 2026 maximum is $1,507.65/mo. Enter your actual statement amount if lower:
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                    <div style={{ position: "relative" }}>
+                      <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontWeight: "700" }}>$</span>
+                      <input
+                        type="number"
+                        step="25"
+                        min="0"
+                        max="2500"
+                        value={baseQpp65}
+                        onChange={(e) => handleSetBaseQpp(parseFloat(e.target.value) || 0)}
+                        style={{ paddingLeft: "1.8rem", width: "130px", fontSize: "1rem", fontWeight: "700" }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      className="secondary"
+                      style={{ padding: "0.45rem 0.75rem", fontSize: "0.8rem" }}
+                      onClick={() => handleSetBaseQpp(1507.65)}
+                      title="Reset to 2026 Quebec Maximum"
+                    >
+                      Reset to Max
+                    </button>
+                  </div>
+                </div>
+
+                {isCouple && (
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.75rem", marginTop: "1rem", paddingTop: "0.75rem", borderTop: "1px dashed var(--border-dim)" }}>
+                    <div>
+                      <label style={{ fontWeight: "700", color: "#f1f5f9", display: "block", fontSize: "0.92rem", marginBottom: "0.2rem" }}>
+                        Spouse Estimated QPP at Age 65:
+                      </label>
+                      <span style={{ fontSize: "0.82rem", color: "#94a3b8" }}>
+                        From spouse's Retraite Québec Statement of Participation:
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                      <div style={{ position: "relative" }}>
+                        <span style={{ position: "absolute", left: "0.75rem", top: "50%", transform: "translateY(-50%)", color: "#94a3b8", fontWeight: "700" }}>$</span>
+                        <input
+                          type="number"
+                          step="25"
+                          min="0"
+                          max="2500"
+                          value={plan.household.spouse?.qpp_monthly_at_65 || 1100}
+                          onChange={(e) => handleSetSpouseBaseQpp(parseFloat(e.target.value) || 0)}
+                          style={{ paddingLeft: "1.8rem", width: "130px", fontSize: "1rem", fontWeight: "700" }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        className="secondary"
+                        style={{ padding: "0.45rem 0.75rem", fontSize: "0.8rem" }}
+                        onClick={() => handleSetSpouseBaseQpp(1507.65)}
+                        title="Reset to 2026 Quebec Maximum"
+                      >
+                        Reset to Max
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Decision 2: Current Nest Egg */}
-            <div style={{ marginBottom: "2rem" }}>
+            <div id="lever-nest-egg" style={{ marginBottom: "2.5rem", padding: "0.5rem", transition: "all 0.3s ease" }}>
               <h4 style={{ fontSize: "1.1rem", color: "#f1f5f9", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Wallet size={18} color="#38bdf8" /> 2. What do you have saved in your nest egg?
               </h4>
               <p style={{ color: "#94a3b8", fontSize: "0.92rem", marginBottom: "1rem" }}>
-                Click a quick button or type your current balance:
+                Click a quick button or type your current balance across your accounts:
               </p>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1.25rem" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "1.25rem" }}>
                 {/* RRSP */}
                 <div className="senior-stepper-box">
                   <label style={{ fontWeight: "700", color: "#f1f5f9", display: "block", marginBottom: "0.4rem" }}>
@@ -848,6 +1057,32 @@ export function RetirementView() {
                   </div>
                 </div>
 
+                {/* Non-Registered */}
+                <div className="senior-stepper-box">
+                  <label style={{ fontWeight: "700", color: "#f1f5f9", display: "block", marginBottom: "0.4rem" }}>
+                    Non-Registered (Taxable Savings):
+                  </label>
+                  <input
+                    type="number"
+                    step="5000"
+                    value={plan.accounts.non_reg_market_value || 0}
+                    onChange={(e) => handleSetNonReg(parseFloat(e.target.value) || 0)}
+                    style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "0.6rem" }}
+                  />
+                  <div className="senior-preset-row">
+                    {[0, 50000, 120000, 250000].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        className={`senior-preset-btn ${plan.accounts.non_reg_market_value === v ? "active" : ""}`}
+                        onClick={() => handleSetNonReg(v)}
+                      >
+                        {v === 0 ? "$0" : `$${v / 1000}k`}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Home */}
                 <div className="senior-stepper-box">
                   <label style={{ fontWeight: "700", color: "#f1f5f9", display: "block", marginBottom: "0.4rem" }}>
@@ -874,13 +1109,97 @@ export function RetirementView() {
                   </div>
                 </div>
               </div>
+
+              {/* Total breakdown badge matching top card */}
+              <div style={{ marginTop: "1rem", padding: "0.75rem 1rem", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", borderRadius: "var(--radius-md)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "0.5rem" }}>
+                <span style={{ fontSize: "0.9rem", color: "#e2e8f0" }}>
+                  🏦 <strong>Total Liquid Nest Egg:</strong> {formatMoney(plan.accounts.rrsp || 0)} (RRSP) + {formatMoney(plan.accounts.tfsa || 0)} (TFSA) + {formatMoney(plan.accounts.non_reg_market_value || 0)} (Non-Reg){isCouple ? ` + ${formatMoney((plan.accounts.spouse_rrsp || 0) + (plan.accounts.spouse_tfsa || 0))} (Spouse)` : ""}
+                </span>
+                <strong style={{ fontSize: "1rem", color: "#38bdf8" }}>= {formatMoney(totalLiquidSavings)}</strong>
+              </div>
             </div>
 
-            {/* Decision 3: Single or Couple */}
-            <div>
+            {/* Decision 3: Workplace / Company Pension */}
+            <div id="lever-db-pension" style={{ marginBottom: "2.5rem", padding: "0.5rem", transition: "all 0.3s ease" }}>
               <h4 style={{ fontSize: "1.1rem", color: "#f1f5f9", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <Users size={18} color="#38bdf8" /> 3. Are you doing this solo or with your partner?
+                <Building size={18} color="#38bdf8" /> 3. Do you have a Workplace or Company Pension?
               </h4>
+              <p style={{ color: "#94a3b8", fontSize: "0.92rem", marginBottom: "1rem" }}>
+                If you or your employer contributed to a Defined Benefit (DB) pension (e.g. government, RREGOP, healthcare, education, or corporate pension plan), enter your monthly income:
+              </p>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "1.25rem" }}>
+                {/* Primary DB Pension */}
+                <div className="senior-stepper-box">
+                  <label style={{ fontWeight: "700", color: "#f1f5f9", display: "block", marginBottom: "0.4rem" }}>
+                    Your Monthly Company Pension:
+                  </label>
+                  <input
+                    type="number"
+                    step="100"
+                    value={primaryDbMonthly}
+                    onChange={(e) => handleSetPrimaryDbMonthly(parseFloat(e.target.value) || 0)}
+                    style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "0.6rem" }}
+                  />
+                  <div className="senior-preset-row">
+                    {[0, 1000, 2000, 3500, 5000].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        className={`senior-preset-btn ${primaryDbMonthly === v ? "active" : ""}`}
+                        onClick={() => handleSetPrimaryDbMonthly(v)}
+                      >
+                        {v === 0 ? "$0/mo" : `$${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k/mo`}
+                      </button>
+                    ))}
+                  </div>
+                  <span style={{ fontSize: "0.8rem", color: "#94a3b8", marginTop: "0.4rem", display: "block" }}>
+                    Annual: {formatMoney(plan.household.primary.db_pension_annual || 0)}/yr
+                  </span>
+                </div>
+
+                {/* Spouse DB Pension (if couple) */}
+                {isCouple && (
+                  <div className="senior-stepper-box">
+                    <label style={{ fontWeight: "700", color: "#f1f5f9", display: "block", marginBottom: "0.4rem" }}>
+                      Spouse's Monthly Company Pension:
+                    </label>
+                    <input
+                      type="number"
+                      step="100"
+                      value={spouseDbMonthly}
+                      onChange={(e) => handleSetSpouseDbMonthly(parseFloat(e.target.value) || 0)}
+                      style={{ fontSize: "1.1rem", fontWeight: "700", marginBottom: "0.6rem" }}
+                    />
+                    <div className="senior-preset-row">
+                      {[0, 1000, 2000, 3500].map((v) => (
+                        <button
+                          key={v}
+                          type="button"
+                          className={`senior-preset-btn ${spouseDbMonthly === v ? "active" : ""}`}
+                          onClick={() => handleSetSpouseDbMonthly(v)}
+                        >
+                          {v === 0 ? "$0/mo" : `$${(v / 1000).toFixed(v % 1000 === 0 ? 0 : 1)}k/mo`}
+                        </button>
+                      ))}
+                    </div>
+                    <span style={{ fontSize: "0.8rem", color: "#94a3b8", marginTop: "0.4rem", display: "block" }}>
+                      Annual: {formatMoney(plan.household.spouse?.db_pension_annual || 0)}/yr
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Decision 4: OAS & Marital Status */}
+            <div id="lever-oas" style={{ padding: "0.5rem", transition: "all 0.3s ease" }}>
+              <h4 style={{ fontSize: "1.1rem", color: "#f1f5f9", marginBottom: "0.5rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Users size={18} color="#38bdf8" /> 4. Old Age Security (OAS) & Household Status
+              </h4>
+              <p style={{ color: "#94a3b8", fontSize: "0.92rem", marginBottom: "0.75rem" }}>
+                Select whether you are planning alone or with a partner, and choose your preferred OAS start age:
+              </p>
+
               <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginTop: "0.75rem" }}>
                 <button
                   type="button"
@@ -898,6 +1217,34 @@ export function RetirementView() {
                 >
                   <Users size={18} /> My Partner & Me (Couple)
                 </button>
+              </div>
+
+              {/* OAS Start Age Options */}
+              <div style={{ marginTop: "1.25rem", padding: "1rem 1.25rem", background: "rgba(15, 23, 42, 0.4)", border: "1px solid var(--border-dim)", borderRadius: "var(--radius-md)" }}>
+                <label style={{ fontWeight: "700", color: "#f1f5f9", display: "block", fontSize: "0.92rem", marginBottom: "0.5rem" }}>
+                  Federal OAS Start Age:
+                </label>
+                <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap" }}>
+                  <button
+                    type="button"
+                    className={`senior-preset-btn ${oasStartAge === 65 ? "active" : ""}`}
+                    onClick={() => handleSelectOasAge(65)}
+                    style={{ padding: "0.6rem 1.2rem", fontSize: "0.95rem" }}
+                  >
+                    Age 65 (Standard ~${isCouple ? "1,484" : "742"}/mo)
+                  </button>
+                  <button
+                    type="button"
+                    className={`senior-preset-btn ${oasStartAge === 70 ? "active" : ""}`}
+                    onClick={() => handleSelectOasAge(70)}
+                    style={{ padding: "0.6rem 1.2rem", fontSize: "0.95rem" }}
+                  >
+                    Age 70 (+36% Bonus ~${isCouple ? "2,018" : "1,009"}/mo)
+                  </button>
+                </div>
+                <span style={{ fontSize: "0.82rem", color: "#94a3b8", display: "block", marginTop: "0.5rem" }}>
+                  Federal OAS can begin at 65 or be voluntarily deferred up to age 70 for an extra +7.2% per year for life (+36% total).
+                </span>
               </div>
 
               {isCouple && (
@@ -1391,6 +1738,61 @@ export function RetirementView() {
                 />
               </label>
 
+              {plan.household.marital_status === "COUPLE" && (
+                <>
+                  <label>
+                    Spouse Current Age
+                    <input
+                      type="number"
+                      value={plan.household.spouse?.current_age || 58}
+                      onChange={(e) =>
+                        setPlan({
+                          ...plan,
+                          household: {
+                            ...plan.household,
+                            spouse: { ...(plan.household.spouse || {}), current_age: Number(e.target.value) },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Spouse Retirement Age
+                    <input
+                      type="number"
+                      value={plan.household.spouse?.retirement_age || 65}
+                      onChange={(e) =>
+                        setPlan({
+                          ...plan,
+                          household: {
+                            ...plan.household,
+                            spouse: { ...(plan.household.spouse || {}), retirement_age: Number(e.target.value) },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Spouse Life Expectancy (Max 100)
+                    <input
+                      type="number"
+                      value={plan.household.spouse?.life_expectancy_age || 95}
+                      onChange={(e) =>
+                        setPlan({
+                          ...plan,
+                          household: {
+                            ...plan.household,
+                            spouse: { ...(plan.household.spouse || {}), life_expectancy_age: Number(e.target.value) },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+                </>
+              )}
+
               <label>
                 Private Drug Insurance?
                 <select
@@ -1458,6 +1860,38 @@ export function RetirementView() {
                   }
                 />
               </label>
+
+              {plan.household.marital_status === "COUPLE" && (
+                <>
+                  <label>
+                    Spouse RRSP / RRIF Balance
+                    <input
+                      type="number"
+                      value={plan.accounts.spouse_rrsp || 0}
+                      onChange={(e) =>
+                        setPlan({
+                          ...plan,
+                          accounts: { ...plan.accounts, spouse_rrsp: Number(e.target.value) },
+                        })
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Spouse TFSA Balance
+                    <input
+                      type="number"
+                      value={plan.accounts.spouse_tfsa || 0}
+                      onChange={(e) =>
+                        setPlan({
+                          ...plan,
+                          accounts: { ...plan.accounts, spouse_tfsa: Number(e.target.value) },
+                        })
+                      }
+                    />
+                  </label>
+                </>
+              )}
 
               <label>
                 Non-Registered Market Value
@@ -1606,7 +2040,25 @@ export function RetirementView() {
             </div>
             <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "1rem" }}>
               <label>
-                QPP Start Age (60 to 72)
+                Primary QPP Benchmark at 65 ($/mo)
+                <input
+                  type="number"
+                  step="25"
+                  value={plan.household.primary.qpp_monthly_at_65 || 1507.65}
+                  onChange={(e) =>
+                    setPlan({
+                      ...plan,
+                      household: {
+                        ...plan.household,
+                        primary: { ...plan.household.primary, qpp_monthly_at_65: Number(e.target.value) },
+                      },
+                    })
+                  }
+                />
+              </label>
+
+              <label>
+                Primary QPP Start Age (60 to 72)
                 <input
                   type="number"
                   min="60"
@@ -1625,7 +2077,7 @@ export function RetirementView() {
               </label>
 
               <label>
-                OAS Start Age (65 to 70)
+                Primary OAS Start Age (65 to 70)
                 <input
                   type="number"
                   min="65"
@@ -1642,6 +2094,178 @@ export function RetirementView() {
                   }
                 />
               </label>
+
+              <label>
+                Primary Workplace Pension ($/yr)
+                <input
+                  type="number"
+                  step="1000"
+                  value={plan.household.primary.db_pension_annual || 0}
+                  onChange={(e) =>
+                    setPlan({
+                      ...plan,
+                      household: {
+                        ...plan.household,
+                        primary: { ...plan.household.primary, db_pension_annual: Number(e.target.value) },
+                      },
+                    })
+                  }
+                />
+              </label>
+
+              <label>
+                Primary DB Bridge Pension ($/yr)
+                <input
+                  type="number"
+                  step="500"
+                  value={plan.household.primary.db_bridge_annual || 0}
+                  onChange={(e) =>
+                    setPlan({
+                      ...plan,
+                      household: {
+                        ...plan.household,
+                        primary: { ...plan.household.primary, db_bridge_annual: Number(e.target.value) },
+                      },
+                    })
+                  }
+                />
+              </label>
+
+              <label>
+                Primary DB Indexation
+                <select
+                  value={plan.household.primary.db_indexation || "FULL_CPI"}
+                  onChange={(e) =>
+                    setPlan({
+                      ...plan,
+                      household: {
+                        ...plan.household,
+                        primary: { ...plan.household.primary, db_indexation: e.target.value },
+                      },
+                    })
+                  }
+                >
+                  <option value="FULL_CPI">Full CPI (100% Inflation Indexed)</option>
+                  <option value="PARTIAL_CPI">Partial CPI (50% Inflation Indexed)</option>
+                  <option value="NONE">None (Flat Nominal)</option>
+                </select>
+              </label>
+
+              {plan.household.marital_status === "COUPLE" && (
+                <>
+                  <label>
+                    Spouse QPP Benchmark at 65 ($/mo)
+                    <input
+                      type="number"
+                      step="25"
+                      value={plan.household.spouse?.qpp_monthly_at_65 || 1100}
+                      onChange={(e) =>
+                        setPlan({
+                          ...plan,
+                          household: {
+                            ...plan.household,
+                            spouse: { ...(plan.household.spouse || {}), qpp_monthly_at_65: Number(e.target.value) },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Spouse QPP Start Age (60 to 72)
+                    <input
+                      type="number"
+                      min="60"
+                      max="72"
+                      value={plan.household.spouse?.qpp_start_age || 65}
+                      onChange={(e) =>
+                        setPlan({
+                          ...plan,
+                          household: {
+                            ...plan.household,
+                            spouse: { ...(plan.household.spouse || {}), qpp_start_age: Number(e.target.value) },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Spouse OAS Start Age (65 to 70)
+                    <input
+                      type="number"
+                      min="65"
+                      max="70"
+                      value={plan.household.spouse?.oas_start_age || 65}
+                      onChange={(e) =>
+                        setPlan({
+                          ...plan,
+                          household: {
+                            ...plan.household,
+                            spouse: { ...(plan.household.spouse || {}), oas_start_age: Number(e.target.value) },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Spouse Workplace Pension ($/yr)
+                    <input
+                      type="number"
+                      step="1000"
+                      value={plan.household.spouse?.db_pension_annual || 0}
+                      onChange={(e) =>
+                        setPlan({
+                          ...plan,
+                          household: {
+                            ...plan.household,
+                            spouse: { ...(plan.household.spouse || {}), db_pension_annual: Number(e.target.value) },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Spouse DB Bridge Pension ($/yr)
+                    <input
+                      type="number"
+                      step="500"
+                      value={plan.household.spouse?.db_bridge_annual || 0}
+                      onChange={(e) =>
+                        setPlan({
+                          ...plan,
+                          household: {
+                            ...plan.household,
+                            spouse: { ...(plan.household.spouse || {}), db_bridge_annual: Number(e.target.value) },
+                          },
+                        })
+                      }
+                    />
+                  </label>
+
+                  <label>
+                    Spouse DB Indexation
+                    <select
+                      value={plan.household.spouse?.db_indexation || "FULL_CPI"}
+                      onChange={(e) =>
+                        setPlan({
+                          ...plan,
+                          household: {
+                            ...plan.household,
+                            spouse: { ...(plan.household.spouse || {}), db_indexation: e.target.value },
+                          },
+                        })
+                      }
+                    >
+                      <option value="FULL_CPI">Full CPI (100% Inflation Indexed)</option>
+                      <option value="PARTIAL_CPI">Partial CPI (50% Inflation Indexed)</option>
+                      <option value="NONE">None (Flat Nominal)</option>
+                    </select>
+                  </label>
+                </>
+              )}
 
               <label>
                 Strategy Mode
