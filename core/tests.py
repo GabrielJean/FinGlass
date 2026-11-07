@@ -447,7 +447,7 @@ class FinGlassComprehensiveTests(TestCase):
         # Create credit card transaction
         c1 = CreditCardTransaction.objects.create(
             user=self.user,
-            provider="scotiabank",
+            provider="wealthsimple",
             card_label="Visa Card",
             transaction_date="2024-05-05",
             merchant_name="Gas Station",
@@ -557,8 +557,8 @@ class FinGlassComprehensiveTests(TestCase):
         from core.models import CreditCardTransaction, CreditCardAccount
         t1 = CreditCardTransaction.objects.create(
             user=self.user,
-            provider="scotiabank",
-            card_label="Scotia Momentum",
+            provider="wealthsimple",
+            card_label="WS Cash",
             transaction_date="2024-07-01",
             merchant_name="Fast Food 1",
             amount=15.00,
@@ -567,8 +567,8 @@ class FinGlassComprehensiveTests(TestCase):
         )
         t2 = CreditCardTransaction.objects.create(
             user=self.user,
-            provider="scotiabank",
-            card_label="Scotia Momentum",
+            provider="wealthsimple",
+            card_label="WS Cash",
             transaction_date="2024-07-02",
             merchant_name="Fast Food 2",
             amount=22.50,
@@ -729,18 +729,18 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(Transaction.objects.filter(security="BMO.TO", user=self.user).count(), 1)
 
     def test_credit_card_multi_upload_and_deduplication(self):
-        cc_csv = (
-            "Transaction Date,Posted Date,Merchant Name,Amount\n"
-            "2026-04-01,2026-04-02,Starbucks Coffee,-6.50\n"
-            "2026-04-03,2026-04-04,Metro Grocery,-85.20\n"
+        ws_custom_csv = (
+            "transaction_date,transaction_type,status,merchant,amount,currency,notes,category\n"
+            "11/06/2026,Purchase,Completed,Starbucks Coffee,-6.50,CAD,,Coffee\n"
+            "11/06/2026,Purchase,Completed,Metro Grocery,-85.20,CAD,,Groceries\n"
         ).encode("utf-8")
-        file1 = SimpleUploadedFile("scotia_apr_1.csv", cc_csv, content_type="text/csv")
-        file2 = SimpleUploadedFile("scotia_apr_duplicate.csv", cc_csv, content_type="text/csv")
+        file1 = SimpleUploadedFile("ws_custom_1.csv", ws_custom_csv, content_type="text/csv")
+        file2 = SimpleUploadedFile("ws_custom_dup.csv", ws_custom_csv, content_type="text/csv")
 
         # Upload both at once
         res = self.client.post(
-            "/api/import/credit-card/scotiabank-csv",
-            {"file": [file1, file2], "provider": "scotiabank", "card_label": "Scotia Passport"},
+            "/api/import/credit-card/wealthsimple-csv",
+            {"file": [file1, file2], "provider": "wealthsimple", "card_label": "WS Cash"},
         )
         self.assertEqual(res.status_code, 200)
         data = res.json()
@@ -754,10 +754,10 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Metro Grocery", user=self.user).count(), 1)
 
         # Upload a second time with another different filename using alias route
-        file3 = SimpleUploadedFile("renamed_again.csv", cc_csv, content_type="text/csv")
+        file3 = SimpleUploadedFile("renamed_again.csv", ws_custom_csv, content_type="text/csv")
         res2 = self.client.post(
             "/api/import/rogers-credit-csv",
-            {"file": file3, "provider": "scotiabank", "card_label": "Scotia Passport"},
+            {"file": file3, "provider": "wealthsimple", "card_label": "WS Cash"},
         )
         self.assertEqual(res2.status_code, 200)
         data2 = res2.json()
@@ -766,19 +766,19 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(data2["skipped"], 2)
         self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Starbucks Coffee", user=self.user).count(), 1)
 
-        # Upload without specifying provider (auto-detection test)
-        scotia_csv2 = (
-            "date,posted date,description,amount\n"
-            "2026-05-10,2026-05-11,Auto Scotia Store,-45.50\n"
+        # Upload Wealthsimple statement format without specifying provider (auto-detection test)
+        ws_statement_csv = (
+            "transaction_date,post_date,type,details,amount,currency\n"
+            "10/20/2026,10/20/2026,Purchase,Auto WS Store,45.50,CAD\n"
         ).encode("utf-8")
-        file_auto_scotia = SimpleUploadedFile("scotia_no_provider.csv", scotia_csv2, content_type="text/csv")
+        file_auto_ws = SimpleUploadedFile("ws_statement_no_provider.csv", ws_statement_csv, content_type="text/csv")
         res3 = self.client.post(
             "/api/import/rogers-credit-csv",
-            {"file": file_auto_scotia},
+            {"file": file_auto_ws},
         )
         self.assertEqual(res3.status_code, 200)
         self.assertEqual(res3.json()["inserted"], 1)
-        self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Auto Scotia Store", user=self.user).count(), 1)
+        self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Auto WS Store", user=self.user).count(), 1)
 
         # Upload Rogers format CSV with provider="auto"
         rogers_csv = (
@@ -912,8 +912,72 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(data_dup["inserted"], 0)
         self.assertEqual(data_dup["skipped"], 3)
 
-        # Ensure still only 3 transactions exist
-        self.assertEqual(CreditCardTransaction.objects.filter(provider="wealthsimple", user=self.user).count(), 3)
+        # 4. Test Wealthsimple custom document export format + Historical Category Memory
+        # Seed an existing transaction from the user's historical transactions
+        CreditCardTransaction.objects.create(
+            user=self.user,
+            provider="rogers_bank",
+            card_label="Old Rogers Card",
+            transaction_date="2026-01-01",
+            merchant_name="Corner Cafe Bistro",
+            merchant_category="Dining",
+            amount=25.00,
+        )
+
+        ws_custom_export = (
+            "transaction_date,transaction_type,status,merchant,amount,currency,notes,category\n"
+            "11/6/2026,Purchase,Completed,Quick Burger Express,-15.50,CAD,,Restaurants\n"
+            "11/6/2026,Purchase,Completed,Family Diner Bistro,-25.00,CAD,,Restaurants\n"
+            '11/6/2026,Purchase,Pending,City Parking Meter,-10.00,CAD,,"Gas, parking, and tolls"\n'
+            "11/6/2026,Purchase,Completed,Morning Roast Cafe,-4.50,CAD,,Coffee\n"
+            "11/5/2026,Purchase,Completed,Snack Vending Machine,-2.50,CAD,,Other food and drink\n"
+            "11/5/2026,Refund,Completed,Merchant Refund,12.00,CAD,,Services\n"
+            "10/26/2026,Payment,Completed,,50.00,CAD,,Uncategorized\n"
+            "9/22/2026,Purchase,Completed,Corner Cafe Bistro,-18.50,CAD,,Uncategorized\n"
+            "8/15/2026,Purchase,Completed,Downtown Lounge Bar,-45.00,CAD,,Bars and nightlife\n"
+        ).encode("utf-8")
+
+        file_custom = SimpleUploadedFile("ws_custom_doc.csv", ws_custom_export, content_type="text/csv")
+        res_custom = self.client.post(
+            "/api/import/credit-card/wealthsimple-csv",
+            {"file": file_custom, "card_label": "WS Visa Infinite"},
+        )
+        self.assertEqual(res_custom.status_code, 200)
+        c_data = res_custom.json()
+        self.assertEqual(c_data["parsed"], 9)
+        self.assertEqual(c_data["inserted"], 9)
+
+        # Check positive/negative amounts and categories
+        burger = CreditCardTransaction.objects.get(merchant_name="Quick Burger Express", user=self.user)
+        self.assertEqual(float(burger.amount), 15.50)
+        self.assertEqual(burger.merchant_category, "Dining")
+
+        parking = CreditCardTransaction.objects.get(merchant_name="City Parking Meter", user=self.user)
+        self.assertEqual(float(parking.amount), 10.00)
+        self.assertEqual(parking.merchant_category, "Parking")
+
+        cafe = CreditCardTransaction.objects.get(merchant_name="Morning Roast Cafe", user=self.user)
+        self.assertEqual(float(cafe.amount), 4.50)
+        self.assertEqual(cafe.merchant_category, "Coffee & Snacks")
+
+        refund = CreditCardTransaction.objects.get(merchant_name="Merchant Refund", user=self.user)
+        self.assertEqual(float(refund.amount), -12.00)
+        self.assertEqual(refund.merchant_category, "Personal Services")
+
+        payment = CreditCardTransaction.objects.filter(merchant_name="Payment", user=self.user).first()
+        self.assertIsNotNone(payment)
+        self.assertEqual(float(payment.amount), -50.00)
+        self.assertEqual(payment.merchant_category, "Transfers & Payments")
+
+        # Crucial test: Corner Cafe Bistro had category="Uncategorized" in the CSV,
+        # but was matched against the user's historical transactions to inherit "Dining"!
+        bistro = CreditCardTransaction.objects.filter(merchant_name="Corner Cafe Bistro", amount=18.50, user=self.user).first()
+        self.assertIsNotNone(bistro)
+        self.assertEqual(bistro.merchant_category, "Dining")
+
+        bars = CreditCardTransaction.objects.get(merchant_name="Downtown Lounge Bar", user=self.user)
+        self.assertEqual(float(bars.amount), 45.00)
+        self.assertEqual(bars.merchant_category, "Alcohol & Bars")
 
 
 

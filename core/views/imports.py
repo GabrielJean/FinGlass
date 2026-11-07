@@ -15,7 +15,11 @@ from pypdf import PdfReader
 from core.constants import CHEQUING_DEFAULT_PROVIDER, CHEQUING_SUPPORTED_PROVIDERS
 from core.models import ChequingAccount, ChequingTransaction, CreditCardAccount, CreditCardTransaction, HoldingSnapshot, ImportBatch, ImportBatchRow, Transaction
 from core.services.chequing_service import normalize_chequing_category
-from core.services.credit_card_categories import infer_credit_card_category_from_merchant, normalize_credit_card_category
+from core.services.credit_card_categories import (
+    get_user_merchant_category_map,
+    infer_credit_card_category_from_merchant,
+    normalize_credit_card_category,
+)
 
 SUPPORTED_IMPORT_TYPES = {"activities_csv", "tax_pdf", "auto"}
 EPSILON = Decimal("0.000001")
@@ -456,21 +460,6 @@ def _normalize_credit_card_date(raw):
     return value
 
 
-def _parse_scotia_amount(normalized_row):
-    amount = _parse_number(_csv_get_value(normalized_row, "Amount", "Amount (CAD)", "CAD Amount", "CAD$"), 0.0)
-    if abs(amount) > 0.000001:
-        return amount
-
-    debit = _parse_number(_csv_get_value(normalized_row, "Debit", "Debits", "Purchase Amount"), 0.0)
-    credit = _parse_number(_csv_get_value(normalized_row, "Credit", "Credits", "Payment Amount", "Refund Amount"), 0.0)
-
-    if abs(debit) > 0.000001 and abs(credit) <= 0.000001:
-        return -abs(debit)
-    if abs(credit) > 0.000001 and abs(debit) <= 0.000001:
-        return abs(credit)
-    return amount
-
-
 def parse_rogers_credit_csv_text(csv_text, card_label=None):
     rows = []
     reader = csv.DictReader(StringIO(csv_text))
@@ -516,63 +505,12 @@ def parse_rogers_credit_csv_text(csv_text, card_label=None):
     return rows
 
 
-def parse_scotiabank_credit_csv_text(csv_text, card_label=None):
-    rows = []
-    reader = csv.DictReader(StringIO(csv_text))
-
-    for item in reader:
-        normalized_item = {
-            _normalize_csv_header(key): value for key, value in (item or {}).items() if key is not None
-        }
-
-        tx_date = _normalize_credit_card_date(
-            _csv_get_value(normalized_item, "Transaction Date", "Date", "Trans Date", "Posted Date")
-        )
-        if not tx_date:
-            continue
-
-        posted_date = _normalize_credit_card_date(
-            _csv_get_value(normalized_item, "Posted Date", "Post Date", "Posting Date", "Date Posted")
-        )
-        merchant_name = _csv_get_value(
-            normalized_item,
-            "Description",
-            "Transaction Description",
-            "Details",
-            "Merchant Name",
-            "Payee",
-        )
-        amount = _parse_scotia_amount(normalized_item)
-        card_number = _csv_get_value(normalized_item, "Card Number", "Card", "Card No", "Card Ending")
-
-        rows.append(
-            {
-                "provider": "scotiabank",
-                "card_label": card_label or "Scotiabank",
-                "transaction_date": tx_date,
-                "posted_date": posted_date,
-                "reference_number": _csv_get_value(normalized_item, "Reference Number", "Reference", "Transaction ID"),
-                "activity_type": _csv_get_value(normalized_item, "Activity Type", "Transaction Type", "Type"),
-                "status": _csv_get_value(normalized_item, "Status"),
-                "card_last4": card_number[-4:] if len(card_number) >= 4 else "",
-                "merchant_category": normalize_credit_card_category(
-                    _csv_get_value(normalized_item, "Category", "Merchant Category", "Category Description")
-                ),
-                "merchant_name": merchant_name,
-                "merchant_city": _csv_get_value(normalized_item, "Sub-description", "City", "Merchant City"),
-                "merchant_region": _csv_get_value(normalized_item, "Province", "State", "Region", "Merchant State/Province"),
-                "merchant_country": _csv_get_value(normalized_item, "Country", "Merchant Country"),
-                "merchant_postal": _csv_get_value(normalized_item, "Postal", "Postal Code", "Merchant Postal Code"),
-                "amount": amount,
-                "rewards": _parse_number(_csv_get_value(normalized_item, "Rewards", "Points"), 0.0),
-                "cardholder_name": _csv_get_value(normalized_item, "Cardholder", "Cardholder Name", "Name on Card"),
-            }
-        )
-
-    return rows
-
-
-def parse_wealthsimple_credit_csv_text(csv_text, card_label=None):
+def parse_wealthsimple_credit_csv_text(csv_text, card_label=None, user_category_map=None):
+    """
+    Parses Wealthsimple credit card CSV files. Supports two formats:
+    1. Custom document export (transaction_date, transaction_type, status, merchant, amount, currency, notes, category)
+    2. Monthly statement export (transaction_date, post_date, type, details, amount, currency)
+    """
     rows = []
     reader = csv.DictReader(StringIO(csv_text))
 
@@ -590,20 +528,34 @@ def parse_wealthsimple_credit_csv_text(csv_text, card_label=None):
         posted_date = _normalize_credit_card_date(
             _csv_get_value(normalized_item, "post_date", "posted_date")
         )
-        tx_type = _csv_get_value(normalized_item, "type", "activity_type", "transaction_type")
-        details = _csv_get_value(normalized_item, "details", "description", "merchant", "payee")
+        tx_type = _csv_get_value(normalized_item, "transaction_type", "type", "activity_type")
+        status = _csv_get_value(normalized_item, "status")
+        merchant = _csv_get_value(normalized_item, "merchant", "details", "description", "payee")
+        raw_category = _csv_get_value(normalized_item, "category", "merchant_category")
         raw_amount = _parse_number(_csv_get_value(normalized_item, "amount", "total"), 0.0)
 
-        # In Wealthsimple credit statements:
-        # Purchases are positive (e.g. 67.84, 6.27).
-        # Payments/credits are negative (e.g. -48.84).
-        # If type indicates Payment and amount is positive, negate it.
-        amount = raw_amount
-        if tx_type and "payment" in tx_type.lower() and amount > 0:
-            amount = -amount
+        # In FinGlass:
+        # Expenses/purchases must be positive (amount > 0).
+        # Payments, refunds, and credits must be negative (amount < 0).
+        type_lower = (tx_type or "").lower()
+        if "payment" in type_lower or "refund" in type_lower or "credit" in type_lower:
+            amount = -abs(raw_amount)
+        elif "purchase" in type_lower or "debit" in type_lower:
+            amount = abs(raw_amount)
+        else:
+            amount = raw_amount
 
-        # Infer category from merchant name / details
-        category = infer_credit_card_category_from_merchant(details, tx_type)
+        merchant_name = merchant
+        if not merchant_name and "payment" in type_lower:
+            merchant_name = "Payment"
+
+        # Determine category (using user's 1400+ historical transactions, CSV category, and keyword rules)
+        category = infer_credit_card_category_from_merchant(
+            merchant_name,
+            tx_type=tx_type,
+            user_category_map=user_category_map,
+            raw_category=raw_category,
+        )
 
         rows.append(
             {
@@ -613,13 +565,13 @@ def parse_wealthsimple_credit_csv_text(csv_text, card_label=None):
                 "posted_date": posted_date or tx_date,
                 "reference_number": "",
                 "activity_type": tx_type or ("Payment" if amount < 0 else "Purchase"),
-                "status": "Posted",
+                "status": status or "Posted",
                 "card_last4": "",
                 "merchant_category": category,
-                "merchant_name": details,
+                "merchant_name": merchant_name,
                 "merchant_city": "",
                 "merchant_region": "",
-                "merchant_country": _csv_get_value(normalized_item, "currency") or "CAN",
+                "merchant_country": _csv_get_value(normalized_item, "currency") or "CAD",
                 "merchant_postal": "",
                 "amount": amount,
                 "rewards": 0.0,
@@ -636,17 +588,19 @@ def detect_credit_card_provider(csv_text, fallback="rogers"):
         fieldnames = [str(f or "").strip().lower() for f in (reader.fieldnames or [])]
         normalized_headers = {_normalize_csv_header(h) for h in fieldnames}
 
-        # Wealthsimple specific headers: transaction_date, post_date, type, details, amount, currency
-        if "details" in normalized_headers and "type" in normalized_headers and ("transactiondate" in normalized_headers or "postdate" in normalized_headers):
+        # Wealthsimple specific headers:
+        # Format 1 (statement): details, type, transaction_date/post_date
+        # Format 2 (custom): transaction_type, merchant, category, notes, transaction_date
+        if (
+            ("details" in normalized_headers and "type" in normalized_headers and ("transactiondate" in normalized_headers or "postdate" in normalized_headers))
+            or ("transactiontype" in normalized_headers and ("merchant" in normalized_headers or "category" in normalized_headers))
+            or ("transactiondate" in normalized_headers and "merchant" in normalized_headers and "category" in normalized_headers)
+        ):
             return "wealthsimple"
 
         # Rogers specific headers
         if any(h in normalized_headers for h in ("merchantname", "nameoncard", "rewards", "transactioncardnumber", "merchantcategory")):
             return "rogers"
-
-        # Scotiabank specific headers
-        if any(h in normalized_headers for h in ("cardending", "transdate", "cardno", "description")):
-            return "scotiabank"
     except Exception:
         pass
 
@@ -664,17 +618,10 @@ def detect_credit_card_provider(csv_text, fallback="rogers"):
     except Exception:
         pass
 
-    try:
-        rows = parse_scotiabank_credit_csv_text(csv_text)
-        if rows:
-            return "scotiabank"
-    except Exception:
-        pass
-
     return fallback
 
 
-def parse_credit_csv_text(csv_text, provider="auto", card_label=None):
+def parse_credit_csv_text(csv_text, provider="auto", card_label=None, user_category_map=None):
     provider_value = str(provider or "").strip().lower()
 
     if not provider_value or provider_value in {"auto", "detect"}:
@@ -682,7 +629,7 @@ def parse_credit_csv_text(csv_text, provider="auto", card_label=None):
 
     if provider_value in {"wealthsimple", "ws"}:
         try:
-            return parse_wealthsimple_credit_csv_text(csv_text, card_label=card_label)
+            return parse_wealthsimple_credit_csv_text(csv_text, card_label=card_label, user_category_map=user_category_map)
         except Exception:
             pass
 
@@ -690,19 +637,11 @@ def parse_credit_csv_text(csv_text, provider="auto", card_label=None):
         try:
             return parse_rogers_credit_csv_text(csv_text, card_label=card_label)
         except Exception:
-            return parse_scotiabank_credit_csv_text(csv_text, card_label=card_label)
-
-    if provider_value in {"scotia", "scotiabank"}:
-        try:
-            return parse_scotiabank_credit_csv_text(csv_text, card_label=card_label)
-        except Exception:
-            return parse_rogers_credit_csv_text(csv_text, card_label=card_label)
+            pass
 
     detected = detect_credit_card_provider(csv_text)
     if detected in {"wealthsimple", "ws"}:
-        return parse_wealthsimple_credit_csv_text(csv_text, card_label=card_label)
-    if detected in {"scotia", "scotiabank"}:
-        return parse_scotiabank_credit_csv_text(csv_text, card_label=card_label)
+        return parse_wealthsimple_credit_csv_text(csv_text, card_label=card_label, user_category_map=user_category_map)
     return parse_rogers_credit_csv_text(csv_text, card_label=card_label)
 
 
@@ -710,8 +649,6 @@ def _normalize_credit_card_provider_name(value):
     raw = str(value or "").strip().lower()
     if raw in {"rogers", "rogers_bank"}:
         return "rogers_bank"
-    if raw in {"scotia", "scotiabank"}:
-        return "scotiabank"
     if raw in {"wealthsimple", "ws"}:
         return "wealthsimple"
     return ""
@@ -1392,29 +1329,26 @@ def import_rogers_credit_csv(request):
     if not provider or provider in {"auto", "detect"}:
         if "wealthsimple" in request.path.lower():
             provider = "wealthsimple"
-        elif "scotiabank" in request.path.lower():
-            provider = "scotiabank"
         elif card_label:
             acc = CreditCardAccount.objects.filter(user_id=user_id, label=card_label).first()
-            if acc and acc.provider in {"rogers", "rogers_bank", "scotiabank", "scotia", "wealthsimple", "ws"}:
+            if acc and acc.provider in {"rogers", "rogers_bank", "wealthsimple", "ws"}:
                 if "wealthsimple" in acc.provider or "ws" in acc.provider:
                     provider = "wealthsimple"
-                elif "scotia" in acc.provider:
-                    provider = "scotiabank"
                 else:
                     provider = "rogers"
             elif "wealthsimple" in card_label.lower():
                 provider = "wealthsimple"
-            elif "scotia" in card_label.lower():
-                provider = "scotiabank"
             elif "roger" in card_label.lower():
                 provider = "rogers"
             else:
                 provider = "auto"
         else:
             provider = "auto"
-    elif provider not in {"rogers", "rogers_bank", "scotiabank", "scotia", "wealthsimple", "ws", "auto"}:
-        return JsonResponse({"error": "Missing or invalid bank. Choose 'rogers', 'scotiabank', or 'wealthsimple'."}, status=400)
+    elif provider not in {"rogers", "rogers_bank", "wealthsimple", "ws", "auto"}:
+        return JsonResponse({"error": "Missing or invalid bank. Choose 'rogers' or 'wealthsimple'."}, status=400)
+
+    # Build historical merchant category lookup from the user's existing transactions
+    user_category_map = get_user_merchant_category_map(user_id)
 
     total_parsed = 0
     total_inserted = 0
@@ -1430,7 +1364,12 @@ def import_rogers_credit_csv(request):
             file_provider = detect_credit_card_provider(file_text)
 
         try:
-            parsed_rows = parse_credit_csv_text(file_text, provider=file_provider, card_label=card_label)
+            parsed_rows = parse_credit_csv_text(
+                file_text,
+                provider=file_provider,
+                card_label=card_label,
+                user_category_map=user_category_map,
+            )
         except ValueError as exc:
             return JsonResponse({"error": str(exc)}, status=400)
         if not parsed_rows:
@@ -2569,7 +2508,7 @@ def import_full_backup(request):
                     if not label:
                         continue
                     if not provider:
-                        errors.append(f"Row {row_num}: Unsupported credit card bank '{row.get('Provider', '')}'. Supported banks: Rogers Bank, Scotiabank")
+                        errors.append(f"Row {row_num}: Unsupported credit card bank '{row.get('Provider', '')}'. Supported banks: Rogers Bank, Wealthsimple")
                         if len(errors) > 10:
                             errors.append("... (additional errors truncated)")
                             break

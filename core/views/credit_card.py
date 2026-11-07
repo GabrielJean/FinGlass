@@ -15,8 +15,6 @@ from core.services.credit_card_service import parse_bool_query, parse_credit_car
 CREDIT_CARD_SUPPORTED_PROVIDERS = {
     "rogers": "rogers_bank",
     "rogers_bank": "rogers_bank",
-    "scotia": "scotiabank",
-    "scotiabank": "scotiabank",
     "wealthsimple": "wealthsimple",
     "ws": "wealthsimple",
 }
@@ -448,8 +446,8 @@ def create_credit_card(request):
 
     if not label:
         return JsonResponse({"error": "label is required"}, status=400)
-    if provider not in {"rogers_bank", "scotiabank", "wealthsimple"}:
-        return JsonResponse({"error": "Unsupported credit card bank. Supported banks: Rogers Bank, Scotiabank, Wealthsimple"}, status=400)
+    if provider not in {"rogers_bank", "wealthsimple"}:
+        return JsonResponse({"error": "Unsupported credit card bank. Supported banks: Rogers Bank, Wealthsimple"}, status=400)
 
     account, created = CreditCardAccount.objects.get_or_create(
         user=request.user,

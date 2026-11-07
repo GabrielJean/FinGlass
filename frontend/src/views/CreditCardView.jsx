@@ -978,7 +978,6 @@ export function CreditCardView() {
                   onChange={(e) => setNewCardForm({ ...newCardForm, provider: e.target.value })}
                 >
                   <option value="rogers_bank">Rogers Bank</option>
-                  <option value="scotiabank">Scotiabank</option>
                   <option value="wealthsimple">Wealthsimple</option>
                 </select>
               </label>

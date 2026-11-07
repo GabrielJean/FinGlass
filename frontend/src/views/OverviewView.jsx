@@ -883,7 +883,7 @@ export function OverviewView({ onNavigate }) {
             <div>
               <h3 style={{ margin: 0, fontSize: "1rem" }}>Credit Card Desk</h3>
               <p className="fine" style={{ margin: "0.2rem 0 0" }}>
-                Rogers Bank & Scotiabank spending breakdown
+                Rogers Bank & Wealthsimple spending breakdown
               </p>
             </div>
           </div>
