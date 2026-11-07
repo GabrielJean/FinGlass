@@ -435,14 +435,22 @@ class FinGlassComprehensiveTests(TestCase):
         t1.refresh_from_db()
         self.assertTrue(t1.is_hidden)
 
-        # Delete many chequing transactions
+        # Delete many chequing transactions (supports both ids and transaction_ids)
+        t3 = ChequingTransaction.objects.create(
+            user=self.user,
+            account_label="Main Account",
+            transaction_date="2024-05-03",
+            description="Book Store",
+            amount=-25.00,
+            category="Shopping",
+        )
         del_res = self.client.post(
             "/api/chequing/transactions/delete-many",
-            {"ids": [t1.id, t2.id]},
+            {"transaction_ids": [t1.id, t2.id, t3.id]},
             content_type="application/json",
         )
         self.assertEqual(del_res.status_code, 200)
-        self.assertEqual(del_res.json()["deleted"], 2)
+        self.assertEqual(del_res.json()["deleted"], 3)
 
         # Create credit card transaction
         c1 = CreditCardTransaction.objects.create(

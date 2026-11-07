@@ -514,10 +514,10 @@ def chequing_transactions(request):
     return JsonResponse(data, safe=False)
 
 
-@require_http_methods(["PATCH"])
+@require_http_methods(["POST", "PATCH"])
 def set_chequing_transaction_hidden(request, transaction_id):
     payload = _read_json(request)
-    hidden = bool(payload.get("hidden", True))
+    hidden = bool(payload.get("hidden", True) if "hidden" in payload else payload.get("is_hidden", True))
 
     updated = ChequingTransaction.objects.filter(
         id=transaction_id,
@@ -531,13 +531,13 @@ def set_chequing_transaction_hidden(request, transaction_id):
 @require_http_methods(["POST"])
 def set_many_chequing_transactions_hidden(request):
     payload = _read_json(request)
-    hidden = bool(payload.get("hidden", True))
-    ids = payload.get("ids")
-    if not isinstance(ids, list) or len(ids) == 0:
+    hidden = bool(payload.get("hidden", True) if "hidden" in payload else payload.get("is_hidden", True))
+    raw_ids = payload.get("ids") or payload.get("transaction_ids")
+    if not isinstance(raw_ids, list) or len(raw_ids) == 0:
         return JsonResponse({"error": "ids must be a non-empty array"}, status=400)
 
     normalized_ids = []
-    for item in ids:
+    for item in raw_ids:
         try:
             normalized_ids.append(int(item))
         except (TypeError, ValueError):
@@ -562,15 +562,15 @@ def delete_chequing_transaction(request, transaction_id):
     return JsonResponse({"deleted": 1})
 
 
-@require_http_methods(["POST"])
+@require_http_methods(["POST", "DELETE"])
 def delete_many_chequing_transactions(request):
     payload = _read_json(request)
-    ids = payload.get("ids")
-    if not isinstance(ids, list) or len(ids) == 0:
+    raw_ids = payload.get("ids") or payload.get("transaction_ids")
+    if not isinstance(raw_ids, list) or len(raw_ids) == 0:
         return JsonResponse({"error": "ids must be a non-empty array"}, status=400)
 
     normalized_ids = []
-    for item in ids:
+    for item in raw_ids:
         try:
             normalized_ids.append(int(item))
         except (TypeError, ValueError):

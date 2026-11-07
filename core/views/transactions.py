@@ -114,15 +114,15 @@ def delete_transaction(request, transaction_id):
     return JsonResponse({"deleted": 1})
 
 
-@require_http_methods(["POST"])
+@require_http_methods(["POST", "DELETE"])
 def delete_many_transactions(request):
     payload = _read_json(request)
-    ids = payload.get("ids")
-    if not isinstance(ids, list) or len(ids) == 0:
+    raw_ids = payload.get("ids") or payload.get("transaction_ids")
+    if not isinstance(raw_ids, list) or len(raw_ids) == 0:
         return JsonResponse({"error": "ids must be a non-empty array"}, status=400)
 
     normalized_ids = []
-    for item in ids:
+    for item in raw_ids:
         try:
             normalized_ids.append(int(item))
         except (TypeError, ValueError):

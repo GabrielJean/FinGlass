@@ -181,21 +181,21 @@ export const api = {
       request(`/api/chequing/transactions${params ? `?${params}` : ""}`),
     deleteTransaction: (id) => request(`/api/chequing/transactions/${id}`, { method: "DELETE" }),
     setHidden: (id, is_hidden) =>
-      request(`/api/chequing/transactions/${id}/hidden`, { method: "POST", body: { is_hidden } }),
+      request(`/api/chequing/transactions/${id}/hidden`, { method: "POST", body: { ids: [id], transaction_ids: [id], is_hidden, hidden: is_hidden } }),
     hideMany: (transaction_ids, is_hidden) =>
       request("/api/chequing/transactions/hide-many", {
         method: "POST",
-        body: { transaction_ids, is_hidden },
+        body: { ids: transaction_ids, transaction_ids, is_hidden, hidden: is_hidden },
       }),
     recategorize: (transaction_ids, category) =>
       request("/api/chequing/transactions/recategorize", {
         method: "POST",
-        body: { transaction_ids, category },
+        body: { ids: transaction_ids, transaction_ids, category },
       }),
     deleteMany: (transaction_ids) =>
       request("/api/chequing/transactions/delete-many", {
         method: "POST",
-        body: { transaction_ids },
+        body: { ids: transaction_ids, transaction_ids },
       }),
     importCsv: (formData) =>
       request("/api/import/chequing/courant-csv", { method: "POST", body: formData }),
@@ -224,22 +224,22 @@ export const api = {
     setHidden: (id, is_hidden) =>
       request(`/api/credit-card/transactions/${id}/hidden`, {
         method: "POST",
-        body: { is_hidden },
+        body: { ids: [id], transaction_ids: [id], is_hidden, hidden: is_hidden },
       }),
     hideMany: (transaction_ids, is_hidden) =>
       request("/api/credit-card/transactions/hide-many", {
         method: "POST",
-        body: { transaction_ids, is_hidden },
+        body: { ids: transaction_ids, transaction_ids, is_hidden, hidden: is_hidden },
       }),
     recategorize: (transaction_ids, merchant_category) =>
       request("/api/credit-card/transactions/recategorize", {
         method: "POST",
-        body: { transaction_ids, merchant_category },
+        body: { ids: transaction_ids, transaction_ids, merchant_category },
       }),
     deleteMany: (transaction_ids) =>
       request("/api/credit-card/transactions/delete-many", {
         method: "POST",
-        body: { transaction_ids },
+        body: { ids: transaction_ids, transaction_ids },
       }),
     importRogersCsv: (formData) =>
       request("/api/import/credit-card/rogers-csv", { method: "POST", body: formData }),
@@ -329,7 +329,7 @@ export const api = {
       request(`/api/transactions/${id}`, { method: "PUT", body: data }),
     deleteTransaction: (id) => request(`/api/transactions/${id}`, { method: "DELETE" }),
     deleteMany: (transaction_ids) =>
-      request("/api/transactions/delete-many", { method: "POST", body: { transaction_ids } }),
+      request("/api/transactions/delete-many", { method: "POST", body: { ids: transaction_ids, transaction_ids } }),
     importCsv: (formData) =>
       request("/api/import/activities-csv", { method: "POST", body: formData }),
   },
