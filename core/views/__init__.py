@@ -59,7 +59,6 @@ from .imports import (
     commit_batch_endpoint,
     commit_import_review,
     create_import_review,
-    download_template,
     export_all_data,
     export_credit_cards,
     export_chequing,

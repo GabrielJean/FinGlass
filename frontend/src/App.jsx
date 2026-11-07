@@ -370,7 +370,7 @@ export function App() {
         {currentView === "retirement" && <RetirementView />}
         {currentView === "acb" && <AcbView initialSymbol={viewParams?.symbol} />}
         {currentView === "net-worth" && <NetWorthView />}
-        {currentView === "import" && <ImportWizardView />}
+        {currentView === "import" && <ImportWizardView onNavigate={navigate} />}
         {currentView === "settings" && (
           <SettingsView
             user={currentUser}

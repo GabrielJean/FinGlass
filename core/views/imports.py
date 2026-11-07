@@ -1860,53 +1860,6 @@ def commit_batch_endpoint(request, batch_id):
     return commit_import_review(request, batch_id)
 
 
-@require_GET
-def download_template(request, template_type):
-    templates = {
-        "transactions": {
-            "filename": "transactions_template.csv",
-            "content": """effective_date,effective_time,settlement_date,account_id,account_type,activity_type,activity_sub_type,description,direction,symbol,name,currency,quantity,unit_price,commission,net_cash_amount
-2026-01-05,00:00:00,,ACT12345678,Non-registered,NonCashDistribution,-,XEQT: Non-cash Distribution (Adjusted Cost Base Entry Only) of $150.00 (executed at 2026-01-05),LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,150.00,,,150.00
-2026-01-05,00:00:00,,ACT12345678,Non-registered,ReturnOfCapital,-,XEQT: Return of Capital (Adjusted Cost Base Entry Only) of $-6.50 (executed at 2026-01-05),LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,-6.50,,,-6.50
-2026-01-06,12:33:17,2026-01-07,ACT12345678,Non-registered,Trade,BUY,XEQT - iShares Core Equity ETF Portfolio: Bought 10 shares at $40.00 per share (executed at 2026-01-06),LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,10,40.00,0,-400.00
-2026-03-31,15:47:06,2026-04-01,ACT12345678,Non-registered,Trade,SELL,XEQT - iShares Core Equity ETF Portfolio: Sold 5 shares at $45.00 per share (executed at 2026-03-31),LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,-5,45.00,0,225.00""",
-        },
-        "holdings": {
-            "filename": "holdings_template.csv",
-            "content": """Symbol,Account Number,Account Name,Account Type,Account Classification,Quantity,Market Price,Market Price Currency,Book Value (CAD),Market Value,Market Value Currency,Market Unrealized Returns,Exchange,MIC,Name,Security Type
-AAPL,12345678,My TFSA,TFSA,Tax Advantaged,10,150.00,USD,1200.00,1500.00,CAD,300.00,NASDAQ,XNAS,Apple Inc,Stock
-VDY,12345678,My TFSA,TFSA,Tax Advantaged,50,35.00,CAD,1600.00,1750.00,CAD,150.00,TSX,XTSE,Vanguard FTSE Canadian High Dividend Yield Index ETF,ETF""",
-        },
-        "credit-card": {
-            "filename": "credit_card_template.csv",
-            "content": """Transaction Date,Posted Date,Description,Amount,Category
-2024-01-15,2024-01-16,GROCERY STORE,-125.50,Groceries
-2024-01-20,2024-01-21,GAS STATION,-60.00,Gas
-2024-02-01,2024-02-02,RESTAURANT,-45.00,Dining
-2024-02-10,2024-02-11,ONLINE SHOPPING,-89.99,Shopping""",
-        },
-        "chequing": {
-            "filename": "chequing_template.csv",
-            "content": """transaction_date,transaction_time,account_number,account_type,transaction_type,transaction_sub_type,status,payee,payee_email,amount,currency,notes
-4/12/2026,4:00:00,10000001,Chequing,Withdrawal,E Transfer,Completed,Family Member,family@example.com,-150,CAD,
-4/17/2026,22:34:50,10000001,Chequing,Withdrawal,Aft,Completed,UTILITY CORP,,-120.50,CAD,
-4/18/2026,17:15:02,10000001,Chequing,Deposit,E Transfer,Completed,Jane Doe,jane.doe@example.com,75,CAD,
-4/21/2026,9:57:28,10000001,Chequing,Deposit,Aft,Completed,EMPLOYER PAYROLL,,2500.00,CAD,
-5/1/2026,0:00:00,10000001,Chequing,Interest,,Completed,,,5.00,CAD,
-5/5/2026,9:58:25,10000001,Chequing,Internal Transfer,Source,Completed,,,-1000,CAD,
-7/4/2026,23:23:09,10000001,Chequing,Internal Transfer,Destination,Completed,,,5000,CAD,""",
-        },
-    }
-
-    template = templates.get(template_type)
-    if not template:
-        return JsonResponse({"error": "Template not found"}, status=404)
-
-    response = HttpResponse(template["content"], content_type="text/csv")
-    response["Content-Disposition"] = f"attachment; filename={template['filename']}"
-    return response
-
-
 def _read_json(request):
     try:
         if not request.body:
