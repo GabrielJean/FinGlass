@@ -1131,6 +1131,89 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(float(bars.amount), 45.00)
         self.assertEqual(bars.merchant_category, "Alcohol & Bars")
 
+    def test_wealthsimple_acb_activities_custom_export_import(self):
+        ws_activities_csv = (
+            "effective_date,effective_time,settlement_date,account_id,account_type,activity_type,activity_sub_type,description,direction,symbol,name,currency,quantity,unit_price,commission,net_cash_amount\n"
+            '2026-01-02,10:00:00,2026-01-03,ACT10000001,Non-registered,Trade,BUY,"XEQT: Bought 100 shares at $30 per share",LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,100,30,0,-3000\n'
+            '2026-01-05,00:00:00,,ACT10000001,Non-registered,Dividend,-,"XEQT: Cash dividend distribution",,XEQT,iShares Core Equity ETF Portfolio,CAD,50,,,50\n'
+            '2026-01-05,00:00:00,,ACT10000001,Non-registered,NonCashDistribution,-,"XEQT: Non-cash Distribution",LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,150,,,150\n'
+            '2026-01-05,00:00:00,,ACT10000001,Non-registered,ReturnOfCapital,-,"XEQT: Return of Capital",LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,-10,,,-10\n'
+            '2026-01-05,10:23:10,,ACT10000001,Non-registered,MoneyMovement,TRANSFER,"Money transfer out",,,,CAD,-7000,,,-7000\n'
+            '2026-03-31,15:47:06,2026-04-01,ACT10000001,Non-registered,Trade,SELL,"XEQT: Sold 50 shares at $35 per share",LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,-50,35,0,1750\n'
+            '2026-04-01,12:00:00,2026-04-02,ACT20000002,TFSA,Trade,BUY,"VFV: Bought 10 shares",LONG,VFV,Vanguard S&P 500,CAD,10,100,0,-1000\n'
+        ).encode("utf-8")
+
+        # 1. Post to activities-csv endpoint
+        file1 = SimpleUploadedFile("activities.csv", ws_activities_csv, content_type="text/csv")
+        res = self.client.post("/api/import/activities-csv", {"file": file1})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["parsed"], 4)
+        self.assertEqual(data["inserted"], 4)
+        self.assertEqual(data["skipped"], 0)
+
+        # 2. Verify transactions in database
+        from core.models import Transaction
+        txs = list(Transaction.objects.filter(user=self.user, security="XEQT").order_by("trade_date", "id"))
+        self.assertEqual(len(txs), 4)
+
+        buy_tx = txs[0]
+        self.assertEqual(buy_tx.transaction_type, "Buy")
+        self.assertEqual(float(buy_tx.shares), 100.0)
+        self.assertEqual(float(buy_tx.amount), 3000.0)
+
+        dist_tx = txs[1]
+        self.assertEqual(dist_tx.transaction_type, "Capital Gains Dividend")
+        self.assertEqual(float(dist_tx.shares), 0.0)
+        self.assertEqual(float(dist_tx.amount), 150.0)
+
+        roc_tx = txs[2]
+        self.assertEqual(roc_tx.transaction_type, "Return of Capital")
+        self.assertEqual(float(roc_tx.shares), 0.0)
+        self.assertEqual(float(roc_tx.amount), 10.0)
+
+        sell_tx = txs[3]
+        self.assertEqual(sell_tx.transaction_type, "Sell")
+        self.assertEqual(float(sell_tx.shares), 50.0)
+        self.assertEqual(float(sell_tx.amount), 1750.0)
+
+        # Registered trade and cash dividend were not imported
+        self.assertFalse(Transaction.objects.filter(user=self.user, security="VFV").exists())
+        self.assertEqual(Transaction.objects.filter(user=self.user, transaction_type="Dividend").count(), 0)
+
+        # 3. Verify ACB Ledger calculation
+        ledger_res = self.client.get("/api/ledger?security=XEQT")
+        self.assertEqual(ledger_res.status_code, 200)
+        ledger = ledger_res.json()
+        self.assertEqual(len(ledger), 4)
+
+        # Row 1: Buy 100 -> shares: 100, ACB: $3000
+        self.assertEqual(ledger[0]["share_balance"], 100.0)
+        self.assertEqual(ledger[0]["acb"], 3000.0)
+
+        # Row 2: Capital Gains Dividend $150 -> shares: 100, ACB: $3150
+        self.assertEqual(ledger[1]["share_balance"], 100.0)
+        self.assertEqual(ledger[1]["acb"], 3150.0)
+
+        # Row 3: Return of Capital $10 -> shares: 100, ACB: $3140
+        self.assertEqual(ledger[2]["share_balance"], 100.0)
+        self.assertEqual(ledger[2]["acb"], 3140.0)
+
+        # Row 4: Sell 50 -> shares: 50, ACB: $1570, Capital Gain: $1750 - $1570 = $180
+        self.assertEqual(ledger[3]["share_balance"], 50.0)
+        self.assertEqual(ledger[3]["acb"], 1570.0)
+        self.assertEqual(ledger[3]["capital_gain"], 180.0)
+
+        # 4. Verify deduplication on re-upload
+        file2 = SimpleUploadedFile("activities_dup.csv", ws_activities_csv, content_type="text/csv")
+        res_dup = self.client.post("/api/import/trade/wealthsimple-csv", {"file": file2})
+        self.assertEqual(res_dup.status_code, 200)
+        data_dup = res_dup.json()
+        self.assertEqual(data_dup["parsed"], 4)
+        self.assertEqual(data_dup["inserted"], 0)
+        self.assertEqual(data_dup["skipped"], 4)
+        self.assertEqual(Transaction.objects.filter(user=self.user, security="XEQT").count(), 4)
+
 
 
 

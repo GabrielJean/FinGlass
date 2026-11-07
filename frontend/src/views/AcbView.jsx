@@ -11,6 +11,7 @@ import {
   Calendar,
   Layers,
   BarChart3,
+  Upload,
 } from "lucide-react";
 import { Bar, Line } from "react-chartjs-2";
 import "../components/charts/chartSetup";
@@ -33,6 +34,9 @@ export function AcbView({ initialSymbol = null }) {
   const [selectedSecurity, setSelectedSecurity] = useState(initialSymbol);
   const [ledgerRows, setLedgerRows] = useState([]);
   const [ledgerSummary, setLedgerSummary] = useState(null);
+
+  const fileInputRef = React.useRef(null);
+  const [uploading, setUploading] = useState(false);
 
   // Modal
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
@@ -159,6 +163,35 @@ export function AcbView({ initialSymbol = null }) {
       memo: "",
     });
     setIsTxModalOpen(true);
+  };
+
+  const handleActivitiesUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true);
+    setError("");
+    const formData = new FormData();
+    files.forEach((file) => formData.append("file", file));
+
+    try {
+      const res = await api.acb.importCsv(formData);
+      const inserted = res.inserted ?? res.imported ?? res.count ?? 0;
+      const skipped = res.skipped ?? 0;
+      if (skipped > 0) {
+        setNotice(`Imported ${inserted} trade/distribution row(s) from ${res.files || files.length} document(s) (${skipped} skipped/duplicate).`);
+      } else {
+        setNotice(`Successfully imported ${inserted} trade/distribution row(s) from ${res.files || files.length} document(s).`);
+      }
+      loadSecurities();
+      if (selectedSecurity) {
+        loadLedger(selectedSecurity);
+      }
+    } catch (err) {
+      setError(err.message || "Activities CSV Import failed.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
   };
 
   // Chart 1: Securities ACB Distribution
@@ -308,7 +341,24 @@ export function AcbView({ initialSymbol = null }) {
           </p>
         </div>
 
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleActivitiesUpload}
+            accept=".csv"
+            multiple
+            style={{ display: "none" }}
+          />
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+          >
+            <Upload size={15} />
+            {uploading ? "Importing..." : "Import Wealthsimple Activity CSV(s)"}
+          </button>
           {selectedSecurity && (
             <button
               type="button"

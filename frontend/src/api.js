@@ -330,6 +330,8 @@ export const api = {
     deleteTransaction: (id) => request(`/api/transactions/${id}`, { method: "DELETE" }),
     deleteMany: (transaction_ids) =>
       request("/api/transactions/delete-many", { method: "POST", body: { transaction_ids } }),
+    importCsv: (formData) =>
+      request("/api/import/activities-csv", { method: "POST", body: formData }),
   },
 
   netWorth: {

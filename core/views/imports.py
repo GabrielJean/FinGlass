@@ -81,7 +81,24 @@ def _normalize_trade_date(value):
     raise ValueError(f"Unsupported date format: {raw}")
 
 
-def parse_activities_csv_text(csv_text):
+def resolve_security_symbol(symbol, user_id=None):
+    clean = str(symbol or "").strip().upper()
+    if not clean:
+        return ""
+    if not user_id:
+        return clean
+    if clean.endswith(".TO") or clean.endswith(".TRT") or clean.endswith(".V") or clean.endswith(".NE"):
+        return clean
+
+    to_candidate = f"{clean}.TO"
+    if Transaction.objects.filter(user_id=user_id, security=to_candidate).exists():
+        return to_candidate
+    if HoldingSnapshot.objects.filter(user_id=user_id, symbol=to_candidate).exists():
+        return to_candidate
+    return clean
+
+
+def parse_activities_csv_text(csv_text, user_id=None):
     reader = csv.DictReader(StringIO(csv_text))
     rows = []
 
@@ -90,56 +107,100 @@ def parse_activities_csv_text(csv_text):
             _normalize_csv_header(k): v for k, v in (item or {}).items() if k is not None
         }
 
-        activity_type = _csv_get_value(normalized_item, "activity_type", "activity", "type", "transaction_type")
-        symbol = _csv_get_value(normalized_item, "symbol", "ticker", "security").upper()
-        if not activity_type:
+        # Check account type: if registered (TFSA, RRSP, FHSA), skip from non-registered ACB tracking
+        account_type = _csv_get_value(normalized_item, "account_type", "account").lower()
+        if account_type in {"tfsa", "rrsp", "fhsa", "resp", "rif", "tax-free", "registered"}:
             continue
+
+        activity_type = _csv_get_value(normalized_item, "activity_type", "activity", "type", "transaction_type")
+        raw_symbol = _csv_get_value(normalized_item, "symbol", "ticker", "security").upper()
+        if not activity_type or not raw_symbol:
+            continue
+
+        symbol = resolve_security_symbol(raw_symbol, user_id=user_id)
+
+        activity_upper = activity_type.upper().replace(" ", "").replace("_", "")
+        sub_type = _csv_get_value(normalized_item, "activity_sub_type", "sub_type", "action").upper()
+        description = _csv_get_value(normalized_item, "description", "memo", "notes")
+        desc_upper = description.upper()
 
         mapped_type = None
         amount = 0.0
         shares = 0.0
+        commission = _parse_number(_csv_get_value(normalized_item, "commission", "fee", "fees"), 0.0)
 
-        activity_upper = activity_type.upper()
-        sub_type = _csv_get_value(normalized_item, "activity_sub_type", "sub_type", "action", "description").upper()
-
+        # 1. Trades (BUY / SELL)
         if activity_upper in {"TRADE", "BUY", "SELL"}:
             quantity = _parse_number(_csv_get_value(normalized_item, "quantity", "shares", "units"), 0.0)
             net_cash = _parse_number(_csv_get_value(normalized_item, "net_cash_amount", "amount", "net_amount", "total"), 0.0)
-            commission = _parse_number(_csv_get_value(normalized_item, "commission", "fee", "fees"), 0.0)
+            unit_price = _parse_number(_csv_get_value(normalized_item, "unit_price", "price"), 0.0)
 
-            if sub_type == "BUY" or activity_upper == "BUY":
+            if sub_type == "BUY" or activity_upper == "BUY" or "BOUGHT" in desc_upper:
                 mapped_type = "Buy"
                 shares = abs(quantity)
-                amount = abs(net_cash)
-            elif sub_type == "SELL" or activity_upper == "SELL":
+                amount = abs(net_cash) if net_cash else abs(shares * unit_price)
+            elif sub_type == "SELL" or activity_upper == "SELL" or "SOLD" in desc_upper:
                 mapped_type = "Sell"
                 shares = abs(quantity)
-                amount = abs(net_cash)
+                amount = abs(net_cash) if net_cash else abs(shares * unit_price)
             else:
                 continue
-        elif activity_upper in {"RETURNOFCAPITAL", "ROC", "RETURN OF CAPITAL"}:
+
+        # 2. Return of Capital (Adjusted Cost Base Entry Only)
+        elif activity_upper in {"RETURNOFCAPITAL", "ROC"} or "RETURN OF CAPITAL" in activity_type.upper():
             mapped_type = "Return of Capital"
-            amount = abs(_parse_number(_csv_get_value(normalized_item, "net_cash_amount", "amount", "net_amount", "total"), 0.0))
+            raw_amt = _csv_get_value(normalized_item, "net_cash_amount", "amount", "net_amount", "total", "quantity")
+            amount = abs(_parse_number(raw_amt, 0.0))
             shares = 0.0
             commission = 0.0
+
+        # 3. Non-Cash Distribution (Adjusted Cost Base Entry Only / Phantom Distribution / Reinvested Cap Gains)
+        elif activity_upper in {"NONCASHDISTRIBUTION", "PHANTOMDISTRIBUTION", "CAPITALGAINSDIVIDEND", "CAPITALGAINSDISTRIBUTION"} or "NON-CASH" in activity_type.upper() or "NON CASH" in activity_type.upper():
+            mapped_type = "Capital Gains Dividend"
+            raw_amt = _csv_get_value(normalized_item, "net_cash_amount", "amount", "net_amount", "total", "quantity")
+            amount = abs(_parse_number(raw_amt, 0.0))
+            shares = 0.0
+            commission = 0.0
+
+        # 4. Dividends & Distributions
         elif "DIVIDEND" in activity_upper or "DISTRIBUTION" in activity_upper:
-            if "REINVEST" in activity_upper or "DRIP" in sub_type:
+            # Reinvested dividend / DRIP
+            if "REINVEST" in activity_upper or "DRIP" in sub_type or "DRIP" in desc_upper:
                 mapped_type = "Reinvested Dividend"
+                raw_amt = _csv_get_value(normalized_item, "net_cash_amount", "amount", "net_amount", "total")
+                amount = abs(_parse_number(raw_amt, 0.0))
+                shares = abs(_parse_number(_csv_get_value(normalized_item, "quantity", "shares", "units"), 0.0))
+                commission = 0.0
+            elif "CASH DIVIDEND" in desc_upper or sub_type in {"-", ""}:
+                # Pure cash dividends do not alter security ACB and are skipped to prevent double counting
+                continue
             else:
                 mapped_type = "Capital Gains Dividend"
-            amount = abs(_parse_number(_csv_get_value(normalized_item, "net_cash_amount", "amount", "net_amount", "total"), 0.0))
-            shares = abs(_parse_number(_csv_get_value(normalized_item, "quantity", "shares", "units"), 0.0))
+                raw_amt = _csv_get_value(normalized_item, "net_cash_amount", "amount", "net_amount", "total")
+                amount = abs(_parse_number(raw_amt, 0.0))
+                shares = abs(_parse_number(_csv_get_value(normalized_item, "quantity", "shares", "units"), 0.0))
+                commission = 0.0
+
+        # 5. Stock Split
+        elif activity_upper in {"SPLIT", "STOCKSPLIT"}:
+            mapped_type = "Split"
+            shares = _parse_number(_csv_get_value(normalized_item, "quantity", "shares", "units"), 0.0)
+            amount = 0.0
             commission = 0.0
+
         else:
             continue
 
-        if not symbol:
-            continue
-
-        raw_date = _csv_get_value(normalized_item, "transaction_date", "date", "trade_date")
+        raw_date = _csv_get_value(
+            normalized_item,
+            "effective_date",
+            "transaction_date",
+            "trade_date",
+            "date",
+            "settlement_date",
+        )
         trade_date = _normalize_date(raw_date)
         amount_per_share = amount / shares if shares else 0.0
-        commission = _parse_number(_csv_get_value(normalized_item, "commission", "fee", "fees"), 0.0)
 
         rows.append(
             {
@@ -150,6 +211,7 @@ def parse_activities_csv_text(csv_text):
                 "shares": shares,
                 "amount_per_share": amount_per_share,
                 "commission": commission,
+                "memo": description,
                 "source": "wealthsimple_activities_csv",
                 "source_row_number": source_row_number,
             }
@@ -810,12 +872,12 @@ def parse_chequing_courant_csv_text(csv_text, account_label=None):
     return rows
 
 
-def parse_upload(import_type, filename, file_bytes):
+def parse_upload(import_type, filename, file_bytes, user_id=None):
     ext = Path(filename or "").suffix.lower()
     if ext == ".pdf" or import_type == "tax_pdf":
         return parse_tax_pdf_bytes(file_bytes, filename)
     if ext == ".csv" or import_type == "activities_csv" or import_type == "auto":
-        return parse_activities_csv_text(file_bytes.decode("utf-8-sig"))
+        return parse_activities_csv_text(file_bytes.decode("utf-8-sig"), user_id=user_id)
     if import_type == "tax_pdf":
         return parse_tax_pdf_bytes(file_bytes, filename)
     raise ValueError("Unsupported import type")
@@ -1379,6 +1441,48 @@ def _commit_batch(batch_id, user_id):
 
 
 @require_http_methods(["POST"])
+def import_activities_csv(request):
+    user_id = request.user.id
+    uploaded_files = []
+    seen_file_ids = set()
+    for key in ("file", "files"):
+        for f in request.FILES.getlist(key):
+            if f and f.name and id(f) not in seen_file_ids:
+                seen_file_ids.add(id(f))
+                uploaded_files.append(f)
+
+    if not uploaded_files:
+        return JsonResponse({"error": "Missing file upload field: file"}, status=400)
+
+    all_parsed_rows = []
+    files_processed = 0
+    preview_only = _is_truthy(request.POST.get("preview_only"))
+
+    for uploaded_file in uploaded_files:
+        file_text = uploaded_file.read().decode("utf-8-sig")
+        parsed_rows = parse_activities_csv_text(file_text, user_id=user_id)
+        if not parsed_rows:
+            continue
+        all_parsed_rows.extend(parsed_rows)
+        files_processed += 1
+
+    if not all_parsed_rows:
+        return JsonResponse({"error": "No ACB eligible trade or distribution rows found in uploaded CSV file(s)"}, status=400)
+
+    if preview_only:
+        return JsonResponse({"parsed": len(all_parsed_rows), "rows": all_parsed_rows, "files": files_processed, "imported": 0})
+
+    summary = _import_transactions_rows(all_parsed_rows, user_id)
+    return JsonResponse({
+        "parsed": summary.get("parsed", len(all_parsed_rows)),
+        "inserted": summary.get("inserted", 0),
+        "imported": summary.get("inserted", 0),
+        "skipped": len(all_parsed_rows) - summary.get("inserted", 0),
+        "files": files_processed,
+    })
+
+
+@require_http_methods(["POST"])
 def import_holdings_csv(request):
     user_id = request.user.id
     uploaded_files = []
@@ -1626,7 +1730,7 @@ def create_import_review(request):
 
         file_bytes = uploaded_file.read()
         try:
-            file_rows = parse_upload(resolved_type, uploaded_file.name, file_bytes)
+            file_rows = parse_upload(resolved_type, uploaded_file.name, file_bytes, user_id=user_id)
         except Exception as exc:
             return JsonResponse({"error": f"Failed to parse import file '{uploaded_file.name}': {exc}"}, status=400)
 
@@ -1747,11 +1851,11 @@ def download_template(request, template_type):
     templates = {
         "transactions": {
             "filename": "transactions_template.csv",
-            "content": """transaction_date,symbol,activity_type,activity_sub_type,quantity,net_cash_amount,commission
-2024-01-15,AAPL,Trade,BUY,10,1500.00,4.95
-2024-02-20,AAPL,Trade,SELL,5,800.00,4.95
-2024-03-10,VDY,ReturnOfCapital,,0,25.50,0.00
-2024-04-01,MSFT,Trade,BUY,8,2400.00,4.95""",
+            "content": """effective_date,effective_time,settlement_date,account_id,account_type,activity_type,activity_sub_type,description,direction,symbol,name,currency,quantity,unit_price,commission,net_cash_amount
+2026-01-05,00:00:00,,ACT12345678,Non-registered,NonCashDistribution,-,XEQT: Non-cash Distribution (Adjusted Cost Base Entry Only) of $150.00 (executed at 2026-01-05),LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,150.00,,,150.00
+2026-01-05,00:00:00,,ACT12345678,Non-registered,ReturnOfCapital,-,XEQT: Return of Capital (Adjusted Cost Base Entry Only) of $-6.50 (executed at 2026-01-05),LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,-6.50,,,-6.50
+2026-01-06,12:33:17,2026-01-07,ACT12345678,Non-registered,Trade,BUY,XEQT - iShares Core Equity ETF Portfolio: Bought 10 shares at $40.00 per share (executed at 2026-01-06),LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,10,40.00,0,-400.00
+2026-03-31,15:47:06,2026-04-01,ACT12345678,Non-registered,Trade,SELL,XEQT - iShares Core Equity ETF Portfolio: Sold 5 shares at $45.00 per share (executed at 2026-03-31),LONG,XEQT,iShares Core Equity ETF Portfolio,CAD,-5,45.00,0,225.00""",
         },
         "holdings": {
             "filename": "holdings_template.csv",

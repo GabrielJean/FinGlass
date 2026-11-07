@@ -72,6 +72,7 @@ from .imports import (
     get_import_review,
     import_full_backup,
     import_review_row_item,
+    import_activities_csv,
     import_holdings_csv,
     import_rogers_credit_csv,
     import_chequing_courant_csv,
