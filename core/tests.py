@@ -84,6 +84,40 @@ class FinGlassComprehensiveTests(TestCase):
         res = self.client.get("/api/chequing/dashboard")
         self.assertEqual(res.status_code, 200)
 
+        # Create second account for rename / merge test
+        res = self.client.post(
+            "/api/chequing/accounts/create",
+            {"label": "Courant", "provider": "WealthSimple"},
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+
+        from core.models import ChequingTransaction
+        t = ChequingTransaction.objects.create(
+            user=self.user,
+            account_label="Courant",
+            transaction_date="2024-05-01",
+            description="Sample Coffee",
+            amount=-5.00,
+            category="Dining Out",
+        )
+
+        # Merge Courant into WealthSimple Chequing
+        merge_res = self.client.post(
+            "/api/chequing/accounts/Courant/rename",
+            {"new_label": "WealthSimple Chequing"},
+            content_type="application/json",
+        )
+        self.assertEqual(merge_res.status_code, 200)
+        self.assertTrue(merge_res.json().get("merged"))
+        t.refresh_from_db()
+        self.assertEqual(t.account_label, "WealthSimple Chequing")
+
+        # Delete WealthSimple Chequing account
+        del_res = self.client.delete("/api/chequing/accounts/WealthSimple%20Chequing")
+        self.assertEqual(del_res.status_code, 200)
+        self.assertFalse(ChequingTransaction.objects.filter(id=t.id).exists())
+
     def test_credit_card_api(self):
         # Create card
         res = self.client.post(

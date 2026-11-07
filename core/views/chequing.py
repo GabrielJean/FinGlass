@@ -413,10 +413,10 @@ def create_chequing_account(request):
     return JsonResponse({"created": 1, "label": account.label, "provider": account.provider})
 
 
-@require_http_methods(["PATCH"])
+@require_http_methods(["POST", "PATCH"])
 def rename_chequing_account(request, account_label):
     payload = _read_json(request)
-    new_label = _normalize_account_label(payload.get("new_label"))
+    new_label = _normalize_account_label(payload.get("new_label") or payload.get("label"))
     old_label = _normalize_account_label(account_label)
 
     if not old_label:
@@ -426,37 +426,50 @@ def rename_chequing_account(request, account_label):
     if new_label == old_label:
         return JsonResponse({"updated": 0, "old_label": old_label, "new_label": new_label})
 
-    if ChequingAccount.objects.filter(user=request.user, label=new_label).exists():
-        return JsonResponse({"error": "Chequing account already exists"}, status=400)
-
     tx_exists = ChequingTransaction.objects.filter(user=request.user, account_label=old_label).exists()
     account_exists = ChequingAccount.objects.filter(user=request.user, label=old_label).exists()
     if not tx_exists and not account_exists:
         return JsonResponse({"error": "Chequing account not found"}, status=404)
 
-    ChequingTransaction.objects.filter(user=request.user, account_label=old_label).update(account_label=new_label)
-
-    if account_exists:
-        ChequingAccount.objects.filter(user=request.user, label=old_label).update(label=new_label)
+    target_exists = ChequingAccount.objects.filter(user=request.user, label=new_label).exists()
+    if target_exists:
+        # Merge old account into target existing account
+        if account_exists:
+            ChequingAccount.objects.filter(user=request.user, label=old_label).delete()
     else:
-        ChequingAccount.objects.create(user=request.user, label=new_label, provider=CHEQUING_DEFAULT_PROVIDER)
+        if account_exists:
+            ChequingAccount.objects.filter(user=request.user, label=old_label).update(label=new_label)
+        else:
+            ChequingAccount.objects.create(user=request.user, label=new_label, provider=CHEQUING_DEFAULT_PROVIDER)
 
-    return JsonResponse({"updated": 1, "old_label": old_label, "new_label": new_label})
+    reassigned_tx = ChequingTransaction.objects.filter(user=request.user, account_label=old_label).update(account_label=new_label)
+
+    return JsonResponse({
+        "updated": 1,
+        "old_label": old_label,
+        "new_label": new_label,
+        "merged": target_exists,
+        "reassigned_transactions": reassigned_tx,
+    })
 
 
-@require_http_methods(["DELETE"])
+@require_http_methods(["POST", "DELETE"])
 def delete_chequing_account(request, account_label):
     label = _normalize_account_label(account_label)
     if not label:
         return JsonResponse({"error": "account label is required"}, status=400)
 
+    deleted_acc, _ = ChequingAccount.objects.filter(user=request.user, label=label).delete()
     deleted_tx, _ = ChequingTransaction.objects.filter(user=request.user, account_label=label).delete()
-    ChequingAccount.objects.filter(user=request.user, label=label).delete()
 
-    if deleted_tx == 0:
+    if deleted_tx == 0 and deleted_acc == 0:
         return JsonResponse({"error": "Chequing account not found"}, status=404)
 
-    return JsonResponse({"deleted": deleted_tx, "account_label": label})
+    return JsonResponse({
+        "deleted": deleted_tx,
+        "account_deleted": deleted_acc,
+        "account_label": label,
+    })
 
 
 @require_GET

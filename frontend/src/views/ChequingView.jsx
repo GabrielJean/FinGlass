@@ -11,6 +11,10 @@ import {
   Plus,
   RotateCcw,
   Wallet,
+  Settings,
+  Edit2,
+  Check,
+  X,
 } from "lucide-react";
 import { Bar, Doughnut } from "react-chartjs-2";
 import "../components/charts/chartSetup";
@@ -61,6 +65,10 @@ export function ChequingView() {
   // Modals & Upload
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
   const [newAccountLabel, setNewAccountLabel] = useState("");
+  const [isManageAccountsOpen, setIsManageAccountsOpen] = useState(false);
+  const [editingAccountLabel, setEditingAccountLabel] = useState(null);
+  const [renameTargetLabel, setRenameTargetLabel] = useState("");
+  const [accountActionLoading, setAccountActionLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -274,6 +282,61 @@ export function ChequingView() {
     }
   };
 
+  const handleDeleteAccount = async (label, txCount) => {
+    const count = txCount !== undefined ? txCount : 0;
+    const confirmMsg = count > 0
+      ? `Are you sure you want to remove the chequing account "${label}" and DELETE its ${count} transaction(s)? This action cannot be undone.`
+      : `Are you sure you want to remove the chequing account "${label}"?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setAccountActionLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      await api.chequing.deleteAccount(label);
+      if (selectedAccount === label) {
+        setSelectedAccount("");
+      }
+      setNotice(`Successfully removed chequing account "${label}".`);
+      await Promise.all([loadMetadata(), fetchData()]);
+    } catch (err) {
+      setError(err.message || `Failed to delete account "${label}".`);
+    } finally {
+      setAccountActionLoading(false);
+    }
+  };
+
+  const handleRenameAccount = async (oldLabel) => {
+    const trimmed = renameTargetLabel.trim();
+    if (!trimmed || trimmed === oldLabel) {
+      setEditingAccountLabel(null);
+      setRenameTargetLabel("");
+      return;
+    }
+
+    setAccountActionLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await api.chequing.renameAccount(oldLabel, trimmed);
+      const isMerge = res.merged || (Array.isArray(accounts) && accounts.some((a) => (a.label || a) === trimmed));
+      if (selectedAccount === oldLabel) {
+        setSelectedAccount(trimmed);
+      }
+      setNotice(isMerge
+        ? `Merged "${oldLabel}" into "${trimmed}". All transactions reassigned.`
+        : `Renamed "${oldLabel}" to "${trimmed}".`
+      );
+      setEditingAccountLabel(null);
+      setRenameTargetLabel("");
+      await Promise.all([loadMetadata(), fetchData()]);
+    } catch (err) {
+      setError(err.message || `Failed to rename account "${oldLabel}".`);
+    } finally {
+      setAccountActionLoading(false);
+    }
+  };
+
   const handleCsvUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -480,6 +543,15 @@ export function ChequingView() {
           </button>
           <button
             type="button"
+            className="secondary"
+            onClick={() => setIsManageAccountsOpen(true)}
+            title="Manage, rename, merge, or remove chequing accounts"
+          >
+            <Settings size={15} />
+            Manage Accounts
+          </button>
+          <button
+            type="button"
             onClick={() => setIsAddAccountOpen(true)}
           >
             <Plus size={15} />
@@ -589,15 +661,40 @@ export function ChequingView() {
                 />
               </div>
 
-              <select
-                value={selectedAccount}
-                onChange={(e) => setSelectedAccount(e.target.value)}
-              >
-                <option value="">All Chequing Accounts</option>
-                {(Array.isArray(accounts) ? accounts : []).map((a, idx) => (
-                  <option key={a.id || a.label || idx} value={a.label}>{a.label}</option>
-                ))}
-              </select>
+              <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+                <select
+                  value={selectedAccount}
+                  onChange={(e) => {
+                    if (e.target.value === "__manage__") {
+                      setIsManageAccountsOpen(true);
+                    } else {
+                      setSelectedAccount(e.target.value);
+                    }
+                  }}
+                  style={{ minWidth: "190px" }}
+                >
+                  <option value="">All Chequing Accounts</option>
+                  {(Array.isArray(accounts) ? accounts : []).map((a, idx) => {
+                    const label = a.label || a.name || a;
+                    const count = a.transactions !== undefined ? a.transactions : null;
+                    return (
+                      <option key={a.id || label || idx} value={label}>
+                        {label} {count !== null ? `(${count})` : ""}
+                      </option>
+                    );
+                  })}
+                  <option value="__manage__">⚙️ Manage / Remove Accounts...</option>
+                </select>
+                <button
+                  type="button"
+                  className="secondary icon-only"
+                  style={{ padding: "0.55rem", borderRadius: "8px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                  title="Manage, rename, merge, or remove chequing accounts"
+                  onClick={() => setIsManageAccountsOpen(true)}
+                >
+                  <Settings size={14} />
+                </button>
+              </div>
 
               <select
                 value={selectedCategory}
@@ -840,6 +937,143 @@ export function ChequingView() {
                 <button type="submit">Create Account</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Accounts Modal */}
+      {isManageAccountsOpen && (
+        <div className="modal-overlay" onClick={() => { setIsManageAccountsOpen(false); setEditingAccountLabel(null); }}>
+          <div className="modal-dialog" style={{ maxWidth: "560px", width: "95%" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+              <p className="eyebrow" style={{ margin: 0 }}>CHEQUING ACCOUNTS</p>
+              <button
+                type="button"
+                className="link"
+                style={{ padding: "0.2rem", color: "var(--text-quiet)" }}
+                onClick={() => { setIsManageAccountsOpen(false); setEditingAccountLabel(null); }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <h2>Manage Chequing Accounts</h2>
+            <p className="fine" style={{ marginBottom: "1.25rem" }}>
+              Rename, merge, or delete your chequing accounts. Deleting an account removes its label and all associated cash flow transactions.
+            </p>
+
+            <div className="stack" style={{ gap: "0.75rem", marginBottom: "1.5rem", maxHeight: "360px", overflowY: "auto" }}>
+              {(Array.isArray(accounts) && accounts.length > 0) ? (
+                accounts.map((acc) => {
+                  const label = acc.label || acc.name || acc;
+                  const txCount = acc.transactions !== undefined ? acc.transactions : 0;
+                  const isEditing = editingAccountLabel === label;
+
+                  return (
+                    <div
+                      key={label}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "0.85rem 1rem",
+                        background: "var(--bg-card)",
+                        border: "1px solid var(--border-panel)",
+                        borderRadius: "8px",
+                        gap: "0.75rem",
+                      }}
+                    >
+                      {isEditing ? (
+                        <div style={{ display: "flex", gap: "0.5rem", flex: 1, alignItems: "center", flexWrap: "wrap" }}>
+                          <input
+                            type="text"
+                            value={renameTargetLabel}
+                            onChange={(e) => setRenameTargetLabel(e.target.value)}
+                            placeholder="New name or existing account to merge"
+                            style={{ flex: 1, minWidth: "180px", padding: "0.45rem 0.65rem", fontSize: "0.88rem" }}
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleRenameAccount(label);
+                              if (e.key === "Escape") setEditingAccountLabel(null);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            disabled={accountActionLoading || !renameTargetLabel.trim()}
+                            onClick={() => handleRenameAccount(label)}
+                            style={{ padding: "0.45rem 0.75rem", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                          >
+                            <Check size={14} /> Save
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => setEditingAccountLabel(null)}
+                            style={{ padding: "0.45rem 0.75rem", fontSize: "0.82rem" }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>{label}</div>
+                            <span className="fine" style={{ fontSize: "0.78rem", color: "var(--text-quiet)" }}>
+                              {txCount} transaction{txCount === 1 ? "" : "s"}
+                            </span>
+                          </div>
+
+                          <div style={{ display: "flex", gap: "0.4rem" }}>
+                            <button
+                              type="button"
+                              className="secondary"
+                              style={{ padding: "0.35rem 0.65rem", fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                              onClick={() => {
+                                setEditingAccountLabel(label);
+                                setRenameTargetLabel(label);
+                              }}
+                              title="Rename or merge into another account"
+                            >
+                              <Edit2 size={13} /> Rename / Merge
+                            </button>
+                            <button
+                              type="button"
+                              className="destructive"
+                              style={{ padding: "0.35rem 0.65rem", fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                              disabled={accountActionLoading}
+                              onClick={() => handleDeleteAccount(label, txCount)}
+                              title="Delete account and all its transactions"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="fine" style={{ fontStyle: "italic" }}>No chequing accounts found.</p>
+              )}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border-panel)", paddingTop: "1rem" }}>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setIsManageAccountsOpen(false);
+                  setIsAddAccountOpen(true);
+                }}
+              >
+                <Plus size={14} /> Add New Account
+              </button>
+              <button
+                type="button"
+                onClick={() => { setIsManageAccountsOpen(false); setEditingAccountLabel(null); }}
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -12,7 +12,9 @@ from .models import (
     ImportBatchRow,
     HoldingSnapshot,
     NetWorthHistory,
+    CreditCardAccount,
     CreditCardTransaction,
+    ChequingAccount,
     ChequingTransaction,
     AppSetting,
     TfsaAccount,
@@ -486,6 +488,22 @@ class ChequingTransactionAdmin(admin.ModelAdmin):
         self.message_user(request, f"{updated} transaction(s) shown.")
 
     actions = ["hide_transactions", "show_transactions"]
+
+
+@admin.register(ChequingAccount)
+class ChequingAccountAdmin(admin.ModelAdmin):
+    list_display = ("user", "label", "provider", "created_at")
+    list_filter = ("provider", "created_at")
+    search_fields = ("user__username", "label")
+    ordering = ("label",)
+
+
+@admin.register(CreditCardAccount)
+class CreditCardAccountAdmin(admin.ModelAdmin):
+    list_display = ("user", "label", "provider", "created_at")
+    list_filter = ("provider", "created_at")
+    search_fields = ("user__username", "label")
+    ordering = ("label",)
 
 
 # ============================================================================
