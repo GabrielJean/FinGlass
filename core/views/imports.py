@@ -108,8 +108,15 @@ def parse_activities_csv_text(csv_text, user_id=None):
         }
 
         # Check account type: if registered (TFSA, RRSP, FHSA), skip from non-registered ACB tracking
-        account_type = _csv_get_value(normalized_item, "account_type", "account").lower()
-        if account_type in {"tfsa", "rrsp", "fhsa", "resp", "rif", "tax-free", "registered"}:
+        acc_type_raw = _csv_get_value(normalized_item, "account_type", "account").lower()
+        acc_type_slug = re.sub(r"[^a-z0-9]+", " ", acc_type_raw).strip()
+        if (
+            any(reg in acc_type_slug for reg in ("tfsa", "rrsp", "fhsa", "resp", "rif", "tax free"))
+            and "non reg" not in acc_type_slug
+            and "nonreg" not in acc_type_slug
+        ):
+            continue
+        if acc_type_slug in {"registered", "reg"}:
             continue
 
         activity_type = _csv_get_value(normalized_item, "activity_type", "activity", "type", "transaction_type")
@@ -216,6 +223,13 @@ def parse_activities_csv_text(csv_text, user_id=None):
                 "source_row_number": source_row_number,
             }
         )
+
+    # If the export was provided in reverse chronological order (newest first), reverse to preserve natural ordering
+    if len(rows) >= 2 and rows[0]["trade_date"] > rows[-1]["trade_date"]:
+        rows.reverse()
+
+    # Stable sort by trade_date so that ledger calculations process events in chronological order
+    rows.sort(key=lambda r: r["trade_date"])
 
     return rows
 

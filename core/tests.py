@@ -1214,6 +1214,29 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(data_dup["skipped"], 4)
         self.assertEqual(Transaction.objects.filter(user=self.user, security="XEQT").count(), 4)
 
+    def test_wealthsimple_acb_reverse_order_and_registered_filtering(self):
+        # Test reverse-order input and varied account type labels
+        reverse_csv = (
+            "effective_date,effective_time,settlement_date,account_id,account_type,activity_type,activity_sub_type,description,direction,symbol,name,currency,quantity,unit_price,commission,net_cash_amount\n"
+            '2026-04-10,14:00:00,2026-04-11,ACT_SYNTH_001,Non-Registered Investment,Trade,SELL,"TEST_ETF: Sold 20 shares",LONG,TEST_ETF,Test ETF,CAD,-20,50,0,1000\n'
+            '2026-03-01,11:00:00,,ACT_SYNTH_001,Non-Registered Investment,ReturnOfCapital,-,"TEST_ETF: Return of Capital",LONG,TEST_ETF,Test ETF,CAD,-5,,,-5\n'
+            '2026-02-15,10:30:00,2026-02-16,ACT_SYNTH_002,Tax-Free Savings Account (TFSA),Trade,BUY,"TEST_ETF: TFSA Buy",LONG,TEST_ETF,Test ETF,CAD,50,40,0,-2000\n'
+            '2026-02-10,09:15:00,2026-02-11,ACT_SYNTH_003,RRSP Investment Account,Trade,BUY,"TEST_ETF: RRSP Buy",LONG,TEST_ETF,Test ETF,CAD,50,40,0,-2000\n'
+            '2026-01-10,09:30:00,2026-01-11,ACT_SYNTH_001,Non-Registered Investment,Trade,BUY,"TEST_ETF: Bought 50 shares",LONG,TEST_ETF,Test ETF,CAD,50,40,0,-2000\n'
+        )
+
+        from core.views.imports import parse_activities_csv_text
+        parsed = parse_activities_csv_text(reverse_csv)
+        self.assertEqual(len(parsed), 3)
+
+        # Chronological order verified: Jan 10 (Buy) -> Mar 01 (ROC) -> Apr 10 (Sell)
+        self.assertEqual(parsed[0]["trade_date"], "2026-01-10")
+        self.assertEqual(parsed[0]["transaction_type"], "Buy")
+        self.assertEqual(parsed[1]["trade_date"], "2026-03-01")
+        self.assertEqual(parsed[1]["transaction_type"], "Return of Capital")
+        self.assertEqual(parsed[2]["trade_date"], "2026-04-10")
+        self.assertEqual(parsed[2]["transaction_type"], "Sell")
+
 
 
 
