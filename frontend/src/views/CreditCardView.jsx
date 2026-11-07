@@ -393,6 +393,7 @@ export function CreditCardView() {
     const formData = new FormData();
     files.forEach((file) => formData.append("file", file));
     if (selectedCard) formData.append("card_label", selectedCard);
+    formData.append("provider", "auto");
 
     try {
       const res = await api.creditCard.importRogersCsv(formData);

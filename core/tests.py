@@ -766,6 +766,34 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(data2["skipped"], 2)
         self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Starbucks Coffee", user=self.user).count(), 1)
 
+        # Upload without specifying provider (auto-detection test)
+        scotia_csv2 = (
+            "date,posted date,description,amount\n"
+            "2026-05-10,2026-05-11,Auto Scotia Store,-45.50\n"
+        ).encode("utf-8")
+        file_auto_scotia = SimpleUploadedFile("scotia_no_provider.csv", scotia_csv2, content_type="text/csv")
+        res3 = self.client.post(
+            "/api/import/rogers-credit-csv",
+            {"file": file_auto_scotia},
+        )
+        self.assertEqual(res3.status_code, 200)
+        self.assertEqual(res3.json()["inserted"], 1)
+        self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Auto Scotia Store", user=self.user).count(), 1)
+
+        # Upload Rogers format CSV with provider="auto"
+        rogers_csv = (
+            "Date,Posted Date,Reference Number,Activity Type,Status,Transaction Card Number,Merchant Category,Merchant Name,Merchant City,Merchant State/Province,Merchant Country,Merchant Postal Code/Zip,Amount,Rewards,Name on Card\n"
+            "2026-06-01,2026-06-02,REF1234,Purchase,Posted,1234,Grocery,Rogers Corner Shop,Toronto,ON,CAN,M1M1M1,25.00,0.50,John Doe\n"
+        ).encode("utf-8")
+        file_rogers = SimpleUploadedFile("rogers_statement.csv", rogers_csv, content_type="text/csv")
+        res4 = self.client.post(
+            "/api/import/rogers-credit-csv",
+            {"file": file_rogers, "provider": "auto"},
+        )
+        self.assertEqual(res4.status_code, 200)
+        self.assertEqual(res4.json()["inserted"], 1)
+        self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Rogers Corner Shop", user=self.user).count(), 1)
+
     def test_chequing_multi_upload_and_deduplication(self):
         cheq_csv = (
             "date,transaction,description,amount,balance\n"

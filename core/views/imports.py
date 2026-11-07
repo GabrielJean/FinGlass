@@ -572,15 +572,61 @@ def parse_scotiabank_credit_csv_text(csv_text, card_label=None):
     return rows
 
 
-def parse_credit_csv_text(csv_text, provider, card_label=None):
+def detect_credit_card_provider(csv_text, fallback="rogers"):
+    try:
+        reader = csv.DictReader(StringIO(csv_text))
+        fieldnames = [str(f or "").strip().lower() for f in (reader.fieldnames or [])]
+        normalized_headers = {_normalize_csv_header(h) for h in fieldnames}
+
+        # Rogers specific headers
+        if any(h in normalized_headers for h in ("merchantname", "nameoncard", "rewards", "transactioncardnumber", "merchantcategory")):
+            return "rogers"
+
+        # Scotiabank specific headers
+        if any(h in normalized_headers for h in ("cardending", "transdate", "cardno", "description", "details")):
+            return "scotiabank"
+    except Exception:
+        pass
+
+    try:
+        rows = parse_rogers_credit_csv_text(csv_text)
+        if rows:
+            return "rogers"
+    except Exception:
+        pass
+
+    try:
+        rows = parse_scotiabank_credit_csv_text(csv_text)
+        if rows:
+            return "scotiabank"
+    except Exception:
+        pass
+
+    return fallback
+
+
+def parse_credit_csv_text(csv_text, provider="auto", card_label=None):
     provider_value = str(provider or "").strip().lower()
 
-    if provider_value == "rogers":
-        return parse_rogers_credit_csv_text(csv_text, card_label=card_label)
-    if provider_value in {"scotia", "scotiabank"}:
-        return parse_scotiabank_credit_csv_text(csv_text, card_label=card_label)
+    if not provider_value or provider_value in {"auto", "detect"}:
+        provider_value = detect_credit_card_provider(csv_text)
 
-    raise ValueError("Unsupported credit card bank. Use 'rogers' or 'scotiabank'.")
+    if provider_value in {"rogers", "rogers_bank"}:
+        try:
+            return parse_rogers_credit_csv_text(csv_text, card_label=card_label)
+        except Exception:
+            return parse_scotiabank_credit_csv_text(csv_text, card_label=card_label)
+
+    if provider_value in {"scotia", "scotiabank"}:
+        try:
+            return parse_scotiabank_credit_csv_text(csv_text, card_label=card_label)
+        except Exception:
+            return parse_rogers_credit_csv_text(csv_text, card_label=card_label)
+
+    detected = detect_credit_card_provider(csv_text)
+    if detected in {"scotia", "scotiabank"}:
+        return parse_scotiabank_credit_csv_text(csv_text, card_label=card_label)
+    return parse_rogers_credit_csv_text(csv_text, card_label=card_label)
 
 
 def _normalize_credit_card_provider_name(value):
@@ -1260,9 +1306,27 @@ def import_rogers_credit_csv(request):
         return JsonResponse({"error": "Missing file upload field: file"}, status=400)
 
     card_label = str(request.POST.get("card_label") or "").strip() or None
-    provider = str(request.POST.get("provider") or "").strip().lower()
-    if provider not in {"rogers", "scotiabank", "scotia"}:
-        return JsonResponse({"error": "Missing or invalid bank. Choose 'rogers' or 'scotiabank' in the import wizard."}, status=400)
+    raw_provider = str(request.POST.get("provider") or "").strip().lower()
+
+    # Determine bank provider if not explicitly given
+    provider = raw_provider
+    if not provider or provider in {"auto", "detect"}:
+        if "scotiabank" in request.path.lower():
+            provider = "scotiabank"
+        elif card_label:
+            acc = CreditCardAccount.objects.filter(user_id=user_id, label=card_label).first()
+            if acc and acc.provider in {"rogers", "rogers_bank", "scotiabank", "scotia"}:
+                provider = "scotiabank" if "scotia" in acc.provider else "rogers"
+            elif "scotia" in card_label.lower():
+                provider = "scotiabank"
+            elif "roger" in card_label.lower():
+                provider = "rogers"
+            else:
+                provider = "auto"
+        else:
+            provider = "auto"
+    elif provider not in {"rogers", "rogers_bank", "scotiabank", "scotia", "auto"}:
+        return JsonResponse({"error": "Missing or invalid bank. Choose 'rogers' or 'scotiabank'."}, status=400)
 
     total_parsed = 0
     total_inserted = 0
@@ -1273,8 +1337,12 @@ def import_rogers_credit_csv(request):
 
     for uploaded_file in uploaded_files:
         file_text = uploaded_file.read().decode("utf-8-sig")
+        file_provider = provider
+        if not file_provider or file_provider in {"auto", "detect"}:
+            file_provider = detect_credit_card_provider(file_text)
+
         try:
-            parsed_rows = parse_credit_csv_text(file_text, provider=provider, card_label=card_label)
+            parsed_rows = parse_credit_csv_text(file_text, provider=file_provider, card_label=card_label)
         except ValueError as exc:
             return JsonResponse({"error": str(exc)}, status=400)
         if not parsed_rows:
