@@ -832,6 +832,86 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(data2["skipped"], 2)
         self.assertEqual(ChequingTransaction.objects.filter(description="Payroll Employer Inc", user=self.user).count(), 1)
 
+    def test_wealthsimple_chequing_custom_activity_import_and_deduplication(self):
+        ws_cheq_csv = (
+            "transaction_date,transaction_time,account_number,account_type,transaction_type,transaction_sub_type,status,payee,payee_email,amount,currency,notes\n"
+            "4/12/2026,10:00:00,10000001,Chequing,Withdrawal,E Transfer,Completed,Jane Doe,jane.doe@example.com,-150,CAD,\n"
+            "4/17/2026,11:30:00,10000001,Chequing,Withdrawal,Aft,Completed,Car Finance Corp,,-250.00,CAD,\n"
+            "4/17/2026,12:45:00,10000001,Chequing,P 2 P Payment,Send Received,Completed,,,30.00,CAD,\n"
+            "4/18/2026,14:15:00,10000001,Chequing,Deposit,E Transfer,Completed,John Smith,john.smith@example.com,75,CAD,\n"
+            "4/21/2026,09:00:00,10000001,Chequing,Deposit,Aft,Completed,CANADA,,2500.00,CAD,\n"
+            "4/24/2026,09:30:00,10000001,Chequing,P 2 P Payment,Send,Completed,,,-10.00,CAD,\n"
+            "4/27/2026,10:00:00,10000001,Chequing,Withdrawal,Bill Pay,Completed,City Transport,,-120.00,CAD,\n"
+            "5/1/2026,00:00:00,10000001,Chequing,Interest,,Completed,,,5.00,CAD,\n"
+            "5/5/2026,10:00:00,10000001,Chequing,Internal Transfer,Source,Completed,,,-1000,CAD,\n"
+            "6/12/2026,12:00:00,10000001,Chequing,Spend,Prepaid,Completed,,,-25.00,CAD,\n"
+            "6/13/2026,09:00:00,10000001,Chequing,Reimbursement,Atm,Completed,,,3.50,CAD,\n"
+            "6/25/2026,16:00:00,10000001,Chequing,Promotion,Incentive Bonus,Completed,,,10,CAD,\n"
+            "7/4/2026,15:00:00,10000001,Chequing,Internal Transfer,Destination,Completed,,,5000.00,CAD,\n"
+            "7/6/2026,10:00:00,10000001,Chequing,Withdrawal,Bill Pay,Cancelled,Car Finance Corp,,-5000.00,CAD,\n"
+            "9/28/2026,13:00:00,10000001,Chequing,Credit Card Payment,,Completed,,,-50.00,CAD,\n"
+            "10/27/2026,18:00:00,10000001,Chequing,Overdraft Transfer,Destination,Completed,,,200.00,CAD,\n"
+        ).encode("utf-8")
+
+        file1 = SimpleUploadedFile("ws_chequing.csv", ws_cheq_csv, content_type="text/csv")
+        res = self.client.post("/api/import/chequing/courant-csv", {"file": file1})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        # 16 total rows in CSV, 1 is Cancelled -> 15 valid rows parsed and inserted
+        self.assertEqual(data["parsed"], 15)
+        self.assertEqual(data["inserted"], 15)
+        self.assertEqual(data["skipped"], 0)
+
+        from core.models import ChequingTransaction, ChequingAccount
+        # Verify account was automatically created from account_type
+        self.assertTrue(ChequingAccount.objects.filter(user=self.user, label="Wealthsimple Chequing").exists())
+
+        # Cancelled row was skipped
+        self.assertFalse(ChequingTransaction.objects.filter(amount=-5000.00, user=self.user).exists())
+
+        # Check category mappings
+        etransfer_out = ChequingTransaction.objects.get(description__startswith="Jane Doe", user=self.user)
+        self.assertEqual(etransfer_out.category, "Cash Sent (People)")
+        self.assertEqual(float(etransfer_out.amount), -150.0)
+        self.assertEqual(etransfer_out.description, "Jane Doe (jane.doe@example.com)")
+
+        pad = ChequingTransaction.objects.get(description="Car Finance Corp", user=self.user)
+        self.assertEqual(pad.category, "Pre-Authorized Debit")
+        self.assertEqual(float(pad.amount), -250.00)
+
+        direct_dep = ChequingTransaction.objects.get(description="CANADA", user=self.user)
+        self.assertEqual(direct_dep.category, "Direct Deposit")
+        self.assertEqual(float(direct_dep.amount), 2500.00)
+
+        bill_pay = ChequingTransaction.objects.get(description="City Transport", user=self.user)
+        self.assertEqual(bill_pay.category, "Online Bill Payments")
+        self.assertEqual(float(bill_pay.amount), -120.00)
+
+        interest = ChequingTransaction.objects.get(transaction_code="INT", user=self.user)
+        self.assertEqual(interest.category, "Interest Earned")
+        self.assertEqual(float(interest.amount), 5.00)
+
+        transfer_out = ChequingTransaction.objects.get(amount=-1000, user=self.user)
+        self.assertEqual(transfer_out.category, "Saving Money")
+
+        transfer_in = ChequingTransaction.objects.get(amount=5000.00, user=self.user)
+        self.assertEqual(transfer_in.category, "Drawing from Savings")
+
+        overdraft = ChequingTransaction.objects.get(amount=200.00, user=self.user)
+        self.assertEqual(overdraft.category, "Drawing from Savings")
+
+        debit_card = ChequingTransaction.objects.get(amount=-25.0, user=self.user)
+        self.assertEqual(debit_card.category, "Debit Card Purchase")
+
+        # Test deduplication on re-upload
+        file2 = SimpleUploadedFile("ws_chequing_again.csv", ws_cheq_csv, content_type="text/csv")
+        res2 = self.client.post("/api/import/chequing/courant-csv", {"file": file2})
+        self.assertEqual(res2.status_code, 200)
+        data2 = res2.json()
+        self.assertEqual(data2["parsed"], 15)
+        self.assertEqual(data2["inserted"], 0)
+        self.assertEqual(data2["skipped"], 15)
+
     def test_holdings_multi_upload(self):
         holdings_csv_1 = (
             "as_of,account_name,account_number,symbol,quantity,book_value_cad,market_value,market_price\n"

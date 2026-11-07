@@ -667,9 +667,15 @@ def _normalize_credit_card_provider_name(value):
 
 
 def parse_chequing_courant_csv_text(csv_text, account_label=None):
+    """
+    Parses Chequing CSV files.
+    Supports Wealthsimple custom activity statement export:
+    (transaction_date, transaction_time, account_number, account_type, transaction_type,
+     transaction_sub_type, status, payee, payee_email, amount, currency, notes)
+    as well as legacy format:
+    (date, transaction, description, amount, balance)
+    """
     normalized_account_label = str(account_label or "").strip()
-    if not normalized_account_label:
-        raise ValueError("account_label is required for chequing imports")
 
     rows = []
     reader = csv.DictReader(StringIO(csv_text))
@@ -679,20 +685,118 @@ def parse_chequing_courant_csv_text(csv_text, account_label=None):
             _normalize_csv_header(key): value for key, value in (item or {}).items() if key is not None
         }
 
-        tx_date = _normalize_credit_card_date(_csv_get_value(normalized_item, "date", "transaction date"))
+        # Check status (Wealthsimple custom activity exports include status e.g. Completed, In Progress, Cancelled)
+        status = _csv_get_value(normalized_item, "status").strip().lower()
+        if status in {"cancelled", "failed", "declined", "void"}:
+            continue
+
+        tx_date = _normalize_credit_card_date(
+            _csv_get_value(normalized_item, "transaction_date", "date", "transaction date")
+        )
         if not tx_date:
             continue
 
-        transaction_code = _csv_get_value(normalized_item, "transaction", "transaction code")
-        description = _csv_get_value(normalized_item, "description", "details", "memo")
-        amount = _parse_number(_csv_get_value(normalized_item, "amount"), 0.0)
-        balance = _parse_number(_csv_get_value(normalized_item, "balance"), 0.0)
+        tx_type = _csv_get_value(normalized_item, "transaction_type", "type")
+        tx_sub_type = _csv_get_value(normalized_item, "transaction_sub_type", "sub_type")
+        payee = _csv_get_value(normalized_item, "payee")
+        payee_email = _csv_get_value(normalized_item, "payee_email")
+        notes = _csv_get_value(normalized_item, "notes")
+
+        # Determine description
+        if payee:
+            if payee_email:
+                description = f"{payee} ({payee_email})"
+            else:
+                description = payee
+        else:
+            legacy_desc = _csv_get_value(normalized_item, "description", "details", "memo")
+            if legacy_desc:
+                description = legacy_desc
+            elif tx_type and tx_sub_type:
+                description = f"{tx_type} - {tx_sub_type}"
+            elif tx_type:
+                description = tx_type
+            else:
+                description = "Wealthsimple Chequing"
+
+        if notes and notes.lower() not in description.lower():
+            description = f"{description} - {notes}" if description else notes
+
+        # Parse amounts
+        raw_amount = _parse_number(_csv_get_value(normalized_item, "amount"), 0.0)
+        t_lower = tx_type.lower()
+        st_lower = tx_sub_type.lower()
+        if t_lower in {"withdrawal", "spend", "credit card payment"} or st_lower in {"send", "source"}:
+            amount = -abs(raw_amount)
+        elif t_lower in {"deposit", "interest", "promotion", "reimbursement", "overdraft transfer"} or st_lower in {"received", "send received", "destination"}:
+            amount = abs(raw_amount)
+        else:
+            amount = raw_amount
+
+        # Balance (optional in Wealthsimple custom activities)
+        raw_balance = _csv_get_value(normalized_item, "balance")
+        balance = _parse_number(raw_balance, 0.0) if raw_balance != "" else None
+
+        # Determine transaction_code
+        legacy_code = _csv_get_value(normalized_item, "transaction", "transaction code")
+        if legacy_code:
+            transaction_code = legacy_code
+        elif t_lower == "internal transfer":
+            transaction_code = "TRFOUT" if st_lower == "source" or amount < 0 else "TRFIN"
+        elif t_lower == "overdraft transfer":
+            transaction_code = "TRFIN"
+        elif t_lower == "withdrawal":
+            if "e transfer" in st_lower or "etransfer" in st_lower:
+                transaction_code = "E_TRFOUT"
+            elif "bill pay" in st_lower or "bill_pay" in st_lower:
+                transaction_code = "OBP_OUT"
+            elif st_lower in {"aft", "eft"}:
+                transaction_code = "AFT_OUT"
+            else:
+                transaction_code = "WITHDRAWAL"
+        elif t_lower == "deposit":
+            if "e transfer" in st_lower or "etransfer" in st_lower:
+                transaction_code = "E_TRFIN"
+            elif st_lower in {"aft", "cheque"}:
+                transaction_code = "AFT_IN"
+            else:
+                transaction_code = "DEPOSIT"
+        elif t_lower in {"p 2 p payment", "p2p payment", "p2p"}:
+            transaction_code = "P2P_RECEIVED" if "receive" in st_lower or amount > 0 else "P2P_SENT"
+        elif t_lower == "interest":
+            transaction_code = "INT"
+        elif t_lower == "spend":
+            transaction_code = "SPEND"
+        elif t_lower == "credit card payment":
+            transaction_code = "AFT_OUT"
+        elif tx_type or tx_sub_type:
+            transaction_code = f"{tx_type}_{tx_sub_type}".strip("_").replace(" ", "_").upper()
+        else:
+            transaction_code = "CHEQUING"
+
         currency = _csv_get_value(normalized_item, "currency") or "CAD"
-        category = normalize_chequing_category(transaction_code, description, amount)
+
+        # Determine target account label
+        if normalized_account_label:
+            row_account_label = normalized_account_label
+        else:
+            account_type = _csv_get_value(normalized_item, "account_type")
+            if account_type:
+                row_account_label = f"Wealthsimple {account_type}"
+            else:
+                row_account_label = "Wealthsimple Chequing"
+
+        category = normalize_chequing_category(
+            transaction_code=transaction_code,
+            description=description,
+            amount=amount,
+            tx_type=tx_type,
+            sub_type=tx_sub_type,
+        )
 
         rows.append(
             {
-                "account_label": normalized_account_label,
+                "account_label": row_account_label,
                 "transaction_date": tx_date,
                 "transaction_code": transaction_code,
                 "description": description,
@@ -1069,28 +1173,38 @@ def _import_rogers_credit_rows(parsed_rows, source_filename, user_id):
 
 def _import_chequing_rows(parsed_rows, source_filename, user_id):
     inserted = 0
+    seen_in_batch = defaultdict(int)
+
     for row in parsed_rows:
         amount = _to_decimal(row["amount"])
-        balance = _to_decimal(row.get("balance", 0.0))
+        raw_balance = row.get("balance")
+        balance = _to_decimal(raw_balance) if raw_balance is not None else None
         transaction_code = str(row.get("transaction_code") or "").strip()
         description = str(row.get("description") or "").strip()
         account_label = str(row.get("account_label") or "").strip()
         if not account_label:
             continue
 
+        sig = (account_label, row["transaction_date"], transaction_code, str(amount), description)
+        seen_in_batch[sig] += 1
+        occurrence_in_batch = seen_in_batch[sig]
+
         description_filter = {"description": description} if description else {"description__in": ["", None]}
-        existing = ChequingTransaction.objects.filter(
-            user_id=user_id,
-            account_label=account_label,
-            transaction_date=row["transaction_date"],
-            transaction_code=transaction_code,
-            amount__gte=amount - EPSILON,
-            amount__lte=amount + EPSILON,
-            balance__gte=balance - EPSILON,
-            balance__lte=balance + EPSILON,
+        query_filter = {
+            "user_id": user_id,
+            "account_label": account_label,
+            "transaction_date": row["transaction_date"],
+            "transaction_code": transaction_code,
+            "amount__gte": amount - EPSILON,
+            "amount__lte": amount + EPSILON,
             **description_filter,
-        ).exists()
-        if existing:
+        }
+        if balance is not None:
+            query_filter["balance__gte"] = balance - EPSILON
+            query_filter["balance__lte"] = balance + EPSILON
+
+        existing_count = ChequingTransaction.objects.filter(**query_filter).count()
+        if occurrence_in_batch <= existing_count:
             continue
 
         ChequingAccount.objects.get_or_create(
@@ -1437,8 +1551,6 @@ def import_chequing_courant_csv(request):
         return JsonResponse({"error": "Missing file upload field: file"}, status=400)
 
     account_label = str(request.POST.get("account_label") or "").strip() or None
-    if not account_label:
-        return JsonResponse({"error": "account_label is required for chequing imports"}, status=400)
     total_parsed = 0
     total_inserted = 0
     total_skipped = 0
@@ -1657,11 +1769,14 @@ VDY,12345678,My TFSA,TFSA,Tax Advantaged,50,35.00,CAD,1600.00,1750.00,CAD,150.00
         },
         "chequing": {
             "filename": "chequing_template.csv",
-            "content": """date,transaction,description,amount,balance,currency
-2026-02-01,INT,Interest earned,5.00,2000.00,CAD
-2026-02-02,E_TRFOUT,Interac e-Transfer® Out,-150.00,2000.00,CAD
-2026-02-11,AFT_IN,Direct deposit from EMPLOYER PAYROLL,2500.00,2500.00,CAD
-2026-02-20,AFT_OUT,Pre-authorized Debit to UTILITY CORP,-120.50,2000.00,CAD""",
+            "content": """transaction_date,transaction_time,account_number,account_type,transaction_type,transaction_sub_type,status,payee,payee_email,amount,currency,notes
+4/12/2026,4:00:00,10000001,Chequing,Withdrawal,E Transfer,Completed,Family Member,family@example.com,-150,CAD,
+4/17/2026,22:34:50,10000001,Chequing,Withdrawal,Aft,Completed,UTILITY CORP,,-120.50,CAD,
+4/18/2026,17:15:02,10000001,Chequing,Deposit,E Transfer,Completed,Jane Doe,jane.doe@example.com,75,CAD,
+4/21/2026,9:57:28,10000001,Chequing,Deposit,Aft,Completed,EMPLOYER PAYROLL,,2500.00,CAD,
+5/1/2026,0:00:00,10000001,Chequing,Interest,,Completed,,,5.00,CAD,
+5/5/2026,9:58:25,10000001,Chequing,Internal Transfer,Source,Completed,,,-1000,CAD,
+7/4/2026,23:23:09,10000001,Chequing,Internal Transfer,Destination,Completed,,,5000,CAD,""",
         },
     }
 

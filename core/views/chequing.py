@@ -10,7 +10,7 @@ from core.models import ChequingAccount, ChequingTransaction
 from core.services.chequing_service import normalize_chequing_category, parse_bool_query
 
 
-_INTERNAL_TRANSFER_OUT_CODES = {"TRFOUT", "TRFOUTTF"}
+_INTERNAL_TRANSFER_OUT_CODES = {"TRFOUT", "TRFOUTTF", "INTERNAL_TRANSFER_SOURCE"}
 _INTERNAL_TRANSFER_OUT_CATEGORIES = {
     "Savings Out (to Savings/Investments)",
     "Money Into Savings (to Savings/Investments)",
@@ -18,7 +18,12 @@ _INTERNAL_TRANSFER_OUT_CATEGORIES = {
     "Internal Transfer Out (Savings/Expenses)",
     "Saving Money",
 }
-_INTERNAL_TRANSFER_IN_CODES = {"TRFINTF", "TRFIN"}
+_INTERNAL_TRANSFER_IN_CODES = {
+    "TRFINTF",
+    "TRFIN",
+    "INTERNAL_TRANSFER_DESTINATION",
+    "OVERDRAFT_TRANSFER_DESTINATION",
+}
 _INTERNAL_TRANSFER_IN_CATEGORIES = {
     "Savings In (from Savings/Investments)",
     "Money Out of Savings (from Savings/Investments)",

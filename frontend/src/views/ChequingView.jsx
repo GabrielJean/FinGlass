@@ -263,7 +263,7 @@ export function ChequingView() {
     e.preventDefault();
     if (!newAccountLabel.trim()) return;
     try {
-      await api.chequing.createAccount({ label: newAccountLabel.trim(), provider: "WealthSimple" });
+      await api.chequing.createAccount({ label: newAccountLabel.trim(), provider: "Wealthsimple" });
       setNotice(`Created account "${newAccountLabel}".`);
       setNewAccountLabel("");
       setIsAddAccountOpen(false);
@@ -457,7 +457,7 @@ export function ChequingView() {
         <div>
           <p className="eyebrow">CASH & EXPENSES</p>
           <h1>Chequing & Cash Flow</h1>
-          <p>WealthSimple chequing activity, recurring savings, and transaction categories.</p>
+          <p>Wealthsimple chequing activity, recurring savings, and transaction categories.</p>
         </div>
 
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
@@ -476,7 +476,7 @@ export function ChequingView() {
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload size={15} />
-            {uploading ? "Importing..." : "Import WealthSimple CSV(s)"}
+            {uploading ? "Importing..." : "Import Wealthsimple Activity CSV(s)"}
           </button>
           <button
             type="button"
@@ -827,7 +827,7 @@ export function ChequingView() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. WealthSimple Everyday"
+                  placeholder="e.g. Wealthsimple Chequing"
                   value={newAccountLabel}
                   onChange={(e) => setNewAccountLabel(e.target.value)}
                 />
