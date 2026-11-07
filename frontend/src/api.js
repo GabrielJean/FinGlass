@@ -165,6 +165,8 @@ export const api = {
     getQuote: (symbol) => request(`/api/market-data/quote?symbol=${encodeURIComponent(symbol)}`),
     refreshMarketValues: (as_of) =>
       request("/api/holdings/refresh-market-values", { method: "POST", body: { as_of } }),
+    importHoldingsCsv: (formData) =>
+      request("/api/import/holdings-csv", { method: "POST", body: formData }),
   },
 
   chequing: {

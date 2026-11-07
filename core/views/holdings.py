@@ -548,7 +548,8 @@ def refresh_holdings_market_values(request):
     symbols = {
         str(row.symbol or "").strip().upper()
         for row in rows
-        if str(row.symbol or "").strip().upper() not in {"", "CASH"}
+        if str(row.symbol or "").strip().upper() not in {"", "CASH", "CAD", "USD"}
+        and str(row.security_type or "").strip().upper() != "CURRENCY"
     }
 
     quotes_by_symbol = {}

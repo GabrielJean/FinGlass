@@ -855,6 +855,78 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(HoldingSnapshot.objects.filter(symbol="VFV.TO", user=self.user).count(), 1)
         self.assertEqual(HoldingSnapshot.objects.filter(symbol="XEQT.TO", user=self.user).count(), 1)
 
+    def test_wealthsimple_holdings_report_import_and_overwrite(self):
+        from core.models import HoldingSnapshot
+        # 1. Seed old holding that should be overwritten
+        HoldingSnapshot.objects.create(
+            user=self.user,
+            as_of="2026-01-01",
+            account_name="Old Closed Account",
+            account_number="OLD999",
+            symbol="OLD_TICKER",
+            quantity=50,
+            market_value=1000,
+            book_value_cad=900,
+        )
+        self.assertEqual(HoldingSnapshot.objects.filter(user=self.user, symbol="OLD_TICKER").count(), 1)
+
+        # 2. Wealthsimple Holdings Report CSV (synthetic sample with emojis & As of footer)
+        ws_holdings_csv = (
+            'Account Name,Account Type,Account Classification,Account Number,Symbol,Exchange,MIC,Name,Security Type,Quantity,Position Direction,Market Price,Market Price Currency,Book Value (CAD),Book Value Currency (CAD),Book Value (Market),Book Value Currency (Market),Market Value,Market Value Currency,Market Unrealized Returns,Market Unrealized Returns Currency\n'
+            '"Trade FHSA","FHSA","Trade","ACT_FHSA_001","XEQT","TSX","XTSE","iShares Core Equity ETF Portfolio","EXCHANGE_TRADED_FUND","100","LONG","40.00","CAD","3800.00","CAD","3800.00","CAD","4000.00","CAD","200.00","CAD"\n'
+            '"Trade Non-Registered","Non-registered","Trade","ACT_NONREG_002","VFV","TSX","XTSE","Vanguard S&P 500 Index ETF","EXCHANGE_TRADED_FUND","50","LONG","100.00","CAD","4500.00","CAD","4500.00","CAD","5000.00","CAD","500.00","CAD"\n'
+            '"Trade Non-Registered","Non-registered","Trade","ACT_NONREG_002","XEQT","TSX","XTSE","iShares Core Equity ETF Portfolio","EXCHANGE_TRADED_FUND","50","LONG","40.00","CAD","2050.00","CAD","2050.00","CAD","2000.00","CAD","-50.00","CAD"\n'
+            '"Trade RRSP","RRSP","Trade","ACT_RRSP_003","XEQT","TSX","XTSE","iShares Core Equity ETF Portfolio","EXCHANGE_TRADED_FUND","100","LONG","40.00","CAD","3900.00","CAD","3900.00","CAD","4000.00","CAD","100.00","CAD"\n'
+            '"Trade TFSA","TFSA","Trade","ACT_TFSA_004","BTCC.B","TSX","XTSE","Purpose Bitcoin ETF CAD ETF","EXCHANGE_TRADED_FUND","50","LONG","15.00","CAD","700.00","CAD","700.00","CAD","750.00","CAD","50.00","CAD"\n'
+            '"Trade TFSA","TFSA","Trade","ACT_TFSA_004","CAD","","","CAD","CURRENCY","10.00","LONG","1","CAD","10.00","CAD","10.00","CAD","10.00","CAD","0","CAD"\n'
+            '"Trade TFSA","TFSA","Trade","ACT_TFSA_004","VFV","TSX","XTSE","Vanguard S&P 500 Index ETF","EXCHANGE_TRADED_FUND","50","LONG","100.00","CAD","4600.00","CAD","4600.00","CAD","5000.00","CAD","400.00","CAD"\n'
+            '"Trade TFSA","TFSA","Trade","ACT_TFSA_004","XEQT","TSX","XTSE","iShares Core Equity ETF Portfolio","EXCHANGE_TRADED_FUND","50","LONG","40.00","CAD","1950.00","CAD","1950.00","CAD","2000.00","CAD","50.00","CAD"\n'
+            '"✈️ Travel Fund","Non-registered","Trade","ACT_CASH_005","CAD","","","CAD","CURRENCY","1000.00","LONG","1","CAD","1000.00","CAD","1000.00","CAD","1000.00","CAD","0","CAD"\n'
+            '"🏠 House Fund","Non-registered","Trade","ACT_CASH_006","CAD","","","CAD","CURRENCY","2000.00","LONG","1","CAD","2000.00","CAD","2000.00","CAD","2000.00","CAD","0","CAD"\n'
+            '"💎 Long-Term Savings","Non-registered","Trade","ACT_CASH_007","CAD","","","CAD","CURRENCY","1500.00","LONG","1","CAD","1500.00","CAD","1500.00","CAD","1500.00","CAD","0","CAD"\n'
+            '"💲 Buffer Account","Non-registered","Trade","ACT_CASH_008","CAD","","","CAD","CURRENCY","500.00","LONG","1","CAD","500.00","CAD","500.00","CAD","500.00","CAD","0","CAD"\n'
+            '\n'
+            '"As of 2026-06-01 12:00 GMT-04:00"\n'
+        ).encode("utf-8")
+
+        f = SimpleUploadedFile("Wealthsimple_Holdings_Report.csv", ws_holdings_csv, content_type="text/csv")
+        res = self.client.post("/api/import/holdings-csv", {"file": f, "overwrite": "true"})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["parsed"], 12)
+        self.assertEqual(data["imported"], 12)
+        self.assertEqual(data["as_of"], "2026-06-01")
+        self.assertTrue(data.get("overwritten"))
+
+        # Verify old positions were completely overwritten
+        self.assertEqual(HoldingSnapshot.objects.filter(user=self.user, symbol="OLD_TICKER").count(), 0)
+        self.assertEqual(HoldingSnapshot.objects.filter(user=self.user).count(), 12)
+
+        # Verify specific accounts & emojis
+        fhsa = HoldingSnapshot.objects.get(user=self.user, account_name="Trade FHSA", symbol="XEQT")
+        self.assertEqual(float(fhsa.quantity), 100.0)
+        self.assertAlmostEqual(float(fhsa.market_value), 4000.0, places=2)
+
+        travel = HoldingSnapshot.objects.get(user=self.user, account_name="✈️ Travel Fund", symbol="CAD")
+        self.assertEqual(float(travel.quantity), 1000.0)
+        self.assertEqual(float(travel.market_value), 1000.0)
+
+        house = HoldingSnapshot.objects.get(user=self.user, account_name="🏠 House Fund", symbol="CAD")
+        self.assertEqual(float(house.quantity), 2000.0)
+
+        # Verify accounts dashboard summary
+        dash_res = self.client.get("/api/accounts/dashboard")
+        self.assertEqual(dash_res.status_code, 200)
+        dash_data = dash_res.json()
+        self.assertEqual(dash_data["as_of"], "2026-06-01")
+        self.assertEqual(dash_data["summary"]["positions"], 12)
+        self.assertTrue(dash_data["summary"]["market_value"] > 20000)
+
+        # Verify refresh-market-values skips CAD without crashing
+        refresh_res = self.client.post("/api/holdings/refresh-market-values", {"as_of": "2026-06-01"}, content_type="application/json")
+        self.assertEqual(refresh_res.status_code, 200)
+
+
     def test_wealthsimple_credit_card_csv_import_and_inference(self):
         ws_csv = (
             "transaction_date,post_date,type,details,amount,currency\n"

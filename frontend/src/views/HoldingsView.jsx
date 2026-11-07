@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { api } from "../api";
 import { formatMoney, formatPercent, formatDate } from "../utils/formatters";
-import { RefreshCw, Plus, Search, Trash2, Edit2, DollarSign, ExternalLink, PieChart } from "lucide-react";
+import { RefreshCw, Plus, Search, Trash2, Edit2, DollarSign, ExternalLink, PieChart, Upload } from "lucide-react";
 import { Bar, Doughnut } from "react-chartjs-2";
 import "../components/charts/chartSetup";
 import {
@@ -22,6 +22,8 @@ export function HoldingsView({ onNavigate }) {
   const [filterAccount, setFilterAccount] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [refreshingQuotes, setRefreshingQuotes] = useState(false);
+  const [uploadingHoldings, setUploadingHoldings] = useState(false);
+  const fileInputRef = useRef(null);
 
   // Quote lookup
   const [lookupSymbol, setLookupSymbol] = useState("");
@@ -72,6 +74,30 @@ export function HoldingsView({ onNavigate }) {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleHoldingsUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploadingHoldings(true);
+    setError("");
+    setNotice("");
+    const formData = new FormData();
+    files.forEach((f) => formData.append("file", f));
+    formData.append("overwrite", "true");
+
+    try {
+      const res = await api.holdings.importHoldingsCsv(formData);
+      const imported = res.imported ?? res.inserted ?? res.parsed ?? 0;
+      const asOfStr = res.as_of ? ` (as of ${res.as_of})` : "";
+      setNotice(`Successfully imported ${imported} position(s) from holdings report${asOfStr}. Previous holdings snapshot overwritten.`);
+      loadData();
+    } catch (err) {
+      setError(err.message || "Failed to import holdings report CSV.");
+    } finally {
+      setUploadingHoldings(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
 
   const handleRefreshQuotes = async () => {
     setRefreshingQuotes(true);
@@ -327,6 +353,22 @@ export function HoldingsView({ onNavigate }) {
         </div>
 
         <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleHoldingsUpload}
+            accept=".csv"
+            style={{ display: "none" }}
+          />
+          <button
+            type="button"
+            className="secondary"
+            disabled={uploadingHoldings}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload size={15} className={uploadingHoldings ? "spin" : ""} />
+            {uploadingHoldings ? "Importing..." : "Import Holdings Report CSV"}
+          </button>
           <button
             type="button"
             className="secondary"
@@ -390,7 +432,7 @@ export function HoldingsView({ onNavigate }) {
         <div>
           <h4 className="friendly-explainer-title">Portfolio Holdings & Live Quotes</h4>
           <p className="friendly-explainer-text">
-            Here you can see all your stocks, ETFs, mutual funds, and cash balances across your WealthSimple and brokerage accounts. Click <strong>"Refresh Quotes"</strong> anytime to update your portfolio with the latest live market prices!
+            Here you can see all your stocks, ETFs, mutual funds, and cash balances across your Wealthsimple and brokerage accounts. Click <strong>"Import Holdings Report CSV"</strong> anytime to snapshot your accounts and overwrite old positions, or click <strong>"Refresh Quotes"</strong> to update live market prices!
           </p>
         </div>
       </div>

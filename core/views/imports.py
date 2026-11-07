@@ -379,8 +379,20 @@ def parse_tax_pdf_bytes(pdf_bytes, filename):
 
 
 def _extract_iso_date(value):
-    match = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", value or "")
-    return match.group(1) if match else None
+    text = str(value or "").strip()
+    match = re.search(r"\b(20\d{2}-\d{2}-\d{2})\b", text)
+    if match:
+        return match.group(1)
+    match_slash = re.search(r"\b(20\d{2}/\d{2}/\d{2})\b", text)
+    if match_slash:
+        return match_slash.group(1).replace("/", "-")
+    match_us = re.search(r"\b(\d{1,2}/\d{1,2}/20\d{2})\b", text)
+    if match_us:
+        try:
+            return datetime.strptime(match_us.group(1), "%m/%d/%Y").strftime("%Y-%m-%d")
+        except ValueError:
+            pass
+    return None
 
 
 def _extract_as_of_date(csv_text, filename=""):
@@ -1271,25 +1283,20 @@ def import_holdings_csv(request):
     total_updated = 0
     preview_rows = []
     preview_only = _is_truthy(request.POST.get("preview_only"))
+    raw_overwrite = request.POST.get("overwrite")
+    should_overwrite = _is_truthy(raw_overwrite) if raw_overwrite is not None else True
     last_as_of = None
+    all_parsed_files = []
 
     for uploaded_file in uploaded_files:
         file_text = uploaded_file.read().decode("utf-8-sig")
         parsed_rows = parse_holdings_csv_text(file_text, filename=uploaded_file.name)
         if not parsed_rows:
             continue
-
+        all_parsed_files.append((parsed_rows, uploaded_file.name))
+        total_parsed += len(parsed_rows)
         if preview_only:
-            total_parsed += len(parsed_rows)
             preview_rows.extend(parsed_rows)
-            continue
-
-        summary = _import_holdings_rows(parsed_rows, uploaded_file.name, user_id)
-        total_parsed += int(summary.get("parsed") or 0)
-        total_inserted += int(summary.get("inserted") or 0)
-        total_updated += int(summary.get("updated") or 0)
-        if summary.get("as_of"):
-            last_as_of = summary["as_of"]
 
     if total_parsed == 0:
         return JsonResponse({"error": "No holdings rows found in uploaded CSV file(s)"}, status=400)
@@ -1297,12 +1304,24 @@ def import_holdings_csv(request):
     if preview_only:
         return JsonResponse({"parsed": total_parsed, "rows": preview_rows, "imported": 0, "files": len(uploaded_files)})
 
+    with transaction.atomic():
+        if should_overwrite:
+            HoldingSnapshot.objects.filter(user_id=user_id).delete()
+
+        for parsed_rows, filename in all_parsed_files:
+            summary = _import_holdings_rows(parsed_rows, filename, user_id)
+            total_inserted += int(summary.get("inserted") or 0)
+            total_updated += int(summary.get("updated") or 0)
+            if summary.get("as_of"):
+                last_as_of = summary["as_of"]
+
     return JsonResponse({
         "parsed": total_parsed,
         "inserted": total_inserted,
         "updated": total_updated,
         "imported": total_inserted + total_updated,
         "as_of": last_as_of,
+        "overwritten": should_overwrite,
         "files": len(uploaded_files),
     })
 
