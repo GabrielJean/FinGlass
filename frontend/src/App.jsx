@@ -345,21 +345,6 @@ export function App() {
             >
               Settings
             </button>
-            {currentUser.is_superuser && (
-              <>
-                <span style={{ color: "var(--border-panel)" }}>·</span>
-                <a
-                  href="/admin/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="link"
-                  style={{ padding: 0, textDecoration: "none", color: "var(--accent)" }}
-                  title="Open Django Admin Panel in a new tab"
-                >
-                  Django Admin
-                </a>
-              </>
-            )}
             <span style={{ color: "var(--border-panel)" }}>·</span>
             <button
               type="button"
