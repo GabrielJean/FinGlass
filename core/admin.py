@@ -1,7 +1,8 @@
 import csv
 from decimal import Decimal
 from django.contrib import admin
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
+from django.shortcuts import render
 from django.utils.html import format_html
 from django.utils.timezone import now
 
@@ -12,6 +13,7 @@ from .models import (
     HoldingSnapshot,
     NetWorthHistory,
     CreditCardTransaction,
+    ChequingTransaction,
     AppSetting,
     TfsaAccount,
     TfsaAnnualLimit,
@@ -300,6 +302,7 @@ class CreditCardTransactionAdmin(admin.ModelAdmin):
         "rewards_display",
         "visibility_badge",
     )
+    list_editable = ("card_label",)
     list_filter = ("provider", "transaction_date", "merchant_category", "is_hidden", "card_label")
     search_fields = ("user__username", "merchant_name", "merchant_city", "cardholder_name")
     ordering = ("-transaction_date",)
@@ -347,6 +350,50 @@ class CreditCardTransactionAdmin(admin.ModelAdmin):
         )
     visibility_badge.short_description = "Visibility"
 
+    @admin.action(description="Edit card label for selected transactions")
+    def edit_card_label(self, request, queryset):
+        if "apply" in request.POST:
+            clear_label = request.POST.get("clear_label") == "1"
+            new_label = request.POST.get("card_label", "").strip()
+
+            if clear_label:
+                count = queryset.update(card_label=None)
+                self.message_user(request, f"Cleared card label for {count} transaction(s).")
+                return HttpResponseRedirect(request.get_full_path())
+            elif new_label:
+                count = queryset.update(card_label=new_label)
+                self.message_user(
+                    request,
+                    f"Successfully updated credit card label to '{new_label}' for {count} transaction(s).",
+                )
+                return HttpResponseRedirect(request.get_full_path())
+            else:
+                self.message_user(
+                    request,
+                    "Please provide a new card label or select 'Clear label'.",
+                    level=admin.messages.ERROR,
+                )
+                return HttpResponseRedirect(request.get_full_path())
+
+        existing_labels = (
+            CreditCardTransaction.objects.exclude(card_label__isnull=True)
+            .exclude(card_label__exact="")
+            .values_list("card_label", flat=True)
+            .distinct()
+            .order_by("card_label")
+        )
+
+        context = {
+            **self.admin_site.each_context(request),
+            "title": "Edit Credit Card Label",
+            "queryset": queryset,
+            "count": queryset.count(),
+            "existing_labels": list(existing_labels),
+            "select_across": request.POST.get("select_across") == "1",
+            "opts": self.model._meta,
+        }
+        return render(request, "admin/edit_card_label.html", context)
+
     @admin.action(description="Hide selected transactions")
     def hide_transactions(self, request, queryset):
         updated = queryset.update(is_hidden=True)
@@ -374,7 +421,71 @@ class CreditCardTransactionAdmin(admin.ModelAdmin):
             ])
         return response
 
-    actions = ["hide_transactions", "show_transactions", "export_to_csv"]
+    actions = ["edit_card_label", "hide_transactions", "show_transactions", "export_to_csv"]
+
+
+# ============================================================================
+# CHEQUING TRANSACTION ADMIN
+# ============================================================================
+
+
+@admin.register(ChequingTransaction)
+class ChequingTransactionAdmin(admin.ModelAdmin):
+    list_display = (
+        "user",
+        "transaction_date",
+        "account_label",
+        "description",
+        "category",
+        "amount_display",
+        "balance_display",
+        "visibility_badge",
+    )
+    list_editable = ("account_label",)
+    list_filter = ("account_label", "transaction_date", "category", "is_hidden")
+    search_fields = ("user__username", "description", "category", "account_label")
+    ordering = ("-transaction_date", "-id")
+
+    fieldsets = (
+        ("User & Account", {"fields": ("user", "account_label")}),
+        ("Transaction", {"fields": ("transaction_date", "transaction_code", "description", "category")}),
+        ("Financials", {"fields": ("amount", "balance", "currency")}),
+        ("Visibility", {"fields": ("is_hidden",)}),
+        ("Import Info", {"fields": ("source_filename", "imported_at")}),
+    )
+    readonly_fields = ("imported_at",)
+
+    def amount_display(self, obj):
+        return format_currency(obj.amount)
+    amount_display.short_description = "Amount"
+    amount_display.admin_order_field = "amount"
+
+    def balance_display(self, obj):
+        return format_currency(obj.balance)
+    balance_display.short_description = "Balance"
+    balance_display.admin_order_field = "balance"
+
+    def visibility_badge(self, obj):
+        if obj.is_hidden:
+            return format_html(
+                '<span style="background-color: red; color: white; padding: 3px 8px; border-radius: 3px;">Hidden</span>'
+            )
+        return format_html(
+            '<span style="background-color: green; color: white; padding: 3px 8px; border-radius: 3px;">Visible</span>'
+        )
+    visibility_badge.short_description = "Visibility"
+
+    @admin.action(description="Hide selected chequing transactions")
+    def hide_transactions(self, request, queryset):
+        updated = queryset.update(is_hidden=True)
+        self.message_user(request, f"{updated} transaction(s) hidden.")
+
+    @admin.action(description="Show selected chequing transactions")
+    def show_transactions(self, request, queryset):
+        updated = queryset.update(is_hidden=False)
+        self.message_user(request, f"{updated} transaction(s) shown.")
+
+    actions = ["hide_transactions", "show_transactions"]
 
 
 # ============================================================================

@@ -622,6 +622,72 @@ class FinGlassComprehensiveTests(TestCase):
         t1.refresh_from_db()
         self.assertEqual(t1.merchant_category, "Fast Food")
 
+    def test_credit_card_admin_edit_card_label_action(self):
+        from core.models import CreditCardTransaction
+
+        tx1 = CreditCardTransaction.objects.create(
+            user=self.user,
+            provider="wealthsimple",
+            card_label="Old Label 1",
+            transaction_date="2024-05-10",
+            merchant_name="Sample Cafe",
+            amount=12.50,
+        )
+        tx2 = CreditCardTransaction.objects.create(
+            user=self.user,
+            provider="wealthsimple",
+            card_label="Old Label 2",
+            transaction_date="2024-05-11",
+            merchant_name="Grocery Store",
+            amount=45.00,
+        )
+
+        admin_url = "/admin/core/creditcardtransaction/"
+
+        # 1. Action intermediate page shows selected count and existing labels
+        res_intermediate = self.client.post(
+            admin_url,
+            {
+                "action": "edit_card_label",
+                "_selected_action": [tx1.id, tx2.id],
+            },
+        )
+        self.assertEqual(res_intermediate.status_code, 200)
+        self.assertContains(res_intermediate, "Edit Credit Card Label")
+        self.assertContains(res_intermediate, "You have selected <strong>2</strong> transactions")
+
+        # 2. Applying new card label updates all selected transactions
+        res_apply = self.client.post(
+            admin_url,
+            {
+                "action": "edit_card_label",
+                "_selected_action": [tx1.id, tx2.id],
+                "apply": "1",
+                "card_label": "Synthetic Gold Visa",
+            },
+        )
+        self.assertEqual(res_apply.status_code, 302)
+        tx1.refresh_from_db()
+        tx2.refresh_from_db()
+        self.assertEqual(tx1.card_label, "Synthetic Gold Visa")
+        self.assertEqual(tx2.card_label, "Synthetic Gold Visa")
+
+        # 3. Applying clear_label sets card_label to None
+        res_clear = self.client.post(
+            admin_url,
+            {
+                "action": "edit_card_label",
+                "_selected_action": [tx1.id, tx2.id],
+                "apply": "1",
+                "clear_label": "1",
+            },
+        )
+        self.assertEqual(res_clear.status_code, 302)
+        tx1.refresh_from_db()
+        tx2.refresh_from_db()
+        self.assertIsNone(tx1.card_label)
+        self.assertIsNone(tx2.card_label)
+
     def test_acb_advanced_edge_cases(self):
         from core.services.acb_service import calculate_ledger_rows
 
