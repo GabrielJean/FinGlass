@@ -160,7 +160,7 @@ export const api = {
     upsertCashAccount: (data) => request("/api/accounts/cash", { method: "PUT", body: data }),
     getQuote: (symbol) => request(`/api/market-data/quote?symbol=${encodeURIComponent(symbol)}`),
     refreshMarketValues: (as_of) =>
-      request("/api/market-data/refresh-holdings", { method: "POST", body: { as_of } }),
+      request("/api/holdings/refresh-market-values", { method: "POST", body: { as_of } }),
   },
 
   chequing: {
@@ -192,7 +192,7 @@ export const api = {
         body: { transaction_ids },
       }),
     importCsv: (formData) =>
-      request("/api/import/chequing-courant-csv", { method: "POST", body: formData }),
+      request("/api/import/chequing/courant-csv", { method: "POST", body: formData }),
   },
 
   creditCard: {
@@ -229,7 +229,7 @@ export const api = {
         body: { transaction_ids },
       }),
     importRogersCsv: (formData) =>
-      request("/api/import/rogers-credit-csv", { method: "POST", body: formData }),
+      request("/api/import/credit-card/rogers-csv", { method: "POST", body: formData }),
   },
 
   tfsa: {
@@ -335,7 +335,7 @@ export const api = {
     importHoldingsCsv: (formData) =>
       request("/api/import/holdings-csv", { method: "POST", body: formData }),
     importBackup: (formData) =>
-      request("/api/import/backup", { method: "POST", body: formData }),
+      request("/api/import/full-backup", { method: "POST", body: formData }),
   },
 
   retirement: {

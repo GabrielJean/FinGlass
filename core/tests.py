@@ -612,10 +612,10 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Starbucks Coffee", user=self.user).count(), 1)
         self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Metro Grocery", user=self.user).count(), 1)
 
-        # Upload a second time with another different filename
+        # Upload a second time with another different filename using alias route
         file3 = SimpleUploadedFile("renamed_again.csv", cc_csv, content_type="text/csv")
         res2 = self.client.post(
-            "/api/import/credit-card/scotiabank-csv",
+            "/api/import/rogers-credit-csv",
             {"file": file3, "provider": "scotiabank", "card_label": "Scotia Passport"},
         )
         self.assertEqual(res2.status_code, 200)
@@ -650,10 +650,10 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(ChequingTransaction.objects.filter(description="Payroll Employer Inc", user=self.user).count(), 1)
         self.assertEqual(ChequingTransaction.objects.filter(description="Landlord Rent Transfer", user=self.user).count(), 1)
 
-        # Upload a second time with different name
+        # Upload a second time with different name using alias route
         file3 = SimpleUploadedFile("chequing_renamed.csv", cheq_csv, content_type="text/csv")
         res2 = self.client.post(
-            "/api/import/chequing/courant-csv",
+            "/api/import/chequing-courant-csv",
             {"file": file3, "account_label": "WS Chequing"},
         )
         self.assertEqual(res2.status_code, 200)
