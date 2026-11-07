@@ -979,6 +979,7 @@ export function CreditCardView() {
                 >
                   <option value="rogers_bank">Rogers Bank</option>
                   <option value="scotiabank">Scotiabank</option>
+                  <option value="wealthsimple">Wealthsimple</option>
                 </select>
               </label>
 

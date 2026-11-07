@@ -150,6 +150,7 @@ urlpatterns = [
     path("api/import/holdings-csv", import_holdings_csv, name="import-holdings-csv"),
     path("api/import/credit-card/rogers-csv", import_rogers_credit_csv, name="import-credit-card-rogers-csv"),
     path("api/import/credit-card/scotiabank-csv", import_rogers_credit_csv, name="import-credit-card-scotiabank-csv"),
+    path("api/import/credit-card/wealthsimple-csv", import_rogers_credit_csv, name="import-credit-card-wealthsimple-csv"),
     path("api/import/rogers-credit-csv", import_rogers_credit_csv, name="import-rogers-credit-csv-alias"),
     path("api/import/chequing/courant-csv", import_chequing_courant_csv, name="import-chequing-courant-csv"),
     path("api/import/chequing-courant-csv", import_chequing_courant_csv, name="import-chequing-courant-csv-alias"),

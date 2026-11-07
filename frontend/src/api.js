@@ -241,6 +241,8 @@ export const api = {
       }),
     importRogersCsv: (formData) =>
       request("/api/import/credit-card/rogers-csv", { method: "POST", body: formData }),
+    importWealthsimpleCsv: (formData) =>
+      request("/api/import/credit-card/wealthsimple-csv", { method: "POST", body: formData }),
   },
 
   tfsa: {

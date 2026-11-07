@@ -855,6 +855,67 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(HoldingSnapshot.objects.filter(symbol="VFV.TO", user=self.user).count(), 1)
         self.assertEqual(HoldingSnapshot.objects.filter(symbol="XEQT.TO", user=self.user).count(), 1)
 
+    def test_wealthsimple_credit_card_csv_import_and_inference(self):
+        ws_csv = (
+            "transaction_date,post_date,type,details,amount,currency\n"
+            "10/16/2026,10/16/2026,Purchase,FITNESS CLUB,45.00,CAD\n"
+            "10/25/2026,10/25/2026,Purchase,CLOUD SOFTWARE INC,10.00,CAD\n"
+            "10/26/2026,10/26/2026,Payment,From chequing account,-50.00,CAD\n"
+        ).encode("utf-8")
+
+        # 1. Test create card with wealthsimple provider
+        card_res = self.client.post(
+            "/api/credit-card/cards/create",
+            {"label": "WS Visa Infinite", "provider": "wealthsimple"},
+            content_type="application/json",
+        )
+        self.assertEqual(card_res.status_code, 200)
+
+        # 2. Test auto-detection via general import route
+        file_ws = SimpleUploadedFile("ws_statement.csv", ws_csv, content_type="text/csv")
+        res = self.client.post(
+            "/api/import/credit-card/rogers-csv",
+            {"file": file_ws, "card_label": "WS Visa Infinite"},
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["parsed"], 3)
+        self.assertEqual(data["inserted"], 3)
+        self.assertEqual(data["skipped"], 0)
+
+        # Verify parsed records and inferred categories
+        from core.models import CreditCardTransaction
+        t1 = CreditCardTransaction.objects.get(merchant_name="FITNESS CLUB", user=self.user)
+        self.assertEqual(t1.merchant_category, "Sports & Outdoors")
+        self.assertEqual(float(t1.amount), 45.00)
+        self.assertEqual(str(t1.transaction_date), "2026-10-16")
+        self.assertEqual(t1.card_label, "WS Visa Infinite")
+        self.assertEqual(t1.provider, "wealthsimple")
+
+        t2 = CreditCardTransaction.objects.get(merchant_name="CLOUD SOFTWARE INC", user=self.user)
+        self.assertEqual(t2.merchant_category, "Software & SaaS")
+        self.assertEqual(float(t2.amount), 10.00)
+
+        t3 = CreditCardTransaction.objects.get(merchant_name="From chequing account", user=self.user)
+        self.assertEqual(t3.merchant_category, "Transfers & Payments")
+        self.assertEqual(float(t3.amount), -50.00)
+
+        # 3. Test dedicated Wealthsimple import route + deduplication
+        file_dup = SimpleUploadedFile("ws_dup.csv", ws_csv, content_type="text/csv")
+        res_dup = self.client.post(
+            "/api/import/credit-card/wealthsimple-csv",
+            {"file": file_dup, "card_label": "WS Visa Infinite"},
+        )
+        self.assertEqual(res_dup.status_code, 200)
+        data_dup = res_dup.json()
+        self.assertEqual(data_dup["parsed"], 3)
+        self.assertEqual(data_dup["inserted"], 0)
+        self.assertEqual(data_dup["skipped"], 3)
+
+        # Ensure still only 3 transactions exist
+        self.assertEqual(CreditCardTransaction.objects.filter(provider="wealthsimple", user=self.user).count(), 3)
+
+
 
 
 class DatabaseBackupTests(TransactionTestCase):

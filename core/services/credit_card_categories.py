@@ -175,3 +175,68 @@ def normalize_credit_card_category(value):
 
     # --- FALLBACK ---
     return _fallback(slug)
+
+
+MERCHANT_CATEGORY_RULES = [
+    ("Transfers & Payments", ["chequing", "payment", "transfer", "deposit", "bill payment", "withdrawal"]),
+    ("Groceries", [
+        "grocery", "supermarket", "loblaw", "metro", "sobeys", "safeway",
+        "no frills", "whole foods", "food basics", "farm boy", "walmart",
+        "t&t", "maxi", "iga", "provigo", "longos", "freshco", "superstore",
+    ]),
+    ("Wholesale", ["costco"]),
+    ("Dining", [
+        "restaurant", "cafe", "bistro", "grill", "sushi", "pizza", "kitchen",
+        "diner", "eatery", "bar", "pub", "brewery", "tavern", "bbq", "steak",
+    ]),
+    ("Fast Food", [
+        "mcdonald", "wendy", "burger", "subway", "tim horton", "starbucks",
+        "aw canada", "a&w", "kfc", "taco bell", "popeyes", "harvey", "dairy queen",
+        "five guys", "chipotle",
+    ]),
+    ("Coffee & Snacks", ["coffee", "bakery", "bagel", "donuts", "second cup", "davidstea"]),
+    ("Fuel", ["gas", "fuel", "petro", "shell", "esso", "chevron", "circle k", "ultramar", "pioneer", "mobil"]),
+    ("Transit & Taxi", ["uber", "lyft", "taxi", "transit", "train", "bus", "presto", "stm", "ttc", "go transit"]),
+    ("Travel", ["air canada", "westjet", "airline", "expedia", "booking.com", "airbnb", "flight"]),
+    ("Lodging", list(HOTEL_KEYWORDS)),
+    ("Telecom", ["rogers", "bell", "telus", "fido", "koodo", "freedom mobile", "shaw", "virgin plus"]),
+    ("Utilities", ["hydro", "energy", "power", "enbridge", "utilities", "water"]),
+    ("Software & SaaS", [
+        "backblaze", "github", "adobe", "microsoft", "openai", "chatgpt", "dropbox",
+        "aws", "digitalocean", "hosting", "cloud", "software", "vpn", "jetbrains",
+        "google workspace", "slack", "notion", "heroku", "cloudflare", "gitlab",
+    ]),
+    ("Streaming & Digital", ["netflix", "spotify", "apple.com", "youtube", "disney", "prime video", "crave", "audible", "hulu", "paramount"]),
+    ("Gaming", ["playstation", "steam", "nintendo", "xbox", "blizzard", "epic games", "riot games", "ea games"]),
+    ("Sports & Outdoors", ["fitness", "gym", "goodlife", "anytime fitness", "planet fitness", "crossfit", "ymca", "sporting", "decathlon"]),
+    ("Pharmacy", ["shoppers drug mart", "pharmacy", "rexall", "guardian", "pharma", "jean coutu"]),
+    ("General Retail", ["amazon", "ebay", "best buy", "canadian tire", "winners", "homesense", "ikea", "dollarama", "staples"]),
+    ("Entertainment & Events", ["cinema", "theatre", "cineplex", "ticketmaster", "eventbrite"]),
+]
+
+
+@lru_cache(maxsize=2048)
+def infer_credit_card_category_from_merchant(merchant_name, tx_type=None):
+    if tx_type and any(p in str(tx_type).lower() for p in ("payment", "transfer")):
+        return "Transfers & Payments"
+
+    raw = str(merchant_name or "").strip()
+    if not raw:
+        return "Uncategorized"
+
+    slug = _slug(raw)
+
+    for category, keywords in MERCHANT_CATEGORY_RULES:
+        if any(k in slug for k in keywords):
+            return category
+
+    # Check hotel keywords
+    if any(k in slug for k in HOTEL_KEYWORDS):
+        return "Lodging"
+
+    # Fallback to standard MCC rule check
+    for category, keywords in RULES:
+        if any(k in slug for k in keywords):
+            return category
+
+    return "General Retail" if slug else "Uncategorized"
