@@ -275,17 +275,23 @@ export function ChequingView() {
   };
 
   const handleCsvUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
     setUploading(true);
     setError("");
     const formData = new FormData();
-    formData.append("file", file);
+    files.forEach((file) => formData.append("file", file));
     if (selectedAccount) formData.append("account_label", selectedAccount);
 
     try {
       const res = await api.chequing.importCsv(formData);
-      setNotice(`Successfully imported ${res.imported_count || res.count || "transactions"}.`);
+      const inserted = res.inserted_count ?? res.inserted ?? res.imported ?? res.count ?? 0;
+      const skipped = res.skipped ?? 0;
+      if (skipped > 0) {
+        setNotice(`Imported ${inserted} transaction(s) from ${res.files || files.length} document(s) (${skipped} duplicate(s) skipped).`);
+      } else {
+        setNotice(`Successfully imported ${inserted} transaction(s) from ${res.files || files.length} document(s).`);
+      }
       loadMetadata();
       fetchData();
     } catch (err) {
@@ -459,6 +465,7 @@ export function ChequingView() {
             type="file"
             ref={fileInputRef}
             accept=".csv"
+            multiple
             style={{ display: "none" }}
             onChange={handleCsvUpload}
           />
@@ -469,7 +476,7 @@ export function ChequingView() {
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload size={15} />
-            {uploading ? "Importing..." : "Import WealthSimple CSV"}
+            {uploading ? "Importing..." : "Import WealthSimple CSV(s)"}
           </button>
           <button
             type="button"

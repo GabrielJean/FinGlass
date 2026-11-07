@@ -279,17 +279,23 @@ export function CreditCardView() {
   };
 
   const handleCsvUpload = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
     setUploading(true);
     setError("");
     const formData = new FormData();
-    formData.append("file", file);
+    files.forEach((file) => formData.append("file", file));
     if (selectedCard) formData.append("card_label", selectedCard);
 
     try {
       const res = await api.creditCard.importRogersCsv(formData);
-      setNotice(`Successfully imported ${res.imported_count || res.count || "transactions"}.`);
+      const inserted = res.inserted_count ?? res.inserted ?? res.imported ?? res.count ?? 0;
+      const skipped = res.skipped ?? 0;
+      if (skipped > 0) {
+        setNotice(`Imported ${inserted} transaction(s) from ${res.files || files.length} document(s) (${skipped} duplicate(s) skipped).`);
+      } else {
+        setNotice(`Successfully imported ${inserted} transaction(s) from ${res.files || files.length} document(s).`);
+      }
       loadMetadata();
       fetchData();
     } catch (err) {
@@ -484,6 +490,7 @@ export function CreditCardView() {
             type="file"
             ref={fileInputRef}
             accept=".csv"
+            multiple
             style={{ display: "none" }}
             onChange={handleCsvUpload}
           />
@@ -494,7 +501,7 @@ export function CreditCardView() {
             onClick={() => fileInputRef.current?.click()}
           >
             <Upload size={15} />
-            {uploading ? "Importing..." : "Import Card Statement CSV"}
+            {uploading ? "Importing..." : "Import Card Statement CSV(s)"}
           </button>
           <button
             type="button"

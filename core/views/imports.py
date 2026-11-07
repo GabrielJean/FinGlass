@@ -1,6 +1,6 @@
 import csv
 import re
-from collections import Counter
+from collections import Counter, defaultdict
 from decimal import Decimal
 from datetime import datetime
 from io import BytesIO, StringIO
@@ -17,7 +17,7 @@ from core.models import ChequingAccount, ChequingTransaction, CreditCardAccount,
 from core.services.chequing_service import normalize_chequing_category
 from core.services.credit_card_categories import normalize_credit_card_category
 
-SUPPORTED_IMPORT_TYPES = {"activities_csv", "tax_pdf"}
+SUPPORTED_IMPORT_TYPES = {"activities_csv", "tax_pdf", "auto"}
 EPSILON = Decimal("0.000001")
 
 
@@ -396,9 +396,12 @@ def parse_holdings_csv_text(csv_text, filename=""):
     reader = csv.DictReader(StringIO(csv_text))
 
     for item in reader:
-        symbol = (item.get("Symbol") or "").strip().upper()
-        account_number = (item.get("Account Number") or "").strip()
-        account_name = (item.get("Account Name") or "").strip()
+        normalized_item = {
+            _normalize_csv_header(k): v for k, v in (item or {}).items() if k is not None
+        }
+        symbol = _csv_get_value(normalized_item, "Symbol", "symbol", "ticker", "security").upper()
+        account_number = _csv_get_value(normalized_item, "Account Number", "account_number", "account_num", "account")
+        account_name = _csv_get_value(normalized_item, "Account Name", "account_name", "account")
         if not symbol or not account_number or not account_name:
             continue
 
@@ -406,21 +409,21 @@ def parse_holdings_csv_text(csv_text, filename=""):
             {
                 "as_of": as_of,
                 "account_name": account_name,
-                "account_type": (item.get("Account Type") or "").strip(),
-                "account_classification": (item.get("Account Classification") or "").strip(),
+                "account_type": _csv_get_value(normalized_item, "Account Type", "account_type"),
+                "account_classification": _csv_get_value(normalized_item, "Account Classification", "account_classification"),
                 "account_number": account_number,
                 "symbol": symbol,
-                "exchange": (item.get("Exchange") or "").strip(),
-                "mic": (item.get("MIC") or "").strip(),
-                "security_name": (item.get("Name") or "").strip(),
-                "security_type": (item.get("Security Type") or "").strip(),
-                "quantity": _parse_number(item.get("Quantity"), 0.0),
-                "market_price": _parse_number(item.get("Market Price"), 0.0),
-                "market_price_currency": (item.get("Market Price Currency") or "").strip(),
-                "book_value_cad": _parse_number(item.get("Book Value (CAD)"), 0.0),
-                "market_value": _parse_number(item.get("Market Value"), 0.0),
-                "market_value_currency": (item.get("Market Value Currency") or "").strip(),
-                "unrealized_return": _parse_number(item.get("Market Unrealized Returns"), 0.0),
+                "exchange": _csv_get_value(normalized_item, "Exchange", "exchange"),
+                "mic": _csv_get_value(normalized_item, "MIC", "mic"),
+                "security_name": _csv_get_value(normalized_item, "Name", "security_name", "name", "description"),
+                "security_type": _csv_get_value(normalized_item, "Security Type", "security_type"),
+                "quantity": _parse_number(_csv_get_value(normalized_item, "Quantity", "quantity", "shares"), 0.0),
+                "market_price": _parse_number(_csv_get_value(normalized_item, "Market Price", "market_price", "price"), 0.0),
+                "market_price_currency": _csv_get_value(normalized_item, "Market Price Currency", "currency", "price_currency"),
+                "book_value_cad": _parse_number(_csv_get_value(normalized_item, "Book Value (CAD)", "book_value_cad", "book_value"), 0.0),
+                "market_value": _parse_number(_csv_get_value(normalized_item, "Market Value", "market_value", "total_value"), 0.0),
+                "market_value_currency": _csv_get_value(normalized_item, "Market Value Currency", "market_value_currency"),
+                "unrealized_return": _parse_number(_csv_get_value(normalized_item, "Market Unrealized Returns", "unrealized_return", "gain"), 0.0),
             }
         )
 
@@ -630,7 +633,10 @@ def parse_chequing_courant_csv_text(csv_text, account_label=None):
 
 
 def parse_upload(import_type, filename, file_bytes):
-    if import_type == "activities_csv":
+    ext = Path(filename or "").suffix.lower()
+    if ext == ".pdf" or import_type == "tax_pdf":
+        return parse_tax_pdf_bytes(file_bytes, filename)
+    if ext == ".csv" or import_type == "activities_csv" or import_type == "auto":
         return parse_activities_csv_text(file_bytes.decode("utf-8-sig"))
     if import_type == "tax_pdf":
         return parse_tax_pdf_bytes(file_bytes, filename)
@@ -662,6 +668,94 @@ def _transaction_signature_key(tx):
     )
 
 
+def _count_existing_transactions(user_id, tx):
+    amount = _to_decimal(tx.get("amount", 0))
+    shares = _to_decimal(tx.get("shares", 0))
+    commission = _to_decimal(tx.get("commission", 0))
+    memo_filter = _build_memo_filter(tx.get("memo", ""))
+    return Transaction.objects.filter(
+        user_id=user_id,
+        security=str(tx.get("security") or "").strip().upper(),
+        trade_date=tx["trade_date"],
+        transaction_type=str(tx.get("transaction_type") or "").strip(),
+        amount__gte=amount - EPSILON,
+        amount__lte=amount + EPSILON,
+        shares__gte=shares - EPSILON,
+        shares__lte=shares + EPSILON,
+        commission__gte=commission - EPSILON,
+        commission__lte=commission + EPSILON,
+        **memo_filter,
+    ).count()
+
+
+def _evaluate_import_rows_deduplication(rows, user_id):
+    """
+    Annotates each row with:
+      - is_duplicate (bool)
+      - duplicate_reason (str: "already_in_ledger", "duplicate_in_upload", or "")
+    
+    Ensures that:
+    1. If a document is uploaded twice (or multiple documents uploaded at once contain identical transactions),
+       the identical duplicate transactions across files are recognized and marked as duplicate_in_upload.
+    2. If a document's transactions were already imported into the ledger (Transaction table),
+       even under a different filename, they are recognized and marked as already_in_ledger.
+    """
+    db_counts = {}
+    for r in rows:
+        key = _transaction_signature_key(r)
+        if key not in db_counts:
+            db_counts[key] = _count_existing_transactions(user_id, r)
+
+    max_seen_in_prev_files = defaultdict(int)
+    file_seen_sigs = defaultdict(int)
+    current_file_idx = None
+
+    annotated_rows = []
+    duplicate_in_upload = 0
+    already_in_ledger = 0
+    new_rows = 0
+
+    for row in rows:
+        file_idx = row.get("file_index", 1)
+        if current_file_idx is not None and file_idx != current_file_idx:
+            for k, cnt in file_seen_sigs.items():
+                max_seen_in_prev_files[k] = max(max_seen_in_prev_files[k], cnt)
+            file_seen_sigs = defaultdict(int)
+        current_file_idx = file_idx
+
+        sig = _transaction_signature_key(row)
+        file_seen_sigs[sig] += 1
+        occurrence = file_seen_sigs[sig]
+
+        annotated_row = dict(row)
+
+        if occurrence <= max_seen_in_prev_files[sig]:
+            annotated_row["is_duplicate"] = True
+            annotated_row["duplicate_reason"] = "duplicate_in_upload"
+            duplicate_in_upload += 1
+        elif occurrence <= db_counts.get(sig, 0):
+            annotated_row["is_duplicate"] = True
+            annotated_row["duplicate_reason"] = "already_in_ledger"
+            already_in_ledger += 1
+        else:
+            annotated_row["is_duplicate"] = False
+            annotated_row["duplicate_reason"] = ""
+            new_rows += 1
+
+        annotated_rows.append(annotated_row)
+
+    for k, cnt in file_seen_sigs.items():
+        max_seen_in_prev_files[k] = max(max_seen_in_prev_files[k], cnt)
+
+    stats = {
+        "duplicate_in_upload": duplicate_in_upload,
+        "already_in_ledger": already_in_ledger,
+        "new_rows": new_rows,
+        "total_rows": len(rows),
+    }
+    return annotated_rows, stats
+
+
 def _annotate_transaction_import_duplicates(rows):
     signature_counts = Counter(_transaction_signature_key(row) for row in rows)
     seen_counts = Counter()
@@ -683,15 +777,35 @@ def _annotate_transaction_import_duplicates(rows):
     return annotated_rows, duplicate_groups, duplicate_rows
 
 
-def _build_transaction_duplicate_warnings(duplicate_groups, duplicate_rows, skipped_existing=0):
+def _build_transaction_duplicate_warnings(duplicate_groups=0, duplicate_rows=0, skipped_existing=0, stats=None):
     warnings = []
+    if stats:
+        dup_upload = stats.get("duplicate_in_upload", 0)
+        in_ledger = stats.get("already_in_ledger", 0)
+        new_rows = stats.get("new_rows", 0)
+        total_rows = stats.get("total_rows", 0)
+        if dup_upload > 0:
+            row_label = "transaction" if dup_upload == 1 else "transactions"
+            warnings.append(
+                f"Recognized {dup_upload} duplicate {row_label} across uploaded documents. They will not be duplicated."
+            )
+        if in_ledger > 0:
+            row_label = "transaction" if in_ledger == 1 else "transactions"
+            warnings.append(
+                f"Recognized {in_ledger} {row_label} already present in your ledger. They will not be duplicated."
+            )
+        if total_rows > 0 and new_rows == 0:
+            warnings.append(
+                "All transactions in this upload already exist in your ledger or duplicate across files. No new transactions will be added."
+            )
+        return warnings
 
     if duplicate_groups > 0 and duplicate_rows > 0:
         group_label = "group" if duplicate_groups == 1 else "groups"
         row_label = "row" if duplicate_rows == 1 else "rows"
         warnings.append(
             f"This upload contains {duplicate_groups} identical transaction {group_label} spanning "
-            f"{duplicate_rows} {row_label}. They will still be imported together if they are new."
+            f"{duplicate_rows} {row_label}. Duplicate transactions will not be duplicated."
         )
 
     if skipped_existing > 0:
@@ -706,11 +820,15 @@ def _build_transaction_duplicate_warnings(duplicate_groups, duplicate_rows, skip
 def _import_transactions_rows(parsed_rows, user_id):
     inserted = 0
     skipped_existing = 0
-    annotated_rows, duplicate_groups, duplicate_rows = _annotate_transaction_import_duplicates(parsed_rows)
+    annotated_rows, stats = _evaluate_import_rows_deduplication(parsed_rows, user_id)
+    active_rows = [tx for tx in annotated_rows if not tx.get("is_duplicate")]
+    skipped_duplicates = len(annotated_rows) - len(active_rows)
+    skipped_existing += skipped_duplicates
+
     grouped_rows = {}
     signature_order = []
 
-    for tx in annotated_rows:
+    for tx in active_rows:
         key = _transaction_signature_key(tx)
         if key not in grouped_rows:
             grouped_rows[key] = []
@@ -753,11 +871,11 @@ def _import_transactions_rows(parsed_rows, user_id):
                     amount_per_share=_to_decimal(tx["amount_per_share"]),
                     commission=commission,
                     memo=memo,
-                    source=tx["source"],
+                    source=tx.get("source", "import_review"),
                 )
                 inserted += 1
 
-    warnings = _build_transaction_duplicate_warnings(duplicate_groups, duplicate_rows, skipped_existing)
+    warnings = _build_transaction_duplicate_warnings(stats=stats)
     return {
         "parsed": len(parsed_rows),
         "inserted": inserted,
@@ -765,8 +883,10 @@ def _import_transactions_rows(parsed_rows, user_id):
         "committed_rows": inserted,
         "skipped": skipped_existing,
         "skipped_existing": skipped_existing,
-        "duplicate_groups": duplicate_groups,
-        "duplicate_rows": duplicate_rows,
+        "duplicate_groups": stats["duplicate_in_upload"] + stats["already_in_ledger"],
+        "duplicate_rows": stats["duplicate_in_upload"] + stats["already_in_ledger"],
+        "duplicate_in_upload": stats["duplicate_in_upload"],
+        "already_in_ledger": stats["already_in_ledger"],
         "warnings": warnings,
     }
 
@@ -870,7 +990,7 @@ def _import_rogers_credit_rows(parsed_rows, source_filename, user_id):
         )
         inserted += 1
 
-    return {"parsed": len(parsed_rows), "inserted": inserted}
+    return {"parsed": len(parsed_rows), "inserted": inserted, "skipped": len(parsed_rows) - inserted}
 
 
 def _import_chequing_rows(parsed_rows, source_filename, user_id):
@@ -920,11 +1040,16 @@ def _import_chequing_rows(parsed_rows, source_filename, user_id):
         )
         inserted += 1
 
-    return {"parsed": len(parsed_rows), "inserted": inserted}
+    return {"parsed": len(parsed_rows), "inserted": inserted, "skipped": len(parsed_rows) - inserted}
 
 
 def _create_import_batch(source_type, source_filename, rows, user_id):
-    batch = ImportBatch.objects.create(user_id=user_id, source_type=source_type, source_filename=source_filename, status="staged")
+    batch = ImportBatch.objects.create(
+        user_id=user_id,
+        source_type=source_type,
+        source_filename=(source_filename[:250] if source_filename else ""),
+        status="staged",
+    )
     batch_id = batch.id
 
     for idx, row in enumerate(rows, start=1):
@@ -939,6 +1064,8 @@ def _create_import_batch(source_type, source_filename, rows, user_id):
             amount_per_share=_to_decimal(row.get("amount_per_share", 0.0)),
             commission=_to_decimal(row.get("commission", 0.0)),
             source=row.get("source", source_type),
+            is_duplicate=bool(row.get("is_duplicate", False)),
+            duplicate_reason=str(row.get("duplicate_reason") or ""),
         )
 
     return batch_id
@@ -948,7 +1075,25 @@ def _get_batch(batch_id, user_id):
     batch = ImportBatch.objects.filter(id=batch_id, user_id=user_id).values().first()
     if not batch:
         return None
-    rows = list(ImportBatchRow.objects.filter(batch_id=batch_id).order_by("row_order", "id").values())
+    rows = list(
+        ImportBatchRow.objects.filter(batch_id=batch_id)
+        .order_by("row_order", "id")
+        .values(
+            "id",
+            "batch_id",
+            "row_order",
+            "security",
+            "trade_date",
+            "transaction_type",
+            "amount",
+            "shares",
+            "amount_per_share",
+            "commission",
+            "source",
+            "is_duplicate",
+            "duplicate_reason",
+        )
+    )
     return {"batch": batch, "rows": rows}
 
 
@@ -976,7 +1121,26 @@ def _update_batch_row(batch_id, row_id, payload, user_id):
     row.shares = _to_decimal(shares)
     row.amount_per_share = _to_decimal(amount_per_share)
     row.commission = _to_decimal(commission)
-    row.save(update_fields=["security", "trade_date", "transaction_type", "amount", "shares", "amount_per_share", "commission"])
+
+    existing_count = _count_existing_transactions(
+        user_id,
+        {
+            "security": security,
+            "trade_date": trade_date,
+            "transaction_type": transaction_type,
+            "amount": amount,
+            "shares": shares,
+            "commission": commission,
+        },
+    )
+    if existing_count > 0:
+        row.is_duplicate = True
+        row.duplicate_reason = "already_in_ledger"
+    else:
+        row.is_duplicate = False
+        row.duplicate_reason = ""
+
+    row.save(update_fields=["security", "trade_date", "transaction_type", "amount", "shares", "amount_per_share", "commission", "is_duplicate", "duplicate_reason"])
     return True
 
 
@@ -995,10 +1159,10 @@ def _commit_batch(batch_id, user_id):
     rows = list(
         ImportBatchRow.objects.filter(batch_id=batch_id)
         .order_by("row_order", "id")
-        .values("security", "trade_date", "transaction_type", "amount", "shares", "amount_per_share", "commission", "source")
+        .values("security", "trade_date", "transaction_type", "amount", "shares", "amount_per_share", "commission", "source", "is_duplicate", "duplicate_reason")
     )
 
-    parsed_rows = [
+    non_duplicate_rows = [
         {
             "security": row["security"],
             "trade_date": row["trade_date"],
@@ -1010,9 +1174,15 @@ def _commit_batch(batch_id, user_id):
             "source": row["source"],
         }
         for row in rows
+        if not row.get("is_duplicate")
     ]
+    skipped_duplicates = len(rows) - len(non_duplicate_rows)
 
-    summary = _import_transactions_rows(parsed_rows, user_id)
+    summary = _import_transactions_rows(non_duplicate_rows, user_id)
+    summary["parsed"] = len(rows)
+    summary["skipped_duplicates"] = skipped_duplicates
+    summary["skipped_existing"] = summary.get("skipped_existing", 0) + skipped_duplicates
+    summary["skipped"] = summary["skipped_existing"]
 
     batch.status = "committed"
     batch.committed_at = timezone.now()
@@ -1023,35 +1193,71 @@ def _commit_batch(batch_id, user_id):
 @require_http_methods(["POST"])
 def import_holdings_csv(request):
     user_id = request.user.id
-    if "file" not in request.FILES:
+    uploaded_files = []
+    seen_file_ids = set()
+    for key in ("file", "files"):
+        for f in request.FILES.getlist(key):
+            if f and f.name and id(f) not in seen_file_ids:
+                seen_file_ids.add(id(f))
+                uploaded_files.append(f)
+
+    if not uploaded_files:
         return JsonResponse({"error": "Missing file upload field: file"}, status=400)
 
-    uploaded_file = request.FILES["file"]
-    if not uploaded_file.name:
-        return JsonResponse({"error": "No selected file"}, status=400)
+    total_parsed = 0
+    total_inserted = 0
+    total_updated = 0
+    preview_rows = []
+    preview_only = _is_truthy(request.POST.get("preview_only"))
+    last_as_of = None
 
-    file_text = uploaded_file.read().decode("utf-8-sig")
-    parsed_rows = parse_holdings_csv_text(file_text, filename=uploaded_file.name)
-    if not parsed_rows:
-        return JsonResponse({"error": "No holdings rows found in uploaded CSV"}, status=400)
+    for uploaded_file in uploaded_files:
+        file_text = uploaded_file.read().decode("utf-8-sig")
+        parsed_rows = parse_holdings_csv_text(file_text, filename=uploaded_file.name)
+        if not parsed_rows:
+            continue
 
-    if _is_truthy(request.POST.get("preview_only")):
-        return JsonResponse({"parsed": len(parsed_rows), "rows": parsed_rows, "imported": 0})
+        if preview_only:
+            total_parsed += len(parsed_rows)
+            preview_rows.extend(parsed_rows)
+            continue
 
-    summary = _import_holdings_rows(parsed_rows, uploaded_file.name, user_id)
-    summary["imported"] = summary.get("inserted", 0) + summary.get("updated", 0)
-    return JsonResponse(summary)
+        summary = _import_holdings_rows(parsed_rows, uploaded_file.name, user_id)
+        total_parsed += int(summary.get("parsed") or 0)
+        total_inserted += int(summary.get("inserted") or 0)
+        total_updated += int(summary.get("updated") or 0)
+        if summary.get("as_of"):
+            last_as_of = summary["as_of"]
+
+    if total_parsed == 0:
+        return JsonResponse({"error": "No holdings rows found in uploaded CSV file(s)"}, status=400)
+
+    if preview_only:
+        return JsonResponse({"parsed": total_parsed, "rows": preview_rows, "imported": 0, "files": len(uploaded_files)})
+
+    return JsonResponse({
+        "parsed": total_parsed,
+        "inserted": total_inserted,
+        "updated": total_updated,
+        "imported": total_inserted + total_updated,
+        "as_of": last_as_of,
+        "files": len(uploaded_files),
+    })
 
 
 @require_http_methods(["POST"])
 def import_rogers_credit_csv(request):
     user_id = request.user.id
-    if "file" not in request.FILES:
-        return JsonResponse({"error": "Missing file upload field: file"}, status=400)
+    uploaded_files = []
+    seen_file_ids = set()
+    for key in ("file", "files"):
+        for f in request.FILES.getlist(key):
+            if f and f.name and id(f) not in seen_file_ids:
+                seen_file_ids.add(id(f))
+                uploaded_files.append(f)
 
-    uploaded_files = [file for file in request.FILES.getlist("file") if file and file.name]
     if not uploaded_files:
-        return JsonResponse({"error": "No selected file"}, status=400)
+        return JsonResponse({"error": "Missing file upload field: file"}, status=400)
 
     card_label = str(request.POST.get("card_label") or "").strip() or None
     provider = str(request.POST.get("provider") or "").strip().lower()
@@ -1060,6 +1266,7 @@ def import_rogers_credit_csv(request):
 
     total_parsed = 0
     total_inserted = 0
+    total_skipped = 0
     files_processed = 0
     preview_rows = []
     preview_only = _is_truthy(request.POST.get("preview_only"))
@@ -1082,6 +1289,7 @@ def import_rogers_credit_csv(request):
         summary = _import_rogers_credit_rows(parsed_rows, uploaded_file.name, user_id)
         total_parsed += int(summary.get("parsed") or 0)
         total_inserted += int(summary.get("inserted") or 0)
+        total_skipped += int(summary.get("skipped") or 0)
         files_processed += 1
 
     if total_parsed == 0:
@@ -1090,24 +1298,36 @@ def import_rogers_credit_csv(request):
     if preview_only:
         return JsonResponse({"parsed": total_parsed, "rows": preview_rows, "files": files_processed, "imported": 0})
 
-    return JsonResponse({"parsed": total_parsed, "inserted": total_inserted, "files": files_processed, "imported": total_inserted})
+    return JsonResponse({
+        "parsed": total_parsed,
+        "inserted": total_inserted,
+        "skipped": total_skipped,
+        "files": files_processed,
+        "imported": total_inserted,
+        "imported_count": total_inserted,
+    })
 
 
 @require_http_methods(["POST"])
 def import_chequing_courant_csv(request):
     user_id = request.user.id
-    if "file" not in request.FILES:
-        return JsonResponse({"error": "Missing file upload field: file"}, status=400)
+    uploaded_files = []
+    seen_file_ids = set()
+    for key in ("file", "files"):
+        for f in request.FILES.getlist(key):
+            if f and f.name and id(f) not in seen_file_ids:
+                seen_file_ids.add(id(f))
+                uploaded_files.append(f)
 
-    uploaded_files = [file for file in request.FILES.getlist("file") if file and file.name]
     if not uploaded_files:
-        return JsonResponse({"error": "No selected file"}, status=400)
+        return JsonResponse({"error": "Missing file upload field: file"}, status=400)
 
     account_label = str(request.POST.get("account_label") or "").strip() or None
     if not account_label:
         return JsonResponse({"error": "account_label is required for chequing imports"}, status=400)
     total_parsed = 0
     total_inserted = 0
+    total_skipped = 0
     files_processed = 0
     preview_rows = []
     preview_only = _is_truthy(request.POST.get("preview_only"))
@@ -1127,6 +1347,7 @@ def import_chequing_courant_csv(request):
         summary = _import_chequing_rows(parsed_rows, uploaded_file.name, user_id)
         total_parsed += int(summary.get("parsed") or 0)
         total_inserted += int(summary.get("inserted") or 0)
+        total_skipped += int(summary.get("skipped") or 0)
         files_processed += 1
 
     if total_parsed == 0:
@@ -1135,52 +1356,97 @@ def import_chequing_courant_csv(request):
     if preview_only:
         return JsonResponse({"parsed": total_parsed, "rows": preview_rows, "files": files_processed, "imported": 0})
 
-    return JsonResponse({"parsed": total_parsed, "inserted": total_inserted, "files": files_processed, "imported": total_inserted})
+    return JsonResponse({
+        "parsed": total_parsed,
+        "inserted": total_inserted,
+        "skipped": total_skipped,
+        "files": files_processed,
+        "imported": total_inserted,
+        "imported_count": total_inserted,
+    })
 
 
 @require_http_methods(["POST"])
 def create_import_review(request):
     user_id = request.user.id
-    if "file" not in request.FILES:
+    uploaded_files = []
+    seen_file_ids = set()
+    for key in ("file", "files"):
+        for f in request.FILES.getlist(key):
+            if f and f.name and id(f) not in seen_file_ids:
+                seen_file_ids.add(id(f))
+                uploaded_files.append(f)
+
+    if not uploaded_files:
         return JsonResponse({"error": "Missing file upload field: file"}, status=400)
 
-    import_type = str(request.POST.get("import_type") or request.POST.get("source_type") or "").strip()
-    if import_type not in SUPPORTED_IMPORT_TYPES:
+    import_type = str(request.POST.get("import_type") or request.POST.get("source_type") or "auto").strip()
+    if import_type and import_type not in SUPPORTED_IMPORT_TYPES and import_type != "auto":
         return JsonResponse({"error": "Unsupported import_type"}, status=400)
 
-    uploaded_file = request.FILES["file"]
-    if not uploaded_file.name:
-        return JsonResponse({"error": "No selected file"}, status=400)
+    all_rows = []
+    for file_idx, uploaded_file in enumerate(uploaded_files, start=1):
+        ext = Path(uploaded_file.name or "").suffix.lower()
+        if import_type == "tax_pdf":
+            resolved_type = "tax_pdf"
+        elif import_type == "activities_csv":
+            resolved_type = "activities_csv"
+        elif ext == ".pdf":
+            resolved_type = "tax_pdf"
+        elif ext == ".csv":
+            resolved_type = "activities_csv"
+        else:
+            resolved_type = "activities_csv"
 
-    file_bytes = uploaded_file.read()
-    try:
-        rows = parse_upload(import_type, uploaded_file.name, file_bytes)
-    except Exception as exc:
-        return JsonResponse({"error": f"Failed to parse import file: {exc}"}, status=400)
+        file_bytes = uploaded_file.read()
+        try:
+            file_rows = parse_upload(resolved_type, uploaded_file.name, file_bytes)
+        except Exception as exc:
+            return JsonResponse({"error": f"Failed to parse import file '{uploaded_file.name}': {exc}"}, status=400)
 
-    if not rows:
-        return JsonResponse({"error": "No importable transactions found in file"}, status=400)
+        for r in file_rows:
+            r["source_filename"] = uploaded_file.name
+            r["file_index"] = file_idx
+            all_rows.append(r)
 
-    rows, duplicate_groups, duplicate_rows = _annotate_transaction_import_duplicates(rows)
-    warnings = _build_transaction_duplicate_warnings(duplicate_groups, duplicate_rows)
+    if not all_rows:
+        return JsonResponse({"error": "No importable transactions found in file(s)"}, status=400)
+
+    annotated_rows, stats = _evaluate_import_rows_deduplication(all_rows, user_id)
+    warnings = _build_transaction_duplicate_warnings(stats=stats)
 
     if _is_truthy(request.POST.get("preview_only")):
         return JsonResponse(
             {
-                "rows": rows,
-                "parsed": len(rows),
-                "duplicate_groups": duplicate_groups,
-                "duplicate_rows": duplicate_rows,
+                "rows": annotated_rows,
+                "parsed": len(annotated_rows),
+                "new_rows": stats["new_rows"],
+                "duplicate_in_upload": stats["duplicate_in_upload"],
+                "already_in_ledger": stats["already_in_ledger"],
                 "warnings": warnings,
+                "files_count": len(uploaded_files),
             }
         )
 
-    batch_id = _create_import_batch(import_type, uploaded_file.name, rows, user_id)
+    if len(uploaded_files) == 1:
+        source_filename = uploaded_files[0].name
+    else:
+        filenames = [f.name for f in uploaded_files]
+        source_filename = f"{len(uploaded_files)} files: {', '.join(filenames)}"
+    if len(source_filename) > 250:
+        source_filename = source_filename[:247] + "..."
+
+    batch_id = _create_import_batch(import_type, source_filename, annotated_rows, user_id)
     batch_data = _get_batch(batch_id, user_id)
     batch_data["batch_id"] = batch_id
-    batch_data["duplicate_groups"] = duplicate_groups
-    batch_data["duplicate_rows"] = duplicate_rows
+    batch_data["parsed"] = len(annotated_rows)
+    batch_data["new_rows"] = stats["new_rows"]
+    batch_data["duplicate_in_upload"] = stats["duplicate_in_upload"]
+    batch_data["already_in_ledger"] = stats["already_in_ledger"]
+    batch_data["duplicate_groups"] = stats["duplicate_in_upload"] + stats["already_in_ledger"]
+    batch_data["duplicate_rows"] = stats["duplicate_in_upload"] + stats["already_in_ledger"]
     batch_data["warnings"] = warnings
+    batch_data["files_count"] = len(uploaded_files)
     return JsonResponse(batch_data, status=201)
 
 

@@ -25,13 +25,15 @@ export function ImportWizardView() {
   const backupInputRef = useRef(null);
 
   const handleUploadStaged = async (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
     setLoading(true);
     setError("");
     setNotice("");
     const formData = new FormData();
-    formData.append("file", file);
+    files.forEach((file) => {
+      formData.append("file", file);
+    });
     formData.append("import_type", importType);
     formData.append("source_type", importType);
     formData.append("broker", "wealthsimple");
@@ -39,9 +41,18 @@ export function ImportWizardView() {
     try {
       const res = await api.imports.createReview(formData);
       setStagedBatch(res);
-      setNotice(`Parsed ${res.rows?.length || 0} rows ready for review.`);
+      const totalRows = res.rows?.length || 0;
+      const newRows = res.new_rows !== undefined ? res.new_rows : (res.rows ? res.rows.filter((r) => !r.is_duplicate).length : totalRows);
+      const dupRows = totalRows - newRows;
+      if (dupRows > 0) {
+        setNotice(
+          `Uploaded ${res.files_count || files.length} document(s): ${totalRows} transactions parsed (${newRows} new, ${dupRows} duplicate recognized and skipped).`
+        );
+      } else {
+        setNotice(`Uploaded ${res.files_count || files.length} document(s): ${totalRows} rows ready for review.`);
+      }
     } catch (err) {
-      setError(err.message || "Failed to parse import file.");
+      setError(err.message || "Failed to parse import file(s).");
     } finally {
       setLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -54,7 +65,13 @@ export function ImportWizardView() {
     setError("");
     try {
       const res = await api.imports.commitReview(stagedBatch.batch_id);
-      setNotice(`Committed ${res.committed_rows || stagedBatch.rows?.length} transactions to ledger.`);
+      const committed = res.committed_rows ?? res.inserted ?? 0;
+      const skipped = res.skipped_duplicates ?? res.skipped_existing ?? res.skipped ?? 0;
+      if (skipped > 0) {
+        setNotice(`Committed ${committed} new transaction${committed === 1 ? "" : "s"} to ledger (${skipped} duplicate${skipped === 1 ? "" : "s"} skipped).`);
+      } else {
+        setNotice(`Committed ${committed} transaction${committed === 1 ? "" : "s"} to ledger.`);
+      }
       setStagedBatch(null);
     } catch (err) {
       setError(err.message || "Failed to commit batch.");
@@ -170,6 +187,7 @@ export function ImportWizardView() {
                   >
                     <option value="activities_csv">Wealthsimple Activities CSV</option>
                     <option value="tax_pdf">Wealthsimple / CRA Tax Slip PDF</option>
+                    <option value="auto">Auto-detect (Activities CSV & Tax PDF)</option>
                   </select>
                 </label>
               </div>
@@ -177,7 +195,8 @@ export function ImportWizardView() {
               <input
                 type="file"
                 ref={fileInputRef}
-                accept={importType === "tax_pdf" ? ".pdf" : ".csv"}
+                accept={importType === "tax_pdf" ? ".pdf" : importType === "activities_csv" ? ".csv" : ".csv,.pdf"}
+                multiple
                 style={{ display: "none" }}
                 onChange={handleUploadStaged}
               />
@@ -188,8 +207,11 @@ export function ImportWizardView() {
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Upload size={16} />
-                {loading ? "Parsing File..." : `Select ${importType === "tax_pdf" ? "PDF" : "CSV"} & Review`}
+                {loading ? "Parsing Documents..." : `Select ${importType === "tax_pdf" ? "PDF(s)" : importType === "activities_csv" ? "CSV(s)" : "Document(s)"} & Review`}
               </button>
+              <p className="fine" style={{ marginTop: "0.5rem" }}>
+                You can select multiple documents at once. finGlass will automatically recognize identical transactions and prevent duplicates.
+              </p>
             </section>
           ) : (
             /* Review Staged Rows */
@@ -197,7 +219,7 @@ export function ImportWizardView() {
               <div className="panel-header" style={{ padding: "1.25rem 1.5rem" }}>
                 <div>
                   <h3 style={{ margin: 0 }}>Review Staged Import ({stagedBatch.rows?.length || 0} rows)</h3>
-                  <span className="fine">Verify transaction data before writing to ledger.</span>
+                  <span className="fine">Verify transaction data before writing to ledger. Duplicate rows are recognized automatically.</span>
                 </div>
                 <div style={{ display: "flex", gap: "0.5rem" }}>
                   <button
@@ -207,16 +229,31 @@ export function ImportWizardView() {
                   >
                     Discard Batch
                   </button>
-                  <button
-                    type="button"
-                    disabled={loading || !stagedBatch.rows?.length}
-                    onClick={handleCommitBatch}
-                  >
-                    <CheckCircle size={15} />
-                    Commit Batch to Ledger
-                  </button>
+                  {(() => {
+                    const newRowsCount = Array.isArray(stagedBatch?.rows) ? stagedBatch.rows.filter(r => !r.is_duplicate).length : 0;
+                    return (
+                      <button
+                        type="button"
+                        disabled={loading || newRowsCount === 0}
+                        onClick={handleCommitBatch}
+                      >
+                        <CheckCircle size={15} />
+                        {newRowsCount > 0 ? `Commit ${newRowsCount} New Transaction${newRowsCount === 1 ? "" : "s"} to Ledger` : "All Transactions Already in Ledger"}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
+
+              {stagedBatch.warnings && stagedBatch.warnings.length > 0 && (
+                <div style={{ margin: "0.5rem 1.5rem 1rem", padding: "0.75rem 1rem", background: "rgba(234, 179, 8, 0.1)", border: "1px solid rgba(234, 179, 8, 0.3)", borderRadius: "8px", fontSize: "0.85rem", color: "#fef08a" }}>
+                  {stagedBatch.warnings.map((w, idx) => (
+                    <div key={idx} style={{ marginBottom: idx < stagedBatch.warnings.length - 1 ? "0.35rem" : 0 }}>
+                      ⚠️ {w}
+                    </div>
+                  ))}
+                </div>
+              )}
 
               <div className="table-wrap" style={{ border: "none" }}>
                 <table>
@@ -225,6 +262,7 @@ export function ImportWizardView() {
                       <th>Date</th>
                       <th>Security</th>
                       <th>Type</th>
+                      <th>Status</th>
                       <th className="num">Shares</th>
                       <th className="num">Price/Share</th>
                       <th className="num">Commission</th>
@@ -238,6 +276,15 @@ export function ImportWizardView() {
                         <td className="mono">{formatDate(row.trade_date)}</td>
                         <td><strong className="mono">{row.security}</strong></td>
                         <td><span className="status info">{row.transaction_type}</span></td>
+                        <td>
+                          {row.is_duplicate ? (
+                            <span className="status warning" style={{ fontSize: "0.75rem" }} title={row.duplicate_reason === "already_in_ledger" ? "Matching transaction already exists in your ledger" : "Duplicate from another uploaded document"}>
+                              {row.duplicate_reason === "already_in_ledger" ? "In Ledger" : "Duplicate"}
+                            </span>
+                          ) : (
+                            <span className="status success" style={{ fontSize: "0.75rem" }}>New</span>
+                          )}
+                        </td>
                         <td className="num">{Number(row.shares || 0).toFixed(4)}</td>
                         <td className="num">${Number(row.amount_per_share || 0).toFixed(4)}</td>
                         <td className="num">{Number(row.commission || 0) > 0 ? formatMoney(row.commission) : "-"}</td>

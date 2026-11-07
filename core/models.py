@@ -43,6 +43,8 @@ class ImportBatchRow(models.Model):
     amount_per_share = models.DecimalField(max_digits=20, decimal_places=8, null=True, blank=True)
     commission = models.DecimalField(max_digits=20, decimal_places=6, default=0)
     source = models.CharField(max_length=64, default="import_review")
+    is_duplicate = models.BooleanField(default=False)
+    duplicate_reason = models.CharField(max_length=64, null=True, blank=True, default="")
 
     class Meta:
         indexes = [models.Index(fields=["batch", "row_order", "id"], name="idx_import_batch_rows_batch")]

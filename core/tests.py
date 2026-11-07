@@ -501,6 +501,191 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(rows[4]["capital_gain"], 50.0)
         self.assertEqual(rows[4]["acb"], 0.0)
 
+    def test_multi_document_upload_and_deduplication_review(self):
+        csv_1 = (
+            "date,activity_type,activity_sub_type,symbol,quantity,net_cash_amount,commission\n"
+            "2026-01-10,Trade,BUY,XEQT.TO,100,3000.00,0.00\n"
+            "2026-03-15,Trade,BUY,VDY.TO,50,2000.00,0.00\n"
+        ).encode("utf-8")
+        csv_2 = (
+            "date,activity_type,activity_sub_type,symbol,quantity,net_cash_amount,commission\n"
+            "2026-01-10,Trade,BUY,XEQT.TO,100,3000.00,0.00\n"
+            "2026-05-20,Trade,BUY,MSFT,10,4000.00,0.00\n"
+        ).encode("utf-8")
+        file1 = SimpleUploadedFile("statement_a.csv", csv_1, content_type="text/csv")
+        file2 = SimpleUploadedFile("statement_b.csv", csv_2, content_type="text/csv")
+
+        # Upload both documents at once
+        res = self.client.post("/api/import/review", {"file": [file1, file2], "import_type": "activities_csv"})
+        self.assertEqual(res.status_code, 201)
+        batch = res.json()
+        self.assertEqual(batch["files_count"], 2)
+        self.assertEqual(batch["parsed"], 4)
+        self.assertEqual(batch["new_rows"], 3)
+        self.assertEqual(batch["duplicate_in_upload"], 1)
+
+        # Check rows annotation
+        rows = batch["rows"]
+        dup_rows = [r for r in rows if r["is_duplicate"]]
+        self.assertEqual(len(dup_rows), 1)
+        self.assertEqual(dup_rows[0]["security"], "XEQT.TO")
+        self.assertEqual(dup_rows[0]["duplicate_reason"], "duplicate_in_upload")
+
+        # Commit batch
+        commit_res = self.client.post("/api/import/review/commit", {"batch_id": batch["batch_id"]}, content_type="application/json")
+        self.assertEqual(commit_res.status_code, 200)
+        self.assertEqual(commit_res.json()["committed_rows"], 3)
+        self.assertEqual(commit_res.json()["skipped_duplicates"], 1)
+
+        from core.models import Transaction
+        self.assertEqual(Transaction.objects.filter(security="XEQT.TO", user=self.user).count(), 1)
+        self.assertEqual(Transaction.objects.filter(security="VDY.TO", user=self.user).count(), 1)
+        self.assertEqual(Transaction.objects.filter(security="MSFT", user=self.user).count(), 1)
+
+    def test_document_uploaded_twice_different_names_deduplicated(self):
+        doc_content = (
+            "date,activity_type,activity_sub_type,symbol,quantity,net_cash_amount,commission\n"
+            "2026-02-01,Trade,BUY,TD.TO,20,1600.00,0.00\n"
+            "2026-02-15,Trade,BUY,BMO.TO,10,1200.00,0.00\n"
+        ).encode("utf-8")
+
+        # 1. Upload first time with original name
+        file1 = SimpleUploadedFile("original_export.csv", doc_content, content_type="text/csv")
+        res1 = self.client.post("/api/import/review", {"file": file1, "import_type": "activities_csv"})
+        self.assertEqual(res1.status_code, 201)
+        batch1 = res1.json()
+        self.assertEqual(batch1["new_rows"], 2)
+        self.assertEqual(batch1["already_in_ledger"], 0)
+
+        # Commit first batch
+        commit1 = self.client.post("/api/import/review/commit", {"batch_id": batch1["batch_id"]}, content_type="application/json")
+        self.assertEqual(commit1.status_code, 200)
+        self.assertEqual(commit1.json()["committed_rows"], 2)
+
+        from core.models import Transaction
+        self.assertEqual(Transaction.objects.filter(security="TD.TO", user=self.user).count(), 1)
+        self.assertEqual(Transaction.objects.filter(security="BMO.TO", user=self.user).count(), 1)
+
+        # 2. Upload identical document a second time with a different name
+        file2 = SimpleUploadedFile("completely_different_name.csv", doc_content, content_type="text/csv")
+        res2 = self.client.post("/api/import/review", {"file": file2, "import_type": "activities_csv"})
+        self.assertEqual(res2.status_code, 201)
+        batch2 = res2.json()
+        self.assertEqual(batch2["new_rows"], 0)
+        self.assertEqual(batch2["already_in_ledger"], 2)
+        for r in batch2["rows"]:
+            self.assertTrue(r["is_duplicate"])
+            self.assertEqual(r["duplicate_reason"], "already_in_ledger")
+
+        # Commit second batch: should commit 0 rows, skipping duplicates
+        commit2 = self.client.post("/api/import/review/commit", {"batch_id": batch2["batch_id"]}, content_type="application/json")
+        self.assertEqual(commit2.status_code, 200)
+        self.assertEqual(commit2.json()["committed_rows"], 0)
+        self.assertEqual(commit2.json()["skipped_duplicates"], 2)
+
+        # Confirm ledger still only has 1 of each transaction, not duplicated!
+        self.assertEqual(Transaction.objects.filter(security="TD.TO", user=self.user).count(), 1)
+        self.assertEqual(Transaction.objects.filter(security="BMO.TO", user=self.user).count(), 1)
+
+    def test_credit_card_multi_upload_and_deduplication(self):
+        cc_csv = (
+            "Transaction Date,Posted Date,Merchant Name,Amount\n"
+            "2026-04-01,2026-04-02,Starbucks Coffee,-6.50\n"
+            "2026-04-03,2026-04-04,Metro Grocery,-85.20\n"
+        ).encode("utf-8")
+        file1 = SimpleUploadedFile("scotia_apr_1.csv", cc_csv, content_type="text/csv")
+        file2 = SimpleUploadedFile("scotia_apr_duplicate.csv", cc_csv, content_type="text/csv")
+
+        # Upload both at once
+        res = self.client.post(
+            "/api/import/credit-card/scotiabank-csv",
+            {"file": [file1, file2], "provider": "scotiabank", "card_label": "Scotia Passport"},
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["parsed"], 4)
+        self.assertEqual(data["inserted"], 2)
+        self.assertEqual(data["skipped"], 2)
+        self.assertEqual(data["files"], 2)
+
+        from core.models import CreditCardTransaction
+        self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Starbucks Coffee", user=self.user).count(), 1)
+        self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Metro Grocery", user=self.user).count(), 1)
+
+        # Upload a second time with another different filename
+        file3 = SimpleUploadedFile("renamed_again.csv", cc_csv, content_type="text/csv")
+        res2 = self.client.post(
+            "/api/import/credit-card/scotiabank-csv",
+            {"file": file3, "provider": "scotiabank", "card_label": "Scotia Passport"},
+        )
+        self.assertEqual(res2.status_code, 200)
+        data2 = res2.json()
+        self.assertEqual(data2["parsed"], 2)
+        self.assertEqual(data2["inserted"], 0)
+        self.assertEqual(data2["skipped"], 2)
+        self.assertEqual(CreditCardTransaction.objects.filter(merchant_name="Starbucks Coffee", user=self.user).count(), 1)
+
+    def test_chequing_multi_upload_and_deduplication(self):
+        cheq_csv = (
+            "date,transaction,description,amount,balance\n"
+            "2026-03-01,DEP,Payroll Employer Inc,3500.00,5000.00\n"
+            "2026-03-05,WD,Landlord Rent Transfer,-1800.00,3200.00\n"
+        ).encode("utf-8")
+        file1 = SimpleUploadedFile("chequing_mar_1.csv", cheq_csv, content_type="text/csv")
+        file2 = SimpleUploadedFile("chequing_mar_copy.csv", cheq_csv, content_type="text/csv")
+
+        # Upload both at once
+        res = self.client.post(
+            "/api/import/chequing/courant-csv",
+            {"file": [file1, file2], "account_label": "WS Chequing"},
+        )
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["parsed"], 4)
+        self.assertEqual(data["inserted"], 2)
+        self.assertEqual(data["skipped"], 2)
+        self.assertEqual(data["files"], 2)
+
+        from core.models import ChequingTransaction
+        self.assertEqual(ChequingTransaction.objects.filter(description="Payroll Employer Inc", user=self.user).count(), 1)
+        self.assertEqual(ChequingTransaction.objects.filter(description="Landlord Rent Transfer", user=self.user).count(), 1)
+
+        # Upload a second time with different name
+        file3 = SimpleUploadedFile("chequing_renamed.csv", cheq_csv, content_type="text/csv")
+        res2 = self.client.post(
+            "/api/import/chequing/courant-csv",
+            {"file": file3, "account_label": "WS Chequing"},
+        )
+        self.assertEqual(res2.status_code, 200)
+        data2 = res2.json()
+        self.assertEqual(data2["parsed"], 2)
+        self.assertEqual(data2["inserted"], 0)
+        self.assertEqual(data2["skipped"], 2)
+        self.assertEqual(ChequingTransaction.objects.filter(description="Payroll Employer Inc", user=self.user).count(), 1)
+
+    def test_holdings_multi_upload(self):
+        holdings_csv_1 = (
+            "as_of,account_name,account_number,symbol,quantity,book_value_cad,market_value,market_price\n"
+            "2026-05-01,WS TFSA,WS-1,VFV.TO,100,10000,12000,120\n"
+        ).encode("utf-8")
+        holdings_csv_2 = (
+            "as_of,account_name,account_number,symbol,quantity,book_value_cad,market_value,market_price\n"
+            "2026-05-01,WS RRSP,WS-2,XEQT.TO,200,5000,6000,30\n"
+        ).encode("utf-8")
+        f1 = SimpleUploadedFile("holdings_tfsa.csv", holdings_csv_1, content_type="text/csv")
+        f2 = SimpleUploadedFile("holdings_rrsp.csv", holdings_csv_2, content_type="text/csv")
+
+        res = self.client.post("/api/import/holdings-csv", {"file": [f1, f2]})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["files"], 2)
+        self.assertEqual(data["parsed"], 2)
+        self.assertEqual(data["imported"], 2)
+
+        from core.models import HoldingSnapshot
+        self.assertEqual(HoldingSnapshot.objects.filter(symbol="VFV.TO", user=self.user).count(), 1)
+        self.assertEqual(HoldingSnapshot.objects.filter(symbol="XEQT.TO", user=self.user).count(), 1)
+
 
 
 class DatabaseBackupTests(TransactionTestCase):

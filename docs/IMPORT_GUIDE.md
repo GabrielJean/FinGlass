@@ -5,10 +5,10 @@ This guide explains how to import your financial data into FinGlass using the ne
 ## Quick Start
 
 1. Click **"Launch Import Wizard"** from the dashboard
-2. Select your import type
-3. Upload your file (drag & drop or browse)
-4. Review the parsed data
-5. Click **"Import Data"** to complete
+2. Select your import type (or Auto-detect)
+3. Upload your file(s) (upload one or more documents at once)
+4. Review the parsed data and duplicate detection indicators
+5. Click **"Commit Batch to Ledger"** to complete
 
 ## Import Types Explained
 
@@ -122,8 +122,8 @@ This guide explains how to import your financial data into FinGlass using the ne
 
 ### Review Step
 - Always review the preview before importing
-- Check for duplicate transactions
-- For investment transaction imports, identical rows within the same upload are flagged in the preview and kept together if they are new
+- Check for duplicate transactions (FinGlass automatically identifies duplicates across multiple uploaded files and against existing ledger entries, preventing accidental duplicates)
+- Uploading documents multiple times—even under different filenames—will automatically recognize identical transactions and skip duplicating them
 - Verify symbols are uppercase and correct
 - Confirm dates and amounts match your records
 
