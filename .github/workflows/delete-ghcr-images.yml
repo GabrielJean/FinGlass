@@ -1,0 +1,218 @@
+name: Delete GHCR Images & Versions
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_name:
+        description: 'Container package name in GHCR (defaults to finglass)'
+        required: true
+        default: 'finglass'
+        type: string
+      mode:
+        description: 'Deletion mode'
+        required: true
+        default: 'delete_entire_package'
+        type: choice
+        options:
+          - 'delete_entire_package'
+          - 'all_versions'
+          - 'untagged_only'
+      personal_access_token:
+        description: 'Optional: Personal Access Token (classic with delete:packages & read:packages). If left empty, uses GHCR_DELETE_TOKEN secret or GITHUB_TOKEN.'
+        required: false
+        type: string
+
+jobs:
+  delete-ghcr:
+    name: "Delete GHCR Container Package / Versions"
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+      - name: Delete Container Images from GHCR
+        env:
+          INPUT_PACKAGE: ${{ github.event.inputs.package_name }}
+          INPUT_MODE: ${{ github.event.inputs.mode }}
+          INPUT_PAT: ${{ github.event.inputs.personal_access_token }}
+          SECRET_PAT: ${{ secrets.GHCR_DELETE_TOKEN }}
+          DEFAULT_GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          set -e
+
+          # Resolve token: input PAT > secret GHCR_DELETE_TOKEN > GITHUB_TOKEN
+          TOKEN="${INPUT_PAT}"
+          if [ -z "$TOKEN" ]; then
+            TOKEN="${SECRET_PAT}"
+          fi
+          if [ -z "$TOKEN" ]; then
+            TOKEN="${DEFAULT_GITHUB_TOKEN}"
+            echo "Using default GITHUB_TOKEN..."
+          else
+            echo "Using provided Personal Access Token / Secret..."
+          fi
+
+          PACKAGE_NAME="${INPUT_PACKAGE:-finglass}"
+          PACKAGE_NAME=$(echo "$PACKAGE_NAME" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+          OWNER=$(echo "${GITHUB_REPOSITORY_OWNER}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+          MODE="${INPUT_MODE:-delete_entire_package}"
+
+          API_HEADER="Accept: application/vnd.github+json"
+          API_VERSION_HEADER="X-GitHub-Api-Version: 2022-11-28"
+          AUTH_HEADER="Authorization: Bearer ${TOKEN}"
+
+          echo "============================================================"
+          echo "Target Registry: ghcr.io"
+          echo "Target Owner:    ${OWNER}"
+          echo "Target Package:  ${PACKAGE_NAME}"
+          echo "Mode:            ${MODE}"
+          echo "============================================================"
+
+          # Check account type (User vs Organization)
+          USER_RESP=$(curl -sSL -H "${API_HEADER}" -H "${API_VERSION_HEADER}" -H "${AUTH_HEADER}" "https://api.github.com/users/${OWNER}")
+          OWNER_TYPE=$(echo "$USER_RESP" | jq -r '.type // "User"')
+          echo "Detected GitHub Owner Type: ${OWNER_TYPE}"
+
+          if [ "$OWNER_TYPE" = "Organization" ]; then
+            PKG_API_URL="https://api.github.com/orgs/${OWNER}/packages/container/${PACKAGE_NAME}"
+            VERSIONS_API_URL="https://api.github.com/orgs/${OWNER}/packages/container/${PACKAGE_NAME}/versions"
+          else
+            PKG_API_URL="https://api.github.com/user/packages/container/${PACKAGE_NAME}"
+            USER_SPECIFIC_PKG_URL="https://api.github.com/users/${OWNER}/packages/container/${PACKAGE_NAME}"
+            VERSIONS_API_URL="https://api.github.com/users/${OWNER}/packages/container/${PACKAGE_NAME}/versions"
+            USER_VER_DEL_URL="https://api.github.com/user/packages/container/${PACKAGE_NAME}/versions"
+          fi
+
+          show_auth_hint() {
+            echo "::warning::If you encounter HTTP 403 Forbidden, GitHub requires a Personal Access Token (classic) with 'delete:packages' and 'read:packages' scopes to delete packages on personal user accounts."
+            echo "Tip: You can paste a PAT into the 'personal_access_token' input when clicking 'Run workflow', or save it as repository secret 'GHCR_DELETE_TOKEN'."
+          }
+
+          delete_all_individual_versions() {
+            local FILTER="$1" # "all" or "untagged"
+            echo "Listing versions for package '${PACKAGE_NAME}'..."
+            
+            PAGE=1
+            TOTAL_DELETED=0
+
+            while true; do
+              VERSIONS_JSON=$(curl -sSL \
+                -H "${API_HEADER}" \
+                -H "${API_VERSION_HEADER}" \
+                -H "${AUTH_HEADER}" \
+                "${VERSIONS_API_URL}?per_page=100&page=${PAGE}")
+
+              COUNT=$(echo "$VERSIONS_JSON" | jq -r 'if type == "array" then length else 0 end' 2>/dev/null || echo 0)
+
+              if [ "$COUNT" -eq 0 ]; then
+                MSG=$(echo "$VERSIONS_JSON" | jq -r '.message // empty' 2>/dev/null || true)
+                if [ "$MSG" = "Not Found" ]; then
+                  echo "No container package '${PACKAGE_NAME}' found in registry (it may already be deleted)."
+                elif [ -n "$MSG" ]; then
+                  echo "API response: ${MSG}"
+                  show_auth_hint
+                fi
+                break
+              fi
+
+              echo "Processing page ${PAGE} (${COUNT} versions found)..."
+
+              # Loop through versions on this page
+              while IFS= read -r v_json; do
+                [ -z "$v_json" ] && continue
+                VID=$(echo "$v_json" | jq -r '.id')
+                TAGS=$(echo "$v_json" | jq -r '.metadata.container.tags // [] | join(", ")')
+                
+                IS_UNTAGGED=false
+                if [ -z "$TAGS" ] || [ "$TAGS" = "" ]; then
+                  IS_UNTAGGED=true
+                  TAG_LABEL="<untagged>"
+                else
+                  TAG_LABEL="${TAGS}"
+                fi
+
+                if [ "$FILTER" = "untagged" ] && [ "$IS_UNTAGGED" = false ]; then
+                  echo "Skipping tagged version ID: ${VID} (${TAG_LABEL})"
+                  continue
+                fi
+
+                echo "Deleting version ID ${VID} [${TAG_LABEL}]..."
+
+                if [ "$OWNER_TYPE" = "Organization" ]; then
+                  DEL_ENDPOINT="${VERSIONS_API_URL}/${VID}"
+                else
+                  DEL_ENDPOINT="${USER_VER_DEL_URL}/${VID}"
+                fi
+
+                DEL_STATUS=$(curl -sSL -o /tmp/del_resp.json -w "%{http_code}" \
+                  -X DELETE \
+                  -H "${API_HEADER}" \
+                  -H "${API_VERSION_HEADER}" \
+                  -H "${AUTH_HEADER}" \
+                  "${DEL_ENDPOINT}")
+
+                if [ "$DEL_STATUS" = "204" ] || [ "$DEL_STATUS" = "200" ]; then
+                  echo "Deleted version ${VID} successfully."
+                  TOTAL_DELETED=$((TOTAL_DELETED + 1))
+                else
+                  echo "Failed to delete version ${VID} (HTTP status: ${DEL_STATUS})."
+                  cat /tmp/del_resp.json 2>/dev/null || true
+                  echo ""
+                  if [ "$DEL_STATUS" = "403" ]; then
+                    show_auth_hint
+                  fi
+                fi
+              done < <(echo "$VERSIONS_JSON" | jq -c '.[]')
+
+              PAGE=$((PAGE + 1))
+            done
+
+            echo "Version deletion finished. Total versions deleted: ${TOTAL_DELETED}."
+          }
+
+          if [ "$MODE" = "delete_entire_package" ]; then
+            echo "Attempting to delete entire package '${PACKAGE_NAME}'..."
+            
+            HTTP_STATUS=$(curl -sSL -o /tmp/del_pkg.json -w "%{http_code}" \
+              -X DELETE \
+              -H "${API_HEADER}" \
+              -H "${API_VERSION_HEADER}" \
+              -H "${AUTH_HEADER}" \
+              "${PKG_API_URL}")
+
+            if [ "$HTTP_STATUS" = "204" ] || [ "$HTTP_STATUS" = "200" ]; then
+              echo "SUCCESS: Entire container package '${PACKAGE_NAME}' was completely deleted from GHCR."
+              exit 0
+            fi
+
+            if [ "$OWNER_TYPE" = "User" ] && [ -n "${USER_SPECIFIC_PKG_URL}" ]; then
+              HTTP_STATUS=$(curl -sSL -o /tmp/del_pkg.json -w "%{http_code}" \
+                -X DELETE \
+                -H "${API_HEADER}" \
+                -H "${API_VERSION_HEADER}" \
+                -H "${AUTH_HEADER}" \
+                "${USER_SPECIFIC_PKG_URL}")
+
+              if [ "$HTTP_STATUS" = "204" ] || [ "$HTTP_STATUS" = "200" ]; then
+                echo "SUCCESS: Entire container package '${PACKAGE_NAME}' was completely deleted from GHCR."
+                exit 0
+              fi
+            fi
+
+            echo "Direct package deletion returned HTTP ${HTTP_STATUS}."
+            cat /tmp/del_pkg.json 2>/dev/null || true
+            echo ""
+            if [ "$HTTP_STATUS" = "403" ]; then
+              show_auth_hint
+            fi
+
+            echo "Falling back to deleting all individual versions..."
+            delete_all_individual_versions "all"
+
+          elif [ "$MODE" = "untagged_only" ]; then
+            delete_all_individual_versions "untagged"
+          else
+            delete_all_individual_versions "all"
+          fi
