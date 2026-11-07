@@ -136,6 +136,31 @@ button.secondary:hover:not(:disabled) {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+a.button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  background: #17273f;
+  color: #d8e5f8;
+  border: 1px solid var(--border-panel);
+  border-radius: var(--radius-md);
+  font-weight: 600;
+  font-size: 0.85rem;
+  padding: 0.58rem 1rem;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+a.button-secondary:hover {
+  background: #1e3352;
+  border-color: #38bdf8;
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
 button.danger {
   background: var(--negative-border);
   color: var(--negative-text);

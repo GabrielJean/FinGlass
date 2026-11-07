@@ -14,6 +14,8 @@ import {
   UploadCloud,
   AlertTriangle,
   RefreshCw,
+  ExternalLink,
+  ShieldCheck,
 } from "lucide-react";
 
 export function AdminUsersView({ currentUser }) {
@@ -155,29 +157,42 @@ export function AdminUsersView({ currentUser }) {
           <p>Superuser privileges, account activations, database management, and audit event logs.</p>
         </div>
 
-        <div className="tabs" style={{ marginBottom: 0 }}>
-          <button
-            type="button"
-            className={`tab-btn ${activeTab === "users" ? "active" : ""}`}
-            onClick={() => setActiveTab("users")}
+        <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", flexWrap: "wrap" }}>
+          <div className="tabs" style={{ marginBottom: 0 }}>
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === "users" ? "active" : ""}`}
+              onClick={() => setActiveTab("users")}
+            >
+              Accounts ({Array.isArray(users) ? users.length : 0})
+            </button>
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === "audit" ? "active" : ""}`}
+              onClick={() => setActiveTab("audit")}
+            >
+              Audit Trail ({Array.isArray(auditLogs) ? auditLogs.length : 0})
+            </button>
+            <button
+              type="button"
+              className={`tab-btn ${activeTab === "database" ? "active" : ""}`}
+              onClick={() => setActiveTab("database")}
+            >
+              <Database size={13} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
+              Database Backup & Restore
+            </button>
+          </div>
+
+          <a
+            href="/admin/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="button-secondary"
+            title="Open Django Backend Admin Panel in a new browser tab"
           >
-            Accounts ({Array.isArray(users) ? users.length : 0})
-          </button>
-          <button
-            type="button"
-            className={`tab-btn ${activeTab === "audit" ? "active" : ""}`}
-            onClick={() => setActiveTab("audit")}
-          >
-            Audit Trail ({Array.isArray(auditLogs) ? auditLogs.length : 0})
-          </button>
-          <button
-            type="button"
-            className={`tab-btn ${activeTab === "database" ? "active" : ""}`}
-            onClick={() => setActiveTab("database")}
-          >
-            <Database size={13} style={{ marginRight: 6, display: "inline-block", verticalAlign: "middle" }} />
-            Database Backup & Restore
-          </button>
+            <ExternalLink size={14} />
+            Django Admin Panel
+          </a>
         </div>
       </div>
 
@@ -359,6 +374,37 @@ export function AdminUsersView({ currentUser }) {
               </button>
               <span className="fine" style={{ color: "var(--text-fine)" }}>
                 Online backup runs via SQLite WAL backup engine without locking active reads.
+              </span>
+            </div>
+          </section>
+
+          {/* Django Backend Admin Section */}
+          <section className="panel" style={{ borderColor: "rgba(56, 189, 248, 0.25)", background: "rgba(56, 189, 248, 0.02)" }}>
+            <div className="panel-header" style={{ borderBottomColor: "rgba(56, 189, 248, 0.15)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.65rem" }}>
+                <ShieldCheck size={20} color="var(--accent)" />
+                <h2 style={{ fontSize: "1.2rem", margin: 0 }}>Django Backend Administration Suite</h2>
+              </div>
+              <span className="status info">Django 5 Admin Site</span>
+            </div>
+
+            <p style={{ color: "var(--text-muted)", fontSize: "0.9rem", lineHeight: 1.6, margin: "0 0 1.25rem" }}>
+              Direct access to the core Django administrative suite (<code>/admin/</code>) for exploring registered data models, inspect raw tables, audit relational foreign keys, manage active user groups, and view low-level system objects.
+            </p>
+
+            <div style={{ display: "flex", alignItems: "center", gap: "1rem", flexWrap: "wrap" }}>
+              <a
+                href="/admin/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="button-secondary"
+                title="Open Django Admin Panel in a new browser tab"
+              >
+                <ExternalLink size={14} />
+                Open Django Admin Panel (/admin/)
+              </a>
+              <span className="fine" style={{ color: "var(--text-fine)" }}>
+                Requires superuser / staff permissions. Your existing FinGlass admin session is automatically recognized.
               </span>
             </div>
           </section>
