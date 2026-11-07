@@ -1,5 +1,7 @@
 import json
 from collections import defaultdict
+from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from django.db.models import Count, Q
 from django.http import JsonResponse
@@ -477,13 +479,13 @@ def set_credit_card_transaction_hidden(request, transaction_id):
 @require_http_methods(["POST"])
 def set_many_credit_card_transactions_hidden(request):
     payload = _read_json(request)
-    hidden = bool(payload.get("hidden", True))
-    ids = payload.get("ids")
-    if not isinstance(ids, list) or len(ids) == 0:
+    hidden = bool(payload.get("hidden", True) if "hidden" in payload else payload.get("is_hidden", True))
+    raw_ids = payload.get("ids") or payload.get("transaction_ids")
+    if not isinstance(raw_ids, list) or len(raw_ids) == 0:
         return JsonResponse({"error": "ids must be a non-empty array"}, status=400)
 
     normalized_ids = []
-    for item in ids:
+    for item in raw_ids:
         try:
             normalized_ids.append(int(item))
         except (TypeError, ValueError):
@@ -497,6 +499,56 @@ def set_many_credit_card_transactions_hidden(request):
     return JsonResponse({"updated": updated, "hidden": hidden})
 
 
+@require_http_methods(["PUT", "PATCH"])
+def update_credit_card_transaction(request, transaction_id):
+    tx = CreditCardTransaction.objects.filter(id=transaction_id, user=request.user).first()
+    if not tx:
+        return JsonResponse({"error": "Credit card transaction not found"}, status=404)
+
+    payload = _read_json(request)
+
+    if "merchant_name" in payload:
+        name = str(payload.get("merchant_name") or "").strip()
+        if not name:
+            return JsonResponse({"error": "Merchant name cannot be empty"}, status=400)
+        tx.merchant_name = name
+
+    if "amount" in payload:
+        try:
+            amt = Decimal(str(payload.get("amount") or "").strip())
+        except (InvalidOperation, TypeError, ValueError):
+            return JsonResponse({"error": "amount must be a valid number"}, status=400)
+        tx.amount = amt
+
+    if "transaction_date" in payload:
+        dt_str = str(payload.get("transaction_date") or "").strip()
+        try:
+            tx.transaction_date = datetime.strptime(dt_str, "%Y-%m-%d").date()
+        except ValueError:
+            return JsonResponse({"error": "transaction_date must be in YYYY-MM-DD format"}, status=400)
+
+    if "card_label" in payload:
+        new_card_label = str(payload.get("card_label") or "").strip()
+        tx.card_label = new_card_label or None
+        if new_card_label:
+            CreditCardAccount.objects.get_or_create(
+                user=request.user,
+                label=new_card_label,
+                defaults={"provider": tx.provider or "custom"},
+            )
+
+    if "merchant_category" in payload:
+        cat = str(payload.get("merchant_category") or "").strip()
+        tx.merchant_category = normalize_credit_card_category(cat) if cat else "Other"
+
+    if "is_hidden" in payload:
+        tx.is_hidden = bool(payload.get("is_hidden"))
+
+    tx.save()
+
+    return JsonResponse({"updated": 1, "transaction": _tx_dict(tx)})
+
+
 @require_http_methods(["DELETE"])
 def delete_credit_card_transaction(request, transaction_id):
     deleted, _ = CreditCardTransaction.objects.filter(
@@ -508,15 +560,90 @@ def delete_credit_card_transaction(request, transaction_id):
     return JsonResponse({"deleted": 1})
 
 
+@require_http_methods(["PUT", "PATCH", "DELETE"])
+def credit_card_transaction_item(request, transaction_id):
+    if request.method == "DELETE":
+        return delete_credit_card_transaction(request, transaction_id)
+    return update_credit_card_transaction(request, transaction_id)
+
+
+@require_http_methods(["POST", "PATCH"])
+def update_many_credit_card_transactions(request):
+    payload = _read_json(request)
+    raw_ids = payload.get("ids") or payload.get("transaction_ids")
+    if not isinstance(raw_ids, list) or len(raw_ids) == 0:
+        return JsonResponse({"error": "ids must be a non-empty list of integers"}, status=400)
+
+    normalized_ids = []
+    for item in raw_ids:
+        try:
+            normalized_ids.append(int(item))
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "ids must contain only integers"}, status=400)
+
+    queryset = CreditCardTransaction.objects.filter(user=request.user, id__in=normalized_ids)
+    if not queryset.exists():
+        return JsonResponse({"error": "No matching transactions found"}, status=404)
+
+    update_fields = {}
+
+    if "card_label" in payload and payload["card_label"] is not None:
+        card_label = str(payload["card_label"]).strip()
+        if card_label:
+            update_fields["card_label"] = card_label
+            CreditCardAccount.objects.get_or_create(
+                user=request.user,
+                label=card_label,
+                defaults={"provider": "custom"},
+            )
+
+    if "merchant_category" in payload and payload["merchant_category"] is not None:
+        cat = str(payload["merchant_category"]).strip()
+        if cat:
+            update_fields["merchant_category"] = normalize_credit_card_category(cat)
+
+    if "merchant_name" in payload and payload["merchant_name"] is not None:
+        name = str(payload["merchant_name"]).strip()
+        if name:
+            update_fields["merchant_name"] = name
+
+    if "transaction_date" in payload and payload["transaction_date"] is not None:
+        dt_str = str(payload["transaction_date"]).strip()
+        if dt_str:
+            try:
+                dt = datetime.strptime(dt_str, "%Y-%m-%d").date()
+                update_fields["transaction_date"] = dt
+            except ValueError:
+                return JsonResponse({"error": "transaction_date must be in YYYY-MM-DD format"}, status=400)
+
+    if "amount" in payload and payload["amount"] is not None:
+        amt_str = str(payload["amount"]).strip()
+        if amt_str:
+            try:
+                update_fields["amount"] = Decimal(amt_str)
+            except (InvalidOperation, TypeError, ValueError):
+                return JsonResponse({"error": "amount must be a valid number"}, status=400)
+
+    if "is_hidden" in payload and payload["is_hidden"] is not None:
+        update_fields["is_hidden"] = bool(payload["is_hidden"])
+
+    if not update_fields:
+        return JsonResponse({"error": "No valid fields provided for update"}, status=400)
+
+    updated_count = queryset.update(**update_fields)
+
+    return JsonResponse({"updated": updated_count})
+
+
 @require_http_methods(["POST"])
 def delete_many_credit_card_transactions(request):
     payload = _read_json(request)
-    ids = payload.get("ids")
-    if not isinstance(ids, list) or len(ids) == 0:
+    raw_ids = payload.get("ids") or payload.get("transaction_ids")
+    if not isinstance(raw_ids, list) or len(raw_ids) == 0:
         return JsonResponse({"error": "ids must be a non-empty array"}, status=400)
 
     normalized_ids = []
-    for item in ids:
+    for item in raw_ids:
         try:
             normalized_ids.append(int(item))
         except (TypeError, ValueError):
@@ -542,6 +669,26 @@ def delete_all_credit_card_transactions(request):
 
 @require_http_methods(["POST"])
 def recategorize_credit_card_transactions(request):
+    payload = _read_json(request)
+    raw_ids = payload.get("ids") or payload.get("transaction_ids")
+    target_category = str(payload.get("merchant_category") or "").strip()
+
+    if raw_ids and isinstance(raw_ids, list):
+        if not target_category:
+            return JsonResponse({"error": "merchant_category is required"}, status=400)
+        norm_cat = normalize_credit_card_category(target_category)
+        normalized_ids = []
+        for item in raw_ids:
+            try:
+                normalized_ids.append(int(item))
+            except (TypeError, ValueError):
+                pass
+        updated = CreditCardTransaction.objects.filter(
+            user=request.user,
+            id__in=normalized_ids
+        ).update(merchant_category=norm_cat)
+        return JsonResponse({"updated": updated, "merchant_category": norm_cat})
+
     queryset = CreditCardTransaction.objects.filter(user=request.user)
     scanned = queryset.count()
 

@@ -55,7 +55,11 @@ export async function request(path, options = {}) {
     body = await response.json();
   } else {
     const text = await response.text();
-    body = { text, error: !response.ok ? (text || "Unexpected server error") : undefined };
+    let errText = text;
+    if (text && text.trim().startsWith("<")) {
+      errText = `Request failed with status ${response.status}${response.statusText ? ` (${response.statusText})` : ""}`;
+    }
+    body = { text, error: !response.ok ? (errText || "Unexpected server error") : undefined };
   }
 
   if (!response.ok) {
@@ -206,6 +210,13 @@ export const api = {
     getCategories: () => request("/api/credit-card/categories"),
     getTransactions: (params = "") =>
       request(`/api/credit-card/transactions${params ? `?${params}` : ""}`),
+    updateTransaction: (id, data) =>
+      request(`/api/credit-card/transactions/${id}`, { method: "PUT", body: data }),
+    updateMany: (ids, data) =>
+      request("/api/credit-card/transactions/update-many", {
+        method: "POST",
+        body: { ids, ...data },
+      }),
     deleteTransaction: (id) =>
       request(`/api/credit-card/transactions/${id}`, { method: "DELETE" }),
     setHidden: (id, is_hidden) =>

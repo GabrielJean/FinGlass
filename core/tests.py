@@ -473,6 +473,147 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(cc_del_res.status_code, 200)
         self.assertEqual(cc_del_res.json()["deleted"], 1)
 
+    def test_credit_card_single_transaction_edit(self):
+        from core.models import CreditCardTransaction, CreditCardAccount
+        tx = CreditCardTransaction.objects.create(
+            user=self.user,
+            provider="rogers_bank",
+            card_label="Rogers Mastercard",
+            transaction_date="2024-06-01",
+            merchant_name="Unknown Store",
+            amount=50.25,
+            merchant_category="Other",
+            is_hidden=False,
+        )
+
+        # 1. Update all editable fields via PUT
+        update_res = self.client.put(
+            f"/api/credit-card/transactions/{tx.id}",
+            {
+                "merchant_name": "Costco Wholesale",
+                "amount": 142.85,
+                "card_label": "New Premium Card",
+                "transaction_date": "2024-06-15",
+                "merchant_category": "Groceries",
+                "is_hidden": True,
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(update_res.status_code, 200)
+        data = update_res.json()
+        self.assertEqual(data["updated"], 1)
+        self.assertEqual(data["transaction"]["merchant_name"], "Costco Wholesale")
+        self.assertEqual(data["transaction"]["amount"], 142.85)
+        self.assertEqual(data["transaction"]["card_label"], "New Premium Card")
+        self.assertEqual(data["transaction"]["transaction_date"], "2024-06-15")
+        self.assertEqual(data["transaction"]["merchant_category"], "Groceries")
+        self.assertTrue(data["transaction"]["is_hidden"])
+
+        tx.refresh_from_db()
+        self.assertEqual(tx.merchant_name, "Costco Wholesale")
+        self.assertEqual(float(tx.amount), 142.85)
+        self.assertEqual(tx.card_label, "New Premium Card")
+        self.assertEqual(tx.transaction_date.isoformat(), "2024-06-15")
+        self.assertEqual(tx.merchant_category, "Groceries")
+        self.assertTrue(tx.is_hidden)
+
+        # Check account was auto-created for the new card label
+        self.assertTrue(CreditCardAccount.objects.filter(user=self.user, label="New Premium Card").exists())
+
+        # 2. Validation error cases
+        # Invalid amount
+        bad_amt_res = self.client.put(
+            f"/api/credit-card/transactions/{tx.id}",
+            {"amount": "not-a-number"},
+            content_type="application/json",
+        )
+        self.assertEqual(bad_amt_res.status_code, 400)
+
+        # Invalid date
+        bad_date_res = self.client.put(
+            f"/api/credit-card/transactions/{tx.id}",
+            {"transaction_date": "15/06/2024"},
+            content_type="application/json",
+        )
+        self.assertEqual(bad_date_res.status_code, 400)
+
+        # Empty merchant name
+        bad_name_res = self.client.put(
+            f"/api/credit-card/transactions/{tx.id}",
+            {"merchant_name": "   "},
+            content_type="application/json",
+        )
+        self.assertEqual(bad_name_res.status_code, 400)
+
+        # Non-existent transaction
+        not_found_res = self.client.put(
+            "/api/credit-card/transactions/999999",
+            {"merchant_name": "Ghost Store"},
+            content_type="application/json",
+        )
+        self.assertEqual(not_found_res.status_code, 404)
+
+    def test_credit_card_batch_transactions_edit(self):
+        from core.models import CreditCardTransaction, CreditCardAccount
+        t1 = CreditCardTransaction.objects.create(
+            user=self.user,
+            provider="scotiabank",
+            card_label="Scotia Momentum",
+            transaction_date="2024-07-01",
+            merchant_name="Fast Food 1",
+            amount=15.00,
+            merchant_category="Restaurants",
+            is_hidden=False,
+        )
+        t2 = CreditCardTransaction.objects.create(
+            user=self.user,
+            provider="scotiabank",
+            card_label="Scotia Momentum",
+            transaction_date="2024-07-02",
+            merchant_name="Fast Food 2",
+            amount=22.50,
+            merchant_category="Restaurants",
+            is_hidden=False,
+        )
+
+        # Batch update: change card_label, merchant_name, merchant_category, is_hidden
+        batch_res = self.client.post(
+            "/api/credit-card/transactions/update-many",
+            {
+                "ids": [t1.id, t2.id],
+                "card_label": "Shared Visa",
+                "merchant_category": "Dining Out",
+                "merchant_name": "Unified Diner",
+                "is_hidden": True,
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(batch_res.status_code, 200)
+        self.assertEqual(batch_res.json()["updated"], 2)
+
+        t1.refresh_from_db()
+        t2.refresh_from_db()
+        self.assertEqual(t1.card_label, "Shared Visa")
+        self.assertEqual(t2.card_label, "Shared Visa")
+        self.assertEqual(t1.merchant_name, "Unified Diner")
+        self.assertEqual(t2.merchant_name, "Unified Diner")
+        self.assertEqual(t1.merchant_category, "Dining Out")
+        self.assertEqual(t2.merchant_category, "Dining Out")
+        self.assertTrue(t1.is_hidden)
+        self.assertTrue(t2.is_hidden)
+        self.assertTrue(CreditCardAccount.objects.filter(user=self.user, label="Shared Visa").exists())
+
+        # Targeted bulk recategorize
+        re_res = self.client.post(
+            "/api/credit-card/transactions/recategorize",
+            {"ids": [t1.id], "merchant_category": "Fast Food"},
+            content_type="application/json",
+        )
+        self.assertEqual(re_res.status_code, 200)
+        self.assertEqual(re_res.json()["updated"], 1)
+        t1.refresh_from_db()
+        self.assertEqual(t1.merchant_category, "Fast Food")
+
     def test_acb_advanced_edge_cases(self):
         from core.services.acb_service import calculate_ledger_rows
 

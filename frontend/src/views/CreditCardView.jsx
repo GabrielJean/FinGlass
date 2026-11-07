@@ -9,6 +9,7 @@ import {
   EyeOff,
   Trash2,
   Plus,
+  Edit2,
   RotateCcw,
   BarChart3,
   PieChart,
@@ -57,6 +58,29 @@ export function CreditCardView() {
   // Multi-select
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
+
+  // Single Transaction Edit Modal
+  const [editingTx, setEditingTx] = useState(null);
+  const [editForm, setEditForm] = useState({
+    transaction_date: "",
+    merchant_name: "",
+    amount: "",
+    card_label: "",
+    merchant_category: "",
+    is_hidden: false,
+  });
+  const [savingEdit, setSavingEdit] = useState(false);
+
+  // Batch Transactions Edit Modal
+  const [isBatchEditOpen, setIsBatchEditOpen] = useState(false);
+  const [batchForm, setBatchForm] = useState({
+    card_label: "",
+    merchant_category: "",
+    merchant_name: "",
+    transaction_date: "",
+    visibility: "",
+  });
+  const [savingBatch, setSavingBatch] = useState(false);
 
   // Modals & Upload
   const [isAddCardOpen, setIsAddCardOpen] = useState(false);
@@ -257,6 +281,89 @@ export function CreditCardView() {
       loadMetadata();
     } catch (err) {
       setError(err.message || "Failed to delete transaction.");
+    }
+  };
+
+  const handleOpenEdit = (tx) => {
+    setEditingTx(tx);
+    setEditForm({
+      transaction_date: tx.transaction_date ? tx.transaction_date.slice(0, 10) : "",
+      merchant_name: tx.merchant_name || tx.description || "",
+      amount: tx.amount !== undefined && tx.amount !== null ? String(tx.amount) : "",
+      card_label: tx.card_label || tx.provider || "",
+      merchant_category: tx.merchant_category || tx.category || "",
+      is_hidden: Boolean(tx.is_hidden),
+    });
+  };
+
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editingTx) return;
+    setSavingEdit(true);
+    setError("");
+    try {
+      const amtVal = parseFloat(editForm.amount);
+      if (isNaN(amtVal)) {
+        throw new Error("Amount must be a valid number.");
+      }
+      await api.creditCard.updateTransaction(editingTx.id, {
+        transaction_date: editForm.transaction_date,
+        merchant_name: editForm.merchant_name,
+        amount: amtVal,
+        card_label: editForm.card_label,
+        merchant_category: editForm.merchant_category,
+        is_hidden: editForm.is_hidden,
+      });
+      setNotice("Transaction updated successfully.");
+      setEditingTx(null);
+      fetchData();
+      loadMetadata();
+    } catch (err) {
+      setError(err.message || "Failed to update transaction.");
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
+  const handleOpenBatchEdit = () => {
+    setBatchForm({
+      card_label: "",
+      merchant_category: "",
+      merchant_name: "",
+      transaction_date: "",
+      visibility: "",
+    });
+    setIsBatchEditOpen(true);
+  };
+
+  const handleSaveBatchEdit = async (e) => {
+    e.preventDefault();
+    if (!selectedIds.size) return;
+    setSavingBatch(true);
+    setError("");
+    try {
+      const payload = {};
+      if (batchForm.card_label.trim()) payload.card_label = batchForm.card_label.trim();
+      if (batchForm.merchant_category.trim()) payload.merchant_category = batchForm.merchant_category.trim();
+      if (batchForm.merchant_name.trim()) payload.merchant_name = batchForm.merchant_name.trim();
+      if (batchForm.transaction_date.trim()) payload.transaction_date = batchForm.transaction_date.trim();
+      if (batchForm.visibility === "hidden") payload.is_hidden = true;
+      if (batchForm.visibility === "visible") payload.is_hidden = false;
+
+      if (Object.keys(payload).length === 0) {
+        throw new Error("Please specify at least one field to update.");
+      }
+
+      await api.creditCard.updateMany(Array.from(selectedIds), payload);
+      setNotice(`Updated ${selectedIds.size} transaction(s).`);
+      setIsBatchEditOpen(false);
+      setSelectedIds(new Set());
+      fetchData();
+      loadMetadata();
+    } catch (err) {
+      setError(err.message || "Failed to batch update transactions.");
+    } finally {
+      setSavingBatch(false);
     }
   };
 
@@ -658,6 +765,14 @@ export function CreditCardView() {
         {selectedIds.size > 0 && (
           <div style={{ display: "flex", gap: "0.75rem", alignItems: "center", marginTop: "1rem", paddingTop: "0.8rem", borderTop: "1px solid var(--border-dim)", flexWrap: "wrap" }}>
             <span className="status info">{selectedIds.size} selected</span>
+            <button
+              type="button"
+              className="secondary"
+              onClick={handleOpenBatchEdit}
+              style={{ padding: "0.45rem 0.8rem", fontSize: "0.82rem" }}
+            >
+              <Edit2 size={13} /> Batch Edit
+            </button>
             <button type="button" className="secondary" onClick={() => handleBulkHide(true)} style={{ padding: "0.45rem 0.8rem", fontSize: "0.82rem" }}>
               <EyeOff size={13} /> Hide Selected
             </button>
@@ -803,6 +918,14 @@ export function CreditCardView() {
                         <button
                           type="button"
                           className="link"
+                          onClick={() => handleOpenEdit(t)}
+                          title="Edit transaction"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          className="link"
                           onClick={() => handleToggleHide(t.id, t.is_hidden)}
                           title={t.is_hidden ? "Unhide transaction" : "Hide transaction"}
                         >
@@ -874,6 +997,201 @@ export function CreditCardView() {
                   Cancel
                 </button>
                 <button type="submit">Create Card</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Transaction Modal */}
+      {editingTx && (
+        <div className="modal-overlay" onClick={() => !savingEdit && setEditingTx(null)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <p className="eyebrow">EDIT TRANSACTION</p>
+            <h2>Edit Transaction #{editingTx.id}</h2>
+
+            <form onSubmit={handleSaveEdit} className="stack">
+              <label>
+                <span>Transaction Date</span>
+                <input
+                  type="date"
+                  required
+                  value={editForm.transaction_date}
+                  onChange={(e) => setEditForm({ ...editForm, transaction_date: e.target.value })}
+                />
+              </label>
+
+              <label>
+                <span>Merchant / Payee Name</span>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Costco Wholesale"
+                  value={editForm.merchant_name}
+                  onChange={(e) => setEditForm({ ...editForm, merchant_name: e.target.value })}
+                />
+              </label>
+
+              <div className="form-grid-2">
+                <label>
+                  <span>Amount ($ CAD)</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={editForm.amount}
+                    onChange={(e) => setEditForm({ ...editForm, amount: e.target.value })}
+                  />
+                </label>
+
+                <label>
+                  <span>Credit Card</span>
+                  <input
+                    type="text"
+                    list="edit-card-options"
+                    placeholder="Select or enter card label..."
+                    value={editForm.card_label}
+                    onChange={(e) => setEditForm({ ...editForm, card_label: e.target.value })}
+                  />
+                  <datalist id="edit-card-options">
+                    {(Array.isArray(cards) ? cards : []).map((c) => (
+                      <option key={c} value={c} />
+                    ))}
+                  </datalist>
+                </label>
+              </div>
+
+              <label>
+                <span>Merchant Category</span>
+                <input
+                  type="text"
+                  list="edit-category-options"
+                  placeholder="Select or enter category..."
+                  value={editForm.merchant_category}
+                  onChange={(e) => setEditForm({ ...editForm, merchant_category: e.target.value })}
+                />
+                <datalist id="edit-category-options">
+                  {(Array.isArray(categories) ? categories : []).map((cat) => (
+                    <option key={cat} value={cat} />
+                  ))}
+                </datalist>
+              </label>
+
+              <label className="checkbox-label" style={{ marginTop: "0.25rem" }}>
+                <input
+                  type="checkbox"
+                  checked={editForm.is_hidden}
+                  onChange={(e) => setEditForm({ ...editForm, is_hidden: e.target.checked })}
+                />
+                <span>Hide transaction from spending summaries & charts</span>
+              </label>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={savingEdit}
+                  onClick={() => setEditingTx(null)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" disabled={savingEdit}>
+                  {savingEdit ? "Saving..." : "Save Changes"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Batch Edit Transactions Modal */}
+      {isBatchEditOpen && (
+        <div className="modal-overlay" onClick={() => !savingBatch && setIsBatchEditOpen(false)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <p className="eyebrow">BULK ACTION</p>
+            <h2>Batch Edit ({selectedIds.size} selected)</h2>
+            <p className="fine" style={{ marginBottom: "1.25rem" }}>
+              Update properties across all {selectedIds.size} selected transactions at once. Leave any field blank or set to &quot;(No change)&quot; to keep original values.
+            </p>
+
+            <form onSubmit={handleSaveBatchEdit} className="stack">
+              <label>
+                <span>Reassign Credit Card</span>
+                <input
+                  type="text"
+                  list="batch-card-options"
+                  placeholder="(No change) or select/type card..."
+                  value={batchForm.card_label}
+                  onChange={(e) => setBatchForm({ ...batchForm, card_label: e.target.value })}
+                />
+                <datalist id="batch-card-options">
+                  {(Array.isArray(cards) ? cards : []).map((c) => (
+                    <option key={c} value={c} />
+                  ))}
+                </datalist>
+              </label>
+
+              <label>
+                <span>Change Category</span>
+                <input
+                  type="text"
+                  list="batch-category-options"
+                  placeholder="(No change) or select/type category..."
+                  value={batchForm.merchant_category}
+                  onChange={(e) => setBatchForm({ ...batchForm, merchant_category: e.target.value })}
+                />
+                <datalist id="batch-category-options">
+                  {(Array.isArray(categories) ? categories : []).map((cat) => (
+                    <option key={cat} value={cat} />
+                  ))}
+                </datalist>
+              </label>
+
+              <label>
+                <span>Rename Merchant / Payee</span>
+                <input
+                  type="text"
+                  placeholder="(No change) or enter common payee name..."
+                  value={batchForm.merchant_name}
+                  onChange={(e) => setBatchForm({ ...batchForm, merchant_name: e.target.value })}
+                />
+              </label>
+
+              <div className="form-grid-2">
+                <label>
+                  <span>Set Transaction Date</span>
+                  <input
+                    type="date"
+                    value={batchForm.transaction_date}
+                    onChange={(e) => setBatchForm({ ...batchForm, transaction_date: e.target.value })}
+                  />
+                </label>
+
+                <label>
+                  <span>Visibility Status</span>
+                  <select
+                    value={batchForm.visibility}
+                    onChange={(e) => setBatchForm({ ...batchForm, visibility: e.target.value })}
+                  >
+                    <option value="">(No change)</option>
+                    <option value="hidden">Hide Transactions</option>
+                    <option value="visible">Unhide Transactions</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="modal-footer">
+                <button
+                  type="button"
+                  className="secondary"
+                  disabled={savingBatch}
+                  onClick={() => setIsBatchEditOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button type="submit" disabled={savingBatch}>
+                  {savingBatch ? "Applying..." : `Apply to ${selectedIds.size} Transactions`}
+                </button>
               </div>
             </form>
           </div>
