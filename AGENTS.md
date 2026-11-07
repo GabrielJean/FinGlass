@@ -12,4 +12,3 @@
 2. Run `cd frontend && npm run build`.
 3. Run test suite: `docker compose exec -T finglass-web python manage.py test`.
 4. Rebuild local container: `docker compose up -d --build`.
-5. Stage files, commit, and push to `origin/main`.
