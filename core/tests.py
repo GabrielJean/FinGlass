@@ -119,6 +119,8 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertFalse(ChequingTransaction.objects.filter(id=t.id).exists())
 
     def test_credit_card_api(self):
+        from core.models import CreditCardTransaction, CreditCardAccount
+
         # Create card
         res = self.client.post(
             "/api/credit-card/cards/create",
@@ -132,9 +134,53 @@ class FinGlassComprehensiveTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(len(res.json()), 1)
 
+        # Manage cards
+        res = self.client.get("/api/credit-card/cards/manage")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["label"], "Rogers World Elite")
+        self.assertEqual(data[0]["transactions"], 0)
+
         # CC Dashboard
         res = self.client.get("/api/credit-card/dashboard")
         self.assertEqual(res.status_code, 200)
+
+        # Create a second card
+        res = self.client.post(
+            "/api/credit-card/cards/create",
+            {"label": "Rogers Platinum", "provider": "rogers_bank"},
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+
+        # Create a transaction
+        tx = CreditCardTransaction.objects.create(
+            user=self.user,
+            provider="rogers_bank",
+            card_label="Rogers World Elite",
+            transaction_date="2026-05-10",
+            merchant_name="Sample Cafe",
+            amount=25.50,
+        )
+
+        # Rename / merge "Rogers World Elite" into "Rogers Platinum"
+        res = self.client.post(
+            "/api/credit-card/cards/Rogers%20World%20Elite/rename",
+            {"new_label": "Rogers Platinum"},
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json().get("merged"))
+
+        tx.refresh_from_db()
+        self.assertEqual(tx.card_label, "Rogers Platinum")
+
+        # Delete "Rogers Platinum"
+        res = self.client.delete("/api/credit-card/cards/Rogers%20Platinum")
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(CreditCardAccount.objects.filter(user=self.user, label="Rogers Platinum").exists())
+        self.assertFalse(CreditCardTransaction.objects.filter(id=tx.id).exists())
 
     def test_tfsa_summary_and_room(self):
         # Set opening room with PUT

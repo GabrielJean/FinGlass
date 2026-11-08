@@ -13,6 +13,9 @@ import {
   RotateCcw,
   BarChart3,
   PieChart,
+  Settings,
+  Check,
+  X,
 } from "lucide-react";
 import { Bar, Doughnut } from "react-chartjs-2";
 import "../components/charts/chartSetup";
@@ -85,6 +88,10 @@ export function CreditCardView() {
   // Modals & Upload
   const [isAddCardOpen, setIsAddCardOpen] = useState(false);
   const [newCardForm, setNewCardForm] = useState({ label: "", provider: "rogers_bank" });
+  const [isManageCardsOpen, setIsManageCardsOpen] = useState(false);
+  const [editingCardLabel, setEditingCardLabel] = useState(null);
+  const [renameTargetLabel, setRenameTargetLabel] = useState("");
+  const [cardActionLoading, setCardActionLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -100,7 +107,7 @@ export function CreditCardView() {
   const loadMetadata = async () => {
     try {
       const [cardsRes, catRes] = await Promise.all([
-        api.creditCard.getCards(),
+        api.creditCard.getCardsManage(),
         api.creditCard.getCategories(),
       ]);
       const cardList = Array.isArray(cardsRes) ? cardsRes : (cardsRes?.cards || []);
@@ -385,6 +392,61 @@ export function CreditCardView() {
     }
   };
 
+  const handleDeleteCard = async (label, txCount) => {
+    const count = txCount !== undefined ? txCount : 0;
+    const confirmMsg = count > 0
+      ? `Are you sure you want to remove the credit card "${label}" and DELETE its ${count} transaction(s)? This action cannot be undone.`
+      : `Are you sure you want to remove the credit card "${label}"?`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setCardActionLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      await api.creditCard.deleteCard(label);
+      if (selectedCard === label) {
+        setSelectedCard("");
+      }
+      setNotice(`Successfully removed credit card "${label}".`);
+      await Promise.all([loadMetadata(), fetchData()]);
+    } catch (err) {
+      setError(err.message || `Failed to delete card "${label}".`);
+    } finally {
+      setCardActionLoading(false);
+    }
+  };
+
+  const handleRenameCard = async (oldLabel) => {
+    const trimmed = renameTargetLabel.trim();
+    if (!trimmed || trimmed === oldLabel) {
+      setEditingCardLabel(null);
+      setRenameTargetLabel("");
+      return;
+    }
+
+    setCardActionLoading(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await api.creditCard.renameCard(oldLabel, trimmed);
+      const isMerge = res.merged || (Array.isArray(cards) && cards.some((c) => (c.label || c) === trimmed));
+      if (selectedCard === oldLabel) {
+        setSelectedCard(trimmed);
+      }
+      setNotice(isMerge
+        ? `Merged "${oldLabel}" into "${trimmed}". All transactions reassigned.`
+        : `Renamed "${oldLabel}" to "${trimmed}".`
+      );
+      setEditingCardLabel(null);
+      setRenameTargetLabel("");
+      await Promise.all([loadMetadata(), fetchData()]);
+    } catch (err) {
+      setError(err.message || `Failed to rename card "${oldLabel}".`);
+    } finally {
+      setCardActionLoading(false);
+    }
+  };
+
   const handleCsvUpload = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -613,6 +675,15 @@ export function CreditCardView() {
           </button>
           <button
             type="button"
+            className="secondary"
+            onClick={() => setIsManageCardsOpen(true)}
+            title="Manage, rename, merge, or remove credit cards"
+          >
+            <Settings size={15} />
+            Manage Cards
+          </button>
+          <button
+            type="button"
             onClick={() => setIsAddCardOpen(true)}
           >
             <Plus size={15} />
@@ -720,15 +791,40 @@ export function CreditCardView() {
                 />
               </div>
 
-              <select
-                value={selectedCard}
-                onChange={(e) => setSelectedCard(e.target.value)}
-              >
-                <option value="">All Credit Cards</option>
-                {(Array.isArray(cards) ? cards : []).map((c, idx) => (
-                  <option key={c.id || c.label || idx} value={c.label || c}>{c.label || c}</option>
-                ))}
-              </select>
+              <div style={{ display: "flex", gap: "0.35rem", alignItems: "center" }}>
+                <select
+                  value={selectedCard}
+                  onChange={(e) => {
+                    if (e.target.value === "__manage__") {
+                      setIsManageCardsOpen(true);
+                    } else {
+                      setSelectedCard(e.target.value);
+                    }
+                  }}
+                  style={{ minWidth: "190px" }}
+                >
+                  <option value="">All Credit Cards</option>
+                  {(Array.isArray(cards) ? cards : []).map((c, idx) => {
+                    const label = c.label || c.name || c;
+                    const count = c.transactions !== undefined ? c.transactions : null;
+                    return (
+                      <option key={c.id || label || idx} value={label}>
+                        {label} {count !== null ? `(${count})` : ""}
+                      </option>
+                    );
+                  })}
+                  <option value="__manage__">⚙️ Manage / Remove Cards...</option>
+                </select>
+                <button
+                  type="button"
+                  className="secondary icon-only"
+                  style={{ padding: "0.55rem", borderRadius: "8px", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                  title="Manage, rename, merge, or remove credit cards"
+                  onClick={() => setIsManageCardsOpen(true)}
+                >
+                  <Settings size={14} />
+                </button>
+              </div>
 
               <select
                 value={selectedCategory}
@@ -1055,9 +1151,10 @@ export function CreditCardView() {
                     onChange={(e) => setEditForm({ ...editForm, card_label: e.target.value })}
                   />
                   <datalist id="edit-card-options">
-                    {(Array.isArray(cards) ? cards : []).map((c) => (
-                      <option key={c} value={c} />
-                    ))}
+                    {(Array.isArray(cards) ? cards : []).map((c, idx) => {
+                      const label = c.label || c.name || c;
+                      return <option key={c.id || label || idx} value={label} />;
+                    })}
                   </datalist>
                 </label>
               </div>
@@ -1126,9 +1223,10 @@ export function CreditCardView() {
                   onChange={(e) => setBatchForm({ ...batchForm, card_label: e.target.value })}
                 />
                 <datalist id="batch-card-options">
-                  {(Array.isArray(cards) ? cards : []).map((c) => (
-                    <option key={c} value={c} />
-                  ))}
+                  {(Array.isArray(cards) ? cards : []).map((c, idx) => {
+                    const label = c.label || c.name || c;
+                    return <option key={c.id || label || idx} value={label} />;
+                  })}
                 </datalist>
               </label>
 
@@ -1195,6 +1293,148 @@ export function CreditCardView() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Manage Cards Modal */}
+      {isManageCardsOpen && (
+        <div className="modal-overlay" onClick={() => { setIsManageCardsOpen(false); setEditingCardLabel(null); }}>
+          <div className="modal-dialog" style={{ maxWidth: "560px", width: "95%" }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.25rem" }}>
+              <p className="eyebrow" style={{ margin: 0 }}>CREDIT CARDS</p>
+              <button
+                type="button"
+                className="link"
+                style={{ padding: "0.2rem", color: "var(--text-quiet)" }}
+                onClick={() => { setIsManageCardsOpen(false); setEditingCardLabel(null); }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <h2>Manage Credit Cards</h2>
+            <p className="fine" style={{ marginBottom: "1.25rem" }}>
+              Rename, merge, or delete your credit cards. Deleting a card removes its label and all associated transactions.
+            </p>
+
+            <div className="stack" style={{ gap: "0.75rem", marginBottom: "1.5rem", maxHeight: "360px", overflowY: "auto" }}>
+              {(Array.isArray(cards) && cards.length > 0) ? (
+                cards.map((c, idx) => {
+                  const label = c.label || c.name || c;
+                  const txCount = c.transactions !== undefined ? c.transactions : 0;
+                  const providerRaw = c.provider || "";
+                  const providerDisplay = providerRaw === "rogers_bank" ? "Rogers Bank" : providerRaw === "wealthsimple" ? "Wealthsimple" : providerRaw;
+                  const isEditing = editingCardLabel === label;
+
+                  return (
+                    <div
+                      key={c.id || label || idx}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "0.85rem 1rem",
+                        background: "var(--bg-card)",
+                        border: "1px solid var(--border-panel)",
+                        borderRadius: "8px",
+                        gap: "0.75rem",
+                      }}
+                    >
+                      {isEditing ? (
+                        <div style={{ display: "flex", gap: "0.5rem", flex: 1, alignItems: "center", flexWrap: "wrap" }}>
+                          <input
+                            type="text"
+                            value={renameTargetLabel}
+                            onChange={(e) => setRenameTargetLabel(e.target.value)}
+                            placeholder="New name or existing card to merge"
+                            style={{ flex: 1, minWidth: "180px", padding: "0.45rem 0.65rem", fontSize: "0.88rem" }}
+                            autoFocus
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleRenameCard(label);
+                              if (e.key === "Escape") setEditingCardLabel(null);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            disabled={cardActionLoading || !renameTargetLabel.trim()}
+                            onClick={() => handleRenameCard(label)}
+                            style={{ padding: "0.45rem 0.75rem", fontSize: "0.82rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                          >
+                            <Check size={14} /> Save
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary"
+                            onClick={() => setEditingCardLabel(null)}
+                            style={{ padding: "0.45rem 0.75rem", fontSize: "0.82rem" }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <>
+                          <div>
+                            <div style={{ fontWeight: 700, fontSize: "0.95rem" }}>{label}</div>
+                            <span className="fine" style={{ fontSize: "0.78rem", color: "var(--text-quiet)" }}>
+                              {providerDisplay ? `${providerDisplay} • ` : ""}{txCount} transaction{txCount === 1 ? "" : "s"}
+                            </span>
+                          </div>
+
+                          <div style={{ display: "flex", gap: "0.4rem" }}>
+                            <button
+                              type="button"
+                              className="secondary"
+                              style={{ padding: "0.35rem 0.65rem", fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                              onClick={() => {
+                                setEditingCardLabel(label);
+                                setRenameTargetLabel(label);
+                              }}
+                              title="Rename or merge into another card"
+                            >
+                              <Edit2 size={13} /> Rename / Merge
+                            </button>
+                            <button
+                              type="button"
+                              className="destructive"
+                              style={{ padding: "0.35rem 0.65rem", fontSize: "0.8rem", display: "inline-flex", alignItems: "center", gap: "0.3rem" }}
+                              disabled={cardActionLoading}
+                              onClick={() => handleDeleteCard(label, txCount)}
+                              title="Delete card and all its transactions"
+                            >
+                              <Trash2 size={13} /> Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="fine" style={{ fontStyle: "italic" }}>No credit cards found.</p>
+              )}
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border-panel)", paddingTop: "1rem" }}>
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  setIsManageCardsOpen(false);
+                  setIsAddCardOpen(true);
+                }}
+              >
+                <Plus size={14} /> Add New Card
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsManageCardsOpen(false);
+                  setEditingCardLabel(null);
+                }}
+              >
+                Done
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -205,9 +205,10 @@ export const api = {
     getDashboard: (params = "") =>
       request(`/api/credit-card/dashboard${params ? `?${params}` : ""}`),
     getCards: () => request("/api/credit-card/cards"),
+    getCardsManage: () => request("/api/credit-card/cards/manage"),
     createCard: (data) => request("/api/credit-card/cards/create", { method: "POST", body: data }),
     renameCard: (label, new_label) =>
-      request(`/api/credit-card/cards/${encodeURIComponent(label)}/rename`, { method: "POST", body: { label: new_label } }),
+      request(`/api/credit-card/cards/${encodeURIComponent(label)}/rename`, { method: "POST", body: { label: new_label, new_label } }),
     deleteCard: (label) => request(`/api/credit-card/cards/${encodeURIComponent(label)}`, { method: "DELETE" }),
     getCategories: () => request("/api/credit-card/categories"),
     getTransactions: (params = "") =>
