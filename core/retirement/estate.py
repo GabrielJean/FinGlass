@@ -104,12 +104,6 @@ def compute_terminal_estate(
     net_estate = max(0.0, gross_estate - terminal_tax - liquidation_costs)
 
     # Liquidity Warning: Tax bill > liquid assets + life insurance
-    liquid_assets = (
-        state.non_reg_market_value
-        + tfsa_total
-        + life_insurance
-        + (total_registered - terminal_tax if total_registered > terminal_tax else 0.0)
-    )
     estate_liquidity_warning = terminal_tax > (state.non_reg_market_value + tfsa_total + life_insurance)
 
     return TerminalEstateResult(

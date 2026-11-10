@@ -11,7 +11,6 @@ import {
   Plus,
   Edit2,
   RotateCcw,
-  BarChart3,
   PieChart,
   Settings,
   Check,

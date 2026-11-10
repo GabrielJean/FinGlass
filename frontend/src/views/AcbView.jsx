@@ -1,22 +1,16 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../api";
-import { formatMoney, formatPercent, formatDate } from "../utils/formatters";
+import { formatMoney, formatDate } from "../utils/formatters";
 import {
   TrendingUp,
   Plus,
   Trash2,
-  Edit2,
-  Search,
   ArrowLeft,
-  Calendar,
-  Layers,
-  BarChart3,
   Upload,
 } from "lucide-react";
 import { Bar, Line } from "react-chartjs-2";
 import "../components/charts/chartSetup";
 import {
-  CHART_PALETTE,
   formatCompactMoney,
   commonTooltipOptions,
   commonScaleOptions,

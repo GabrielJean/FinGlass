@@ -88,7 +88,6 @@ def run_monte_carlo_simulation(
     for _ in range(num_trials):
         bal = initial_liquid
         traj = []
-        is_solvent = True
 
         for t in range(n_years):
             w = net_withdrawals[t]
@@ -99,7 +98,6 @@ def run_monte_carlo_simulation(
 
             if bal <= 0.0:
                 bal = 0.0
-                is_solvent = False
 
             traj.append(bal)
 
@@ -129,7 +127,6 @@ def run_monte_carlo_simulation(
     # 10.2 Historical Crash Replay & Cash Wedge Buffer
     # Override first 3 years of retirement with [-22%, -8%, +12%]
     ret_idx = max(0, params.household.primary.retirement_age - params.household.primary.current_age)
-    crash_returns = {-22: -0.22, -8: -0.08, 12: 0.12}
     crash_seq = [-0.22, -0.08, 0.12]
 
     bal_crash = initial_liquid

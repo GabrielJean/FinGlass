@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../api";
 import { formatMoney, formatDate } from "../utils/formatters";
-import { Plus, Trash2, TrendingUp, Calendar } from "lucide-react";
+import { Plus, Trash2, TrendingUp } from "lucide-react";
 import { Line } from "react-chartjs-2";
 import "../components/charts/chartSetup";
 import {

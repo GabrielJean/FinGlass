@@ -78,16 +78,6 @@ def format_currency(value):
         return str(value)
 
 
-def format_currency_display(decimal_field_name):
-    """Factory function to create list_display methods that format currency."""
-    def display_method(obj):
-        value = getattr(obj, decimal_field_name, None)
-        return format_currency(value)
-    display_method.short_description = decimal_field_name.replace("_", " ").title()
-    display_method.admin_order_field = decimal_field_name
-    return display_method
-
-
 # ============================================================================
 # TRANSACTION ADMIN
 # ============================================================================

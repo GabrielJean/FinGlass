@@ -11,14 +11,8 @@ function getCookie(name) {
   return "";
 }
 
-let cachedCsrfToken = "";
-
-export function setCsrfToken(token) {
-  cachedCsrfToken = token;
-}
-
 export function getCsrfToken() {
-  return cachedCsrfToken || getCookie("csrf_token") || getCookie("csrftoken");
+  return getCookie("csrf_token") || getCookie("csrftoken");
 }
 
 export async function request(path, options = {}) {

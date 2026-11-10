@@ -163,11 +163,6 @@ def ensure_tfsa_setup_from_import(user_id, inferred_base_year):
         _set_user_tfsa_opening_balance_base_year(user_id, normalized_base_year)
 
 
-def list_user_tfsa_annual_limits(user_id):
-    rows = TfsaAnnualLimit.objects.filter(user_id=user_id).order_by("-year").values("year", "annual_limit")
-    return [{"year": int(row["year"]), "annual_limit": float(row["annual_limit"])} for row in rows]
-
-
 def list_effective_tfsa_annual_limits(user_id):
     limits_by_year = dict(TFSA_DEFAULT_ANNUAL_LIMITS)
     override_years = set()

@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
-from django.db.models import Count, Q
+from django.db.models import Q
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_http_methods
 

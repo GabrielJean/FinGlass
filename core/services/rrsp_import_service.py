@@ -198,11 +198,6 @@ def parse_rrsp_import_csv_text(csv_text):
     }
 
 
-def parse_rrsp_transactions_csv_text(csv_text):
-    parsed = parse_rrsp_import_csv_text(csv_text)
-    return parsed["transactions"]
-
-
 def import_rrsp_transactions_rows(user_id, parsed_rows):
     account_map = {
         row["account_name"]: int(row["id"])

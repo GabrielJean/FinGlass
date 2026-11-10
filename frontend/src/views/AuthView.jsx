@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { api, setCsrfToken } from "../api";
+import { api } from "../api";
 
 const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : (window.__APP_VERSION__ || "1.0.0");
 

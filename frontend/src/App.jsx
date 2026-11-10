@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { api, setCsrfToken } from "./api";
+import { api } from "./api";
 import { AuthView } from "./views/AuthView";
 import { OverviewView } from "./views/OverviewView";
 import { HoldingsView } from "./views/HoldingsView";
@@ -29,10 +29,6 @@ import {
   UploadCloud,
   Sliders,
   Users,
-  LogOut,
-  ChevronRight,
-  Menu,
-  X,
 } from "lucide-react";
 
 const APP_VERSION = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : (window.__APP_VERSION__ || "1.0.0");
@@ -43,7 +39,6 @@ export function App() {
   const [currentUser, setCurrentUser] = useState(null);
   const [currentView, setCurrentView] = useState("overview");
   const [viewParams, setViewParams] = useState({});
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [features, setFeatures] = useState({
     imports: true,

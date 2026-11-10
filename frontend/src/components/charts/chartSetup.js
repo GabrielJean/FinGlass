@@ -47,10 +47,6 @@ export const CHART_PALETTE = [
   "#e879f9", // Fuchsia
 ];
 
-export function getPaletteColor(index) {
-  return CHART_PALETTE[index % CHART_PALETTE.length];
-}
-
 export function formatCompactMoney(value) {
   const num = Number(value || 0);
   if (Math.abs(num) >= 1000000) {

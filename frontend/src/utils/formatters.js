@@ -1,4 +1,4 @@
-export const currencyFormatter = new Intl.NumberFormat("en-CA", {
+const currencyFormatter = new Intl.NumberFormat("en-CA", {
   style: "currency",
   currency: "CAD",
   minimumFractionDigits: 2,
@@ -16,14 +16,6 @@ export const formatMoney = (val, currency = "CAD") => {
     }).format(num);
   }
   return currencyFormatter.format(num);
-};
-
-export const formatNumber = (val, decimals = 2) => {
-  const num = Number(val || 0);
-  return new Intl.NumberFormat("en-CA", {
-    minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
-  }).format(num);
 };
 
 export const formatPercent = (val) => {

@@ -7,8 +7,6 @@ import {
   Trash2,
   Settings,
   ArrowRightLeft,
-  ShieldCheck,
-  RefreshCw,
   AlertCircle,
 } from "lucide-react";
 

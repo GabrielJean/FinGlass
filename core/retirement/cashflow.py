@@ -195,7 +195,7 @@ def solve_annual_cash_flow(
     tax_res_s = None
     cash_gap = 0.0
 
-    for iteration in range(15):
+    for _ in range(15):
         # Taxable capital gains inclusion
         inc_rate = strategy.capital_gains_inclusion_rate
         taxable_cg = non_reg_cap_gain * inc_rate
@@ -236,7 +236,7 @@ def solve_annual_cash_flow(
             }
 
             if strategy.enable_pension_splitting:
-                best_s, tax_res_p, tax_res_s = optimize_pension_income_splitting(
+                _, tax_res_p, tax_res_s = optimize_pension_income_splitting(
                     p_tax_input, s_tax_input, constants
                 )
             else:

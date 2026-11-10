@@ -4,17 +4,10 @@ import { formatMoney, formatPercent, formatDate } from "../utils/formatters";
 import {
   TrendingUp,
   Wallet,
-  Landmark,
   CreditCard,
   PieChart,
-  ArrowUpRight,
-  ArrowDownRight,
-  ShieldCheck,
   RefreshCw,
-  PlusCircle,
-  BarChart3,
   Sparkles,
-  CheckCircle2,
 } from "lucide-react";
 import { Bar, Doughnut, Line } from "react-chartjs-2";
 import "../components/charts/chartSetup";

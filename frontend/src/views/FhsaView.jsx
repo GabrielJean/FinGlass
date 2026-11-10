@@ -593,6 +593,81 @@ export function FhsaView() {
         </div>
       )}
 
+      {/* Transfer Modal */}
+      {isTransferModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsTransferModalOpen(false)}>
+          <div className="modal-dialog" onClick={(e) => e.stopPropagation()}>
+            <p className="eyebrow">INSTITUTION TRANSFER</p>
+            <h2>Direct FHSA-to-FHSA Transfer</h2>
+            <p className="fine">
+              Direct institution transfers do not affect your FHSA lifetime contribution room.
+            </p>
+
+            <form onSubmit={handleSaveTransfer} className="stack">
+              <div className="form-grid-2">
+                <label>
+                  <span>From Account</span>
+                  <select
+                    required
+                    value={transferForm.from_account_id}
+                    onChange={(e) => setTransferForm({ ...transferForm, from_account_id: e.target.value })}
+                  >
+                    <option value="">Select source account...</option>
+                    {(Array.isArray(accounts) ? accounts : []).map((a) => (
+                      <option key={a.id} value={a.id}>{a.account_name}</option>
+                    ))}
+                  </select>
+                </label>
+
+                <label>
+                  <span>To Account</span>
+                  <select
+                    required
+                    value={transferForm.to_account_id}
+                    onChange={(e) => setTransferForm({ ...transferForm, to_account_id: e.target.value })}
+                  >
+                    <option value="">Select destination account...</option>
+                    {(Array.isArray(accounts) ? accounts : []).filter((a) => String(a.id) !== String(transferForm.from_account_id)).map((a) => (
+                      <option key={a.id} value={a.id}>{a.account_name}</option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="form-grid-2">
+                <label>
+                  <span>Amount (CAD)</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    value={transferForm.amount}
+                    onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })}
+                  />
+                </label>
+
+                <label>
+                  <span>Transfer Date</span>
+                  <input
+                    type="date"
+                    required
+                    value={transferForm.transfer_date}
+                    onChange={(e) => setTransferForm({ ...transferForm, transfer_date: e.target.value })}
+                  />
+                </label>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="secondary" onClick={() => setIsTransferModalOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit">Record Transfer</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* Account Modal */}
       {isAccountModalOpen && (
         <div className="modal-overlay" onClick={() => setIsAccountModalOpen(false)}>

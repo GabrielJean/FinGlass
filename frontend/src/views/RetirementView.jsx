@@ -2,11 +2,9 @@ import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../api";
 import { formatMoney } from "../utils/formatters";
 import {
-  Compass,
   CheckCircle2,
   AlertTriangle,
   TrendingUp,
-  DollarSign,
   Download,
   RefreshCw,
   Sliders,
@@ -15,24 +13,18 @@ import {
   Home,
   ShieldCheck,
   Building,
-  HeartPulse,
-  Plus,
-  Trash2,
   FileSpreadsheet,
   Activity,
   Sparkles,
   ArrowRight,
   Clock,
   Wallet,
-  Shield,
-  HelpCircle,
 } from "lucide-react";
 import { Bar, Line } from "react-chartjs-2";
 import "../components/charts/chartSetup";
 import {
   formatCompactMoney,
   commonTooltipOptions,
-  commonScaleOptions,
 } from "../components/charts/chartSetup";
 import { ChartCard } from "../components/charts/ChartCard";
 

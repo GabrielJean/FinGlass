@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from "react";
 import { api } from "../api";
-import { formatMoney, formatPercent, formatDate } from "../utils/formatters";
-import { RefreshCw, Plus, Search, Trash2, Edit2, DollarSign, ExternalLink, PieChart, Upload } from "lucide-react";
+import { formatMoney, formatPercent } from "../utils/formatters";
+import { RefreshCw, Plus, Search, Trash2, Edit2, DollarSign, PieChart, Upload } from "lucide-react";
 import { Bar, Doughnut } from "react-chartjs-2";
 import "../components/charts/chartSetup";
 import {
@@ -18,7 +18,6 @@ export function HoldingsView({ onNavigate }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [holdings, setHoldings] = useState([]);
-  const [cashAccounts, setCashAccounts] = useState([]);
   const [filterAccount, setFilterAccount] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [refreshingQuotes, setRefreshingQuotes] = useState(false);
@@ -62,8 +61,6 @@ export function HoldingsView({ onNavigate }) {
       const holdingsRes = await api.holdings.list();
       const rows = Array.isArray(holdingsRes) ? holdingsRes : (holdingsRes?.rows || []);
       setHoldings(rows);
-      const cashList = rows.filter((h) => h.symbol === "CASH");
-      setCashAccounts(cashList);
     } catch (err) {
       setError(err.message || "Failed to load holdings.");
     } finally {

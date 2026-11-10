@@ -291,12 +291,7 @@ def optimize_pension_income_splitting(
     )
 
     # Determine transfer direction: higher eligible pension spouse splits to lower
-    if prim_eligible >= sp_eligible:
-        higher_is_primary = True
-        max_transfer = prim_eligible * 0.50
-    else:
-        higher_is_primary = False
-        max_transfer = sp_eligible * 0.50
+    higher_is_primary = prim_eligible >= sp_eligible
 
     best_s = 0.0
     best_combined_tax = float("inf")

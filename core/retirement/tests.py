@@ -20,7 +20,6 @@ from core.retirement import (
     StatutoryAccountState,
     compute_terminal_estate,
     execute_spousal_rollover_first_death,
-    run_monte_carlo_simulation,
 )
 from core.retirement.monte_carlo import box_muller_normal
 
@@ -176,7 +175,7 @@ class RetirementEngineTests(TestCase):
             "is_autonomous_senior": True,
             "home_care_expenses": 0.0,
         }
-        best_s, res_p, res_s = optimize_pension_income_splitting(p_data, s_data, self.constants_0)
+        best_s, _, _ = optimize_pension_income_splitting(p_data, s_data, self.constants_0)
         # Should split non-zero amount to spouse in lower tax bracket
         self.assertGreater(best_s, 0.0)
 

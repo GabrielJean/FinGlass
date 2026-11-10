@@ -67,20 +67,6 @@ def _normalize_date(raw):
     raise ValueError(f"Unsupported date format: {raw}")
 
 
-def _normalize_trade_date(value):
-    raw = (value or "").strip()
-    if not raw:
-        raise ValueError("Missing trade date")
-
-    for fmt in ("%Y-%b-%d", "%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y"):
-        try:
-            return datetime.strptime(raw, fmt).strftime("%Y-%m-%d")
-        except ValueError:
-            continue
-
-    raise ValueError(f"Unsupported date format: {raw}")
-
-
 def resolve_security_symbol(symbol, user_id=None):
     clean = str(symbol or "").strip().upper()
     if not clean:
@@ -1008,27 +994,6 @@ def _evaluate_import_rows_deduplication(rows, user_id):
         "total_rows": len(rows),
     }
     return annotated_rows, stats
-
-
-def _annotate_transaction_import_duplicates(rows):
-    signature_counts = Counter(_transaction_signature_key(row) for row in rows)
-    seen_counts = Counter()
-    duplicate_groups = sum(1 for count in signature_counts.values() if count > 1)
-    duplicate_rows = sum(count for count in signature_counts.values() if count > 1)
-    annotated_rows = []
-
-    for row in rows:
-        key = _transaction_signature_key(row)
-        group_size = signature_counts[key]
-        annotated_row = dict(row)
-        if group_size > 1:
-            seen_counts[key] += 1
-            annotated_row["duplicate_in_import"] = True
-            annotated_row["duplicate_group_size"] = group_size
-            annotated_row["duplicate_group_index"] = seen_counts[key]
-        annotated_rows.append(annotated_row)
-
-    return annotated_rows, duplicate_groups, duplicate_rows
 
 
 def _build_transaction_duplicate_warnings(duplicate_groups=0, duplicate_rows=0, skipped_existing=0, stats=None):
@@ -2554,7 +2519,7 @@ def _import_csv_to_model(csv_content, model_class, field_mapping, user_id, uniqu
             # Create or update
             if unique_fields and lookup_fields:
                 lookup_fields["user_id"] = user_id
-                obj, created = model_class.objects.update_or_create(
+                _, created = model_class.objects.update_or_create(
                     **lookup_fields,
                     defaults={k: v for k, v in data.items() if k not in lookup_fields}
                 )

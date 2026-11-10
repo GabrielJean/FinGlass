@@ -255,7 +255,7 @@ def _seed_holdings(user, stdout):
     for acc_name, acc_type, acc_num, acc_class in accounts:
         for sym, sec_name, qty, book, mkt in holdings_by_account.get(acc_num, []):
             unrealized = round(mkt - book, 2)
-            obj, created_flag = HoldingSnapshot.objects.get_or_create(
+            _, created_flag = HoldingSnapshot.objects.get_or_create(
                 user=user,
                 as_of=as_of,
                 account_number=acc_num,

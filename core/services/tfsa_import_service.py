@@ -163,11 +163,6 @@ def parse_tfsa_import_csv_text(csv_text):
     }
 
 
-def parse_tfsa_transactions_csv_text(csv_text):
-    parsed = parse_tfsa_import_csv_text(csv_text)
-    return parsed["transactions"]
-
-
 def import_tfsa_transactions_rows(user_id, parsed_rows):
     account_map = {
         row["account_name"]: int(row["id"])

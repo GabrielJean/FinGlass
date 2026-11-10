@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api";
-import { Sliders, Lock, CheckCircle, Info, ShieldCheck } from "lucide-react";
+import { Lock } from "lucide-react";
 
 export function SettingsView({ user, onFeaturesChanged }) {
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -27,7 +26,6 @@ export function SettingsView({ user, onFeaturesChanged }) {
   const [passwordLoading, setPasswordLoading] = useState(false);
 
   const loadSettings = async () => {
-    setLoading(true);
     setError("");
     try {
       const res = await api.settings.getFeatures();
@@ -36,8 +34,6 @@ export function SettingsView({ user, onFeaturesChanged }) {
       }
     } catch (err) {
       setError(err.message || "Failed to load feature settings.");
-    } finally {
-      setLoading(false);
     }
   };
 
